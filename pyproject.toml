@@ -1,0 +1,103 @@
+[project]
+name = "causal-msi"
+version = "0.1.0"
+description = "Additive feedforward network for Bayesian causal inference across reference frames (visuo-proprioceptive realignment)."
+authors = [{ name = "Arefeh Farahmandi" }]
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "torch>=2.2",
+    "matplotlib>=3.8",
+    "pandas>=2.1",
+    "pyyaml>=6.0",
+    "pydantic>=2.6",
+    "typer>=0.12",
+    "tqdm>=4.66",
+    "scikit-learn>=1.4",
+]
+
+[project.scripts]
+generate-data = "causal_msi.cli.generate_data:app"
+train = "causal_msi.cli.train:app"
+run-analysis = "causal_msi.cli.run_analysis:app"
+
+[tool.poetry]
+packages = [{ include = "causal_msi", from = "src" }]
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0"
+pytest-cov = ">=5.0"
+ruff = ">=0.4"
+black = ">=24.0"
+mypy = ">=1.10"
+ipykernel = ">=6.29"
+
+[build-system]
+requires = ["poetry-core>=2.0"]
+build-backend = "poetry.core.masonry.api"
+
+# --------------------------------------------------------------------------- #
+# Tooling configuration
+# --------------------------------------------------------------------------- #
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "B", "UP", "D", "ANN", "SIM"]
+ignore = [
+    "D203", # one-blank-line-before-class (conflicts with D211)
+    "D213", # multi-line-summary-second-line (conflicts with D212)
+    "N803", # argument names: allow scientific notation (e.g. gain_K, C)
+    "N806", # variable names: allow scientific notation in function bodies
+    "N812", # allow `from torch.nn import functional as F`
+    "N815", # allow mixedCase scientific fields (e.g. gain_K) in config models
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D", "ANN", "S101"]
+"notebooks/*" = ["D", "ANN", "E402"]
+"scripts/*" = ["D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+plugins = ["pydantic.mypy"]
+exclude = ["notebooks/", "tests/"]
+
+[[tool.mypy.overrides]]
+module = [
+    "matplotlib.*",
+    "sklearn.*",
+    "scipy.*",
+    "torch.*",
+    "tqdm.*",
+    "pandas.*",
+    "yaml.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra --strict-markers --cov=causal_msi --cov-report=term-missing"
+testpaths = ["tests"]
+markers = [
+    "science: tests that encode unimplemented TODO(science) properties (expected xfail)",
+]
+filterwarnings = ["ignore::DeprecationWarning"]

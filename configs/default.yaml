@@ -1,0 +1,87 @@
+# =========================================================================== #
+# Default configuration for the causal_msi project.
+#
+# All spatial quantities are in DEGREES; all variances/uncertainties are in
+# DEGREES^2 (deg^2). One config drives data generation, training, and analysis.
+# Mirror this structure in src/causal_msi/config.py (pydantic models).
+# =========================================================================== #
+
+seed: 0
+
+# --------------------------------------------------------------------------- #
+# GENERATIVE MODEL (visuo-proprioceptive realignment across eye positions)
+# --------------------------------------------------------------------------- #
+generative:
+  p_common: 0.5            # prior P(C=1), single shared source
+  mu0: 0.0                 # spatial prior mean (deg)
+  sigma0_sq: 100.0         # spatial prior variance (deg^2)
+
+  # Eye-position distribution e ~ Normal(eye_mu, eye_sigma_sq) (deg / deg^2)
+  eye_mu: 0.0
+  eye_sigma_sq: 25.0
+
+  # Per-trial reliabilities (noise variances) drawn uniformly from [lo, hi] (deg^2)
+  sigma2_vis_range: [1.0, 16.0]
+  sigma2_prop_range: [4.0, 36.0]
+  sigma2_eye_range: [1.0, 9.0]
+
+  # Dense disparity sweep grid for structured datasets (deg, body frame)
+  disparity_grid: [-20.0, -15.0, -10.0, -5.0, -2.0, 0.0, 2.0, 5.0, 10.0, 15.0, 20.0]
+
+# --------------------------------------------------------------------------- #
+# ENCODING (scalar measurements -> population-code vectors = network input)
+# --------------------------------------------------------------------------- #
+encoding:
+  n_units_visual_hand: 50  # Gaussian receptive-field code
+  n_units_prop_hand: 50    # linear push-pull code
+  n_units_prop_eye: 30     # linear push-pull code
+
+  visual_field: [-40.0, 40.0]  # range over which RF centers are placed (deg)
+  rf_width: 8.0                # Gaussian RF sigma (deg)
+
+  gain_K: 10.0                 # reliability gain constant (activity ~ K / variance)
+
+  # Push-pull linear code: random slopes (both signs) and intercepts
+  slope_range: [-1.0, 1.0]
+  intercept_range: [0.0, 10.0]
+
+  poisson_noise: true          # Poisson trial-to-trial spike-count noise
+
+  include_pc_context: false    # optionally append p_common as a context scalar input
+
+# --------------------------------------------------------------------------- #
+# MODEL (additive feedforward network)
+# --------------------------------------------------------------------------- #
+model:
+  hidden_sizes: [64, 64]       # SIL (sensory-integration), MSL (multisensory) layers
+  hidden_activation: sigmoid   # {sigmoid, relu, tanh}
+  head_type: causal            # {causal, integration_only}
+
+# --------------------------------------------------------------------------- #
+# TRAINING
+# --------------------------------------------------------------------------- #
+training:
+  optimizer: rprop             # {rprop, adam}
+  lr: 0.001
+  epochs: 200
+  batch_size: 256
+  n_trials: 50000
+  split: [0.7, 0.15, 0.15]     # train / val / test fractions
+  loss_weights:
+    est: 1.0                   # MSE on the two mean outputs
+    var: 1.0                   # MSE on the two (softplus) variance outputs
+    pc: 1.0                    # BCE / MSE on the p(C=1) output
+  pc_loss: bce                 # {bce, mse}
+  n_seeds: 5
+  early_stopping_patience: 20
+
+# --------------------------------------------------------------------------- #
+# ANALYSIS
+# --------------------------------------------------------------------------- #
+analysis:
+  disparity_grid: [-30.0, -20.0, -15.0, -10.0, -5.0, -2.0, 0.0, 2.0, 5.0, 10.0, 15.0, 20.0, 30.0]
+  reliability_levels: [2.0, 8.0, 16.0]   # representative sigma2_vis values (deg^2)
+  decoder:
+    alpha: 1.0                 # ridge regularization for linear decoders
+    cv_folds: 5
+    test_size: 0.25
