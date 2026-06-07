@@ -1,4 +1,4 @@
-.PHONY: setup lint test generate-data train analyze format
+.PHONY: setup lint test generate-data train analyze visualize format
 
 setup:
 	poetry install
@@ -23,3 +23,6 @@ train:
 
 analyze:
 	poetry run run-analysis integration --checkpoint checkpoints/model_seed0.pth --config configs/default.yaml --dataset data/dataset.npz
+
+visualize:
+	poetry run python scripts/visualize.py --config configs/default.yaml --results-dir results

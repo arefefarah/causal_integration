@@ -43,8 +43,9 @@ def forward_with_msl_mask(model: FeedforwardMSI, x: FloatArray, silence: BoolArr
         Head outputs with the ablation applied, shape ``(N, output_dim)``.
     """
     model.eval()
-    mask = torch.as_tensor(~silence, dtype=torch.float32)
-    xt = torch.as_tensor(np.asarray(x), dtype=torch.float32)
+    device = next(model.parameters()).device
+    mask = torch.as_tensor(~silence, dtype=torch.float32, device=device)
+    xt = torch.as_tensor(np.asarray(x), dtype=torch.float32, device=device)
     with torch.no_grad():
         h = xt
         for i, module in enumerate(model.hidden):

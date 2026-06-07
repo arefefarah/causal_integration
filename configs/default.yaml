@@ -63,7 +63,7 @@ model:
 training:
   optimizer: rprop             # {rprop, adam}
   lr: 0.001
-  epochs: 200
+  epochs: 2000
   batch_size: 256
   n_trials: 50000
   split: [0.7, 0.15, 0.15]     # train / val / test fractions
@@ -72,7 +72,7 @@ training:
     var: 1.0                   # MSE on the two (softplus) variance outputs
     pc: 1.0                    # BCE / MSE on the p(C=1) output
   pc_loss: bce                 # {bce, mse}
-  n_seeds: 5
+  n_seeds: 2
   early_stopping_patience: 20
 
 # --------------------------------------------------------------------------- #

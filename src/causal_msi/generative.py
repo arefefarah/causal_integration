@@ -39,6 +39,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from numpy.typing import NDArray
+from scipy.special import expit
 
 from causal_msi.config import Config, GenerativeConfig
 
@@ -364,17 +365,10 @@ def transform_visual_to_body(
     tuple of numpy.ndarray
         ``(x_vis_body, var_vis_body)``, each shape ``(n,)``. The transform carries
         the eye-position uncertainty into the visual estimate.
-
-    Notes
-    -----
-    TODO(science): implement the reference-frame transform
-        ``x_vis_body  = x_vis + x_eye``
-        ``var_vis_body = sigma2_vis + sigma2_eye``   (deg^2)
-    The variance addition encodes that mapping retinal -> body inflates the visual
-    uncertainty by the eye-position uncertainty. Tested in
-    ``tests/test_generative.py::test_transformed_visual_variance``.
     """
-    raise NotImplementedError("TODO(science): body-frame transform of the visual measurement")
+    x_vis_body = x_vis + x_eye
+    var_vis_body = sigma2_vis + sigma2_eye
+    return x_vis_body, var_vis_body
 
 
 def segregated_estimate(
@@ -397,18 +391,11 @@ def segregated_estimate(
     tuple of numpy.ndarray
         ``(mu, var_post)``, each shape ``(n,)`` -- the segregated posterior mean
         (deg) and variance (deg^2).
-
-    Notes
-    -----
-    TODO(science): precision-weighted single-cue posterior (Gaussian * Gaussian)
-        ``mu       = (x / var + mu0 / sigma0_sq) / (1 / var + 1 / sigma0_sq)``
-        ``var_post = 1 / (1 / var + 1 / sigma0_sq)``
-    As the cue becomes uninformative (``var -> inf``) the estimate must collapse to
-    the prior ``(mu0, sigma0_sq)``. Tested in
-    ``tests/test_generative.py::test_segregated_reduces_to_prior`` and
-    ``::test_segregated_reduces_to_single_cue``.
     """
-    raise NotImplementedError("TODO(science): single-cue (segregated) posterior")
+    mu = (x / var + mu0 / sigma0_sq) / (1 / var + 1 / sigma0_sq)
+    var_post = 1 / (1 / var + 1 / sigma0_sq)
+
+    return mu, var_post
 
 
 def fused_estimate(
@@ -435,15 +422,12 @@ def fused_estimate(
     tuple of numpy.ndarray
         ``(mu_fused, var_fused)``, each shape ``(n,)`` -- the optimal combination
         of both cues with the prior, under the assumption of a single source.
-
-    Notes
-    -----
-    TODO(science): precision-weighted fusion of both cues + prior
-        ``mu_fused  = (x_vis/var_vis + x_prop/var_prop + mu0/sigma0_sq) / P``
-        ``var_fused = 1 / P``,  with ``P = 1/var_vis + 1/var_prop + 1/sigma0_sq``.
-    See Kording et al. (2007). Tested in ``tests/test_generative.py``.
     """
-    raise NotImplementedError("TODO(science): forced-fusion (C=1) posterior")
+    P = 1 / var_vis_body + 1 / var_prop + 1 / sigma0_sq
+    mu_fused = (x_vis_body / var_vis_body + x_prop / var_prop + mu0 / sigma0_sq) / P
+    var_fused = 1 / P
+    # See Kording et al. (2007).
+    return mu_fused, var_fused
 
 
 def log_bayes_factor(
@@ -473,7 +457,7 @@ def log_bayes_factor(
 
     Notes
     -----
-    TODO(science): Gaussian closed form (Kording et al., 2007). The two evidence
+    Gaussian closed form (Kording et al., 2007). The two evidence
     terms are
         ``p(x | C=1) = N(x_vis_body - x_prop ; 0, var_vis_body + var_prop + ...)``
         marginalising the shared source over the prior, versus
@@ -482,8 +466,39 @@ def log_bayes_factor(
     ``d = x_vis_body - x_prop`` relative to the combined noise: ``BF -> large`` as
     ``d -> 0`` and ``BF -> 0`` as ``|d| -> inf``. Tested in
     ``tests/test_generative.py::test_bf_decreases_with_disparity``.
+
+    Implements the Kording et al. (2007) Gaussian closed form. With
+    ``Sigma_c = var_vis_body*var_prop + var_vis_body*sigma0_sq + var_prop*sigma0_sq``,
+
+        log p(x | C=1) = -0.5*log(Sigma_c) - 0.5*E1   (dropping the -log(2*pi))
+        E1 = [ (x_vis_body - x_prop)^2 * sigma0_sq
+               + (x_vis_body - mu0)^2 * var_prop
+               + (x_prop     - mu0)^2 * var_vis_body ] / Sigma_c
+
+        log p(x | C=2) = -0.5*log(v_vis * v_prop) - 0.5*E2   (-log(2*pi) dropped)
+        v_vis = var_vis_body + sigma0_sq,  v_prop = var_prop + sigma0_sq
+        E2 = (x_vis_body - mu0)^2 / v_vis + (x_prop - mu0)^2 / v_prop
+
+    The shared ``-log(2*pi)`` normaliser cancels in the difference.
     """
-    raise NotImplementedError("TODO(science): Gaussian log Bayes factor (C=1 vs C=2)")
+    sv = var_vis_body
+    sp = var_prop
+    s0 = sigma0_sq
+
+    # --- Evidence for a common cause (C=1): marginalise the shared source. ---
+    sigma_c = sv * sp + sv * s0 + sp * s0
+    e1 = (
+        (x_vis_body - x_prop) ** 2 * s0 + (x_vis_body - mu0) ** 2 * sp + (x_prop - mu0) ** 2 * sv
+    ) / sigma_c
+    log_p_c1 = -0.5 * np.log(sigma_c) - 0.5 * e1
+
+    # --- Evidence for separate causes (C=2): independent, prior-marginalised. ---
+    v_vis = sv + s0
+    v_prop = sp + s0
+    e2 = (x_vis_body - mu0) ** 2 / v_vis + (x_prop - mu0) ** 2 / v_prop
+    log_p_c2 = -0.5 * np.log(v_vis * v_prop) - 0.5 * e2
+
+    return log_p_c1 - log_p_c2
 
 
 def common_cause_posterior(log_bf: FloatArray, p_common: float) -> FloatArray:
@@ -503,14 +518,22 @@ def common_cause_posterior(log_bf: FloatArray, p_common: float) -> FloatArray:
 
     Notes
     -----
-    TODO(science): with ``BF = exp(log_bf)``
+    with ``BF = exp(log_bf)``
         ``p(C=1 | x) = BF * p_common / (BF * p_common + (1 - p_common))``.
     Equivalently a logistic of ``log_bf + logit(p_common)``. The posterior must be
     monotone increasing in ``log_bf``. Tested in
     ``tests/test_generative.py::test_posterior_monotone_in_bf`` and the disparity
     limit tests.
+
+    Implemented as ``p = expit(log_bf + logit(p_common))`` -- algebraically
+    identical to ``BF*p_common / (BF*p_common + (1 - p_common))`` but stable for
+    large ``|log_bf|`` (no ``exp(log_bf)`` overflow). ``p_common`` is clipped away
+    from 0/1 so the prior logit stays finite.
     """
-    raise NotImplementedError("TODO(science): common-cause posterior from Bayes factor")
+    pc = float(np.clip(p_common, 1e-12, 1.0 - 1e-12))
+    prior_logit = np.log(pc) - np.log1p(-pc)
+    posterior: FloatArray = expit(log_bf + prior_logit)
+    return posterior
 
 
 def analytical_observer(
@@ -536,11 +559,6 @@ def analytical_observer(
     -------
     ObserverTargets
         The five targets and the intermediate fused/BF references.
-
-    Notes
-    -----
-    The body methods below are the unimplemented ``TODO(science)`` functions; this
-    composition is wired and tested once they exist.
     """
     x_vis_body, var_vis_body = transform_visual_to_body(
         meas.x_vis, meas.x_eye, latents.sigma2_vis, latents.sigma2_eye
@@ -593,10 +611,6 @@ def build_dataset(rng: np.random.Generator, config: Config, n_trials: int | None
     Dataset
         Materialised inputs, targets, latents, measurements, and observer outputs.
 
-    Notes
-    -----
-    Imports :mod:`causal_msi.encoding` lazily to avoid a circular import. Will only
-    run end-to-end once the ``TODO(science)`` observer functions are implemented.
     """
     from causal_msi.encoding import assemble_inputs
 

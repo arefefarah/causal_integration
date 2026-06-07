@@ -90,9 +90,15 @@ def test_bf_decreases_with_disparity() -> None:
 
 @science
 def test_posterior_to_one_at_zero_disparity() -> None:
-    """p(C=1) -> 1 as body-frame disparity -> 0 (cues coincide)."""
+    """p(C=1) -> 1 at zero disparity when the cues are reliable.
+
+    At exactly zero body-frame disparity the posterior is bounded by the cue
+    reliabilities and the prior; it approaches 1 only as the measurement
+    variances shrink relative to the prior variance. Reliable cues (var << sigma0)
+    are used here so the limit is exercised.
+    """
     mu0, sigma0_sq, p_common = 0.0, 100.0, 0.5
-    var = np.array([1.0])
+    var = np.array([0.1])
     log_bf = log_bayes_factor(np.array([0.0]), var, np.array([0.0]), var, mu0, sigma0_sq)
     p = common_cause_posterior(log_bf, p_common)
     assert p[0] > 0.9

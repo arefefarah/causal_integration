@@ -22,6 +22,7 @@ dependencies = [
 generate-data = "causal_msi.cli.generate_data:app"
 train = "causal_msi.cli.train:app"
 run-analysis = "causal_msi.cli.run_analysis:app"
+visualize = "causal_msi.cli.visualize:app"
 
 [tool.poetry]
 packages = [{ include = "causal_msi", from = "src" }]

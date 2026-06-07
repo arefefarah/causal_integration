@@ -141,9 +141,7 @@ def load_checkpoint(path: str | Path, map_location: str | None = "cpu") -> dict[
     dict
         The payload dict (``state_dict``, ``config``, ``metrics``, extras).
     """
-    payload: dict[str, Any] = torch.load(
-        Path(path), map_location=map_location, weights_only=False
-    )
+    payload: dict[str, Any] = torch.load(Path(path), map_location=map_location, weights_only=False)
     return payload
 
 

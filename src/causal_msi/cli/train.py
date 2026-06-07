@@ -32,9 +32,6 @@ def main(
     ),
 ) -> None:
     """Train ``n_seeds`` models with early stopping and save per-seed checkpoints.
-
-    Requires the ``TODO(science)`` observer functions to be implemented so a
-    dataset can be built / loaded with valid targets.
     """
     cfg = load_config(config)
     if head_type is not None:

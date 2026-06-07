@@ -5,8 +5,8 @@ Computes the analytical log Bayes factor per trial, inverts network output 5
 provides hooks to ask which sub-population's activity tracks log-BF / body-frame
 disparity.
 
-Inversion and decoding plumbing are implemented; the closed-form inversion is
-``TODO(science)`` (it mirrors the posterior in :mod:`causal_msi.generative`).
+The closed-form inversion (the exact inverse of the posterior in
+:mod:`causal_msi.generative`) and the decoding plumbing are implemented.
 Units: log-BF in nats, disparity in deg.
 """
 
@@ -38,13 +38,19 @@ def implied_log_bf(pred_pc: FloatArray, p_common: float) -> FloatArray:
 
     Notes
     -----
-    TODO(science): invert ``p = BF*pc / (BF*pc + (1-pc))`` for ``log BF``
+    Inverts ``p = BF*pc / (BF*pc + (1-pc))`` for ``log BF``
         ``log BF = logit(p) - logit(p_common)``
-    i.e. ``log(p/(1-p)) - log(p_common/(1-p_common))``. Should recover the
-    analytical log-BF up to network error. Tested in
-    ``tests/test_integration.py`` (round-trip with the posterior).
+    i.e. ``log(p/(1-p)) - log(p_common/(1-p_common))`` -- the exact inverse of
+    :func:`causal_msi.generative.common_cause_posterior`. Recovers the analytical
+    log-BF up to network error. Both ``pred_pc`` and ``p_common`` are clipped away
+    from 0/1 so the logits stay finite. Tested in ``tests/test_integration.py``
+    (round-trip with the posterior).
     """
-    raise NotImplementedError("TODO(science): invert p(C=1) -> implied log Bayes factor")
+    pc = float(np.clip(p_common, 1e-12, 1.0 - 1e-12))
+    prior_logit = np.log(pc) - np.log1p(-pc)
+    p = np.clip(pred_pc, 1e-12, 1.0 - 1e-12)
+    implied: FloatArray = np.log(p) - np.log1p(-p) - prior_logit
+    return implied
 
 
 def compare_log_bf(analytical_log_bf: FloatArray, implied: FloatArray) -> dict[str, float]:

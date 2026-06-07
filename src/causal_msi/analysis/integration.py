@@ -14,8 +14,9 @@ shortcut of checking the network's own reconstructed estimate against its own
 Comparisons then ask whether the OUTPUT implements optimal averaging and whether
 the POPULATION already carries the fused/averaged estimate internally.
 
-All estimator formulae are ``TODO(science)`` (stated in the docstrings); decoder
-fitting and curve-binning plumbing is implemented. Units: deg / deg^2.
+The estimator formulae (model averaging, likelihood inversion, fusion weight,
+disparity sweep, decision-strategy fit) are implemented; decoder fitting and
+curve-binning plumbing is implemented. Units: deg / deg^2.
 """
 
 from __future__ import annotations
@@ -50,13 +51,14 @@ def analytical_model_averaged_estimate(targets: ObserverTargets) -> FloatArray:
 
     Notes
     -----
-    TODO(science): Bayesian model averaging of the visual estimate
+    Implements Bayesian model averaging of the visual estimate
         ``s_hat = p(C=1) * fused_mu + (1 - p(C=1)) * mu_vis_segregated``.
-    (Analogously for proprioception with ``mu_prop``.) This is the reference the
+    (Proprioception is analogous, using ``mu_prop``.) This is the reference the
     network is implicitly compared against. Tested in
     ``tests/test_integration.py::test_model_averaging_endpoints``.
     """
-    raise NotImplementedError("TODO(science): analytical model-averaged estimate")
+    pc = targets.p_common
+    return pc * targets.fused_mu + (1.0 - pc) * targets.mu_vis_body
 
 
 # --------------------------------------------------------------------------- #
@@ -80,16 +82,41 @@ def network_reconstructed_estimate(outputs: FloatArray, mu0: float, sigma0_sq: f
 
     Notes
     -----
-    TODO(science): (a) invert each segregated posterior to recover the cue
-    likelihood by removing the prior
+    Implements: (a) invert each segregated posterior to recover the cue likelihood
+    by removing the prior
         ``1/var_like = 1/var_seg - 1/sigma0_sq``;
         ``x_like = var_like * (mu_seg/var_seg - mu0/sigma0_sq)``;
     (b) recombine the two likelihoods + prior into the fused estimate;
-    (c) model-average fused vs segregated using the network's ``p_common``. The
-    network is NOT given the fused output, so this reconstruction is the only way
-    to read its implicit integration. Tested in ``tests/test_integration.py``.
+    (c) model-average fused vs the visual segregated estimate using the network's
+    ``p_common``. The network is NOT given the fused output, so this reconstruction
+    is the only way to read its implicit integration. The inverse-likelihood
+    variance is clamped to a small positive value to stay finite when a network
+    output violates ``var_seg < sigma0_sq``. Tested in ``tests/test_integration.py``.
     """
-    raise NotImplementedError("TODO(science): reconstruct fused / model-averaged from outputs")
+    eps = 1e-9
+    inv_prior = 1.0 / sigma0_sq
+
+    mu_vis, var_vis = outputs[:, 0], outputs[:, 1]
+    mu_prop, var_prop = outputs[:, 2], outputs[:, 3]
+    pc = outputs[:, 4]
+
+    def _delift(mu_seg: FloatArray, var_seg: FloatArray) -> tuple[FloatArray, FloatArray]:
+        """Strip the prior from a segregated posterior to recover the likelihood."""
+        inv_like = np.clip(1.0 / var_seg - inv_prior, eps, None)
+        var_like = 1.0 / inv_like
+        x_like = var_like * (mu_seg / var_seg - mu0 / sigma0_sq)
+        return x_like, var_like
+
+    x_vis, v_vis = _delift(mu_vis, var_vis)
+    x_prop, v_prop = _delift(mu_prop, var_prop)
+
+    # (b) recombine both likelihoods with the prior -> fused posterior mean.
+    inv_fused = 1.0 / v_vis + 1.0 / v_prop + inv_prior
+    var_fused = 1.0 / inv_fused
+    mu_fused = var_fused * (x_vis / v_vis + x_prop / v_prop + mu0 / sigma0_sq)
+
+    # (c) model-average fused vs the (visual) segregated estimate by the net's p(C=1).
+    return pc * mu_fused + (1.0 - pc) * mu_vis
 
 
 # --------------------------------------------------------------------------- #
@@ -186,14 +213,20 @@ def fusion_weight_curve(
 
     Notes
     -----
-    TODO(science): solve ``estimate = w * fused + (1 - w) * segregated`` for ``w``
-        ``w = (estimate - segregated) / (fused - segregated)``
-    (guard the degenerate ``fused == segregated`` case). Optimal averaging predicts
-    ``w == p(C=1)`` (identity line vs analytical ``p(C=1)``); report deviations
-    (over-fusion at intermediate disparity, saturation, hysteresis). Tested in
+    Solves ``estimate = w * fused + (1 - w) * segregated`` for ``w``
+        ``w = (estimate - segregated) / (fused - segregated)``.
+    The degenerate ``fused == segregated`` case (no leverage to estimate ``w``) is
+    returned as NaN. Optimal averaging predicts ``w == p(C=1)`` (identity line vs
+    analytical ``p(C=1)``); deviations (over-fusion at intermediate disparity,
+    saturation, hysteresis) are read off the curve. Tested in
     ``tests/test_integration.py::test_fusion_weight_in_unit_interval``.
     """
-    raise NotImplementedError("TODO(science): empirical fusion weight")
+    eps = 1e-9
+    denom = fused - segregated
+    safe = np.abs(denom) > eps
+    w = np.full(estimate.shape, np.nan, dtype=float)
+    w[safe] = (estimate[safe] - segregated[safe]) / denom[safe]
+    return w
 
 
 # --------------------------------------------------------------------------- #
@@ -207,6 +240,45 @@ class SweepCurve:
     fusion_weight: FloatArray
     midpoint: float
     sharpness: float
+
+
+def _bin_means(x: FloatArray, y: FloatArray, grid: FloatArray) -> tuple[FloatArray, FloatArray]:
+    """Mean of ``y`` grouped by nearest ``grid`` centre of ``x`` (occupied bins)."""
+    grid = np.asarray(grid, dtype=float)
+    valid = ~np.isnan(y)
+    x, y = x[valid], y[valid]
+    idx = np.abs(x[:, None] - grid[None, :]).argmin(axis=1)
+    centres, means = [], []
+    for b in range(len(grid)):
+        m = idx == b
+        if m.any():
+            centres.append(float(grid[b]))
+            means.append(float(y[m].mean()))
+    return np.asarray(centres), np.asarray(means)
+
+
+def _fit_transition(abs_disparity: FloatArray, fusion_weight: FloatArray) -> tuple[float, float]:
+    """Fit ``w = 1 / (1 + exp(k * (|d| - d0)))`` -> return ``(midpoint d0, sharpness k)``.
+
+    The fusion weight falls from ~1 at zero disparity to ~0 at large ``|disparity|``;
+    ``d0`` is the disparity at which it crosses 0.5 and ``k`` its steepness. Returns
+    ``(nan, nan)`` if the non-linear fit does not converge.
+    """
+    from scipy.optimize import curve_fit
+
+    valid = ~np.isnan(fusion_weight)
+    d, w = abs_disparity[valid], fusion_weight[valid]
+    if d.size < 4 or np.ptp(d) == 0:
+        return float("nan"), float("nan")
+
+    def logistic(dd: FloatArray, d0: float, k: float) -> FloatArray:
+        return 1.0 / (1.0 + np.exp(k * (dd - d0)))
+
+    try:
+        popt, _ = curve_fit(logistic, d, w, p0=[float(np.median(d)), 1.0], maxfev=10000)
+        return float(popt[0]), float(popt[1])
+    except (RuntimeError, ValueError):
+        return float("nan"), float("nan")
 
 
 def disparity_sweep(
@@ -229,15 +301,21 @@ def disparity_sweep(
     Returns
     -------
     SweepCurve
-        Binned fusion-weight curve plus its midpoint and sharpness.
+        Binned (signed) fusion-weight curve plus the midpoint and sharpness of the
+        transition fitted over ``|disparity|``.
 
     Notes
     -----
-    TODO(science): bin ``fusion_weight`` over ``disparity`` and fit the transition
-    (e.g. logistic) to extract the midpoint (disparity at ``w = 0.5``) and the
-    sharpness (slope). Compare to Kording-style human psychometric curves.
+    Bins ``fusion_weight`` over signed ``disparity`` for the curve, then fits a
+    logistic of the weight against ``|disparity|`` to extract the midpoint
+    (disparity at ``w = 0.5``) and sharpness (slope) -- the Kording-style
+    psychometric transition.
     """
-    raise NotImplementedError("TODO(science): disparity-sweep transition fit")
+    centres, mean_w = _bin_means(disparity, fusion_weight, grid)
+    midpoint, sharpness = _fit_transition(np.abs(disparity), fusion_weight)
+    return SweepCurve(
+        disparity=centres, fusion_weight=mean_w, midpoint=midpoint, sharpness=sharpness
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -272,11 +350,19 @@ def reliability_dependence(
 
     Notes
     -----
-    TODO(science): test whether the fusion->segregation crossover shifts with
-    reliability -- less reliable cues should tolerate larger disparity before
-    segregating (midpoint increases as reliability drops).
+    Assigns each trial to the nearest reliability level and runs
+    :func:`disparity_sweep` per group. The hypothesis: the fusion->segregation
+    crossover shifts with reliability -- less reliable cues tolerate larger
+    disparity before segregating (midpoint increases as reliability drops).
     """
-    raise NotImplementedError("TODO(science): reliability-dependent crossover")
+    levels = np.asarray(levels, dtype=float)
+    nearest = np.abs(reliability[:, None] - levels[None, :]).argmin(axis=1)
+    out: dict[float, SweepCurve] = {}
+    for b, level in enumerate(levels):
+        mask = nearest == b
+        if mask.any():
+            out[float(level)] = disparity_sweep(disparity[mask], fusion_weight[mask], grid)
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -327,12 +413,26 @@ def decision_strategy_fit(
 
     Notes
     -----
-    TODO(science): build the three predictions and score each against the
-    population estimate:
+    Builds the three candidate predictions and scores each by RMSE against the
+    population estimate (lower = better; ``.best()`` names the winner):
         - MODEL AVERAGING:   ``p_common * fused + (1 - p_common) * segregated``
         - MODEL SELECTION:   ``fused if p_common > 0.5 else segregated`` (hard)
         - PROBABILITY MATCHING: sample ``fused`` w.p. ``p_common`` else ``segregated``
-    Report which the trained network implements and expose a hook to test whether
-    the loss (BCE vs MSE on p(C=1)) steers the strategy.
+    To test whether the loss (BCE vs MSE on p(C=1)) steers the strategy, fit on
+    population estimates decoded from networks trained under each loss and compare.
     """
-    raise NotImplementedError("TODO(science): decision-strategy model comparison")
+    if rng is None:
+        rng = np.random.default_rng(0)
+
+    def _rmse(prediction: FloatArray) -> float:
+        return float(np.sqrt(np.mean((prediction - population_estimate) ** 2)))
+
+    averaging = p_common * fused + (1.0 - p_common) * segregated
+    selection = np.where(p_common > 0.5, fused, segregated)
+    matched = np.where(rng.random(p_common.shape) < p_common, fused, segregated)
+
+    return StrategyFit(
+        model_averaging=_rmse(averaging),
+        model_selection=_rmse(selection),
+        probability_matching=_rmse(matched),
+    )

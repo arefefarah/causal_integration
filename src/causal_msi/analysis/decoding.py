@@ -52,7 +52,8 @@ def extract_activations(model: FeedforwardMSI, x: FloatArray) -> dict[str, Float
     dict
         ``{"sil": (N, h1), "msl": (N, h2)}`` activation matrices.
     """
-    cache = model.activations(torch.as_tensor(np.asarray(x), dtype=torch.float32))
+    device = next(model.parameters()).device
+    cache = model.activations(torch.as_tensor(np.asarray(x), dtype=torch.float32, device=device))
     assert cache.sil is not None and cache.msl is not None
     return {"sil": cache.sil.cpu().numpy(), "msl": cache.msl.cpu().numpy()}
 
