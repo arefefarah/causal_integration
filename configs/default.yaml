@@ -71,8 +71,8 @@ training:
     est: 1.0                   # MSE on the two mean outputs
     var: 1.0                   # MSE on the two (softplus) variance outputs
     pc: 1.0                    # BCE / MSE on the p(C=1) output
-  pc_loss: bce                 # {bce, mse}
-  n_seeds: 2
+  pc_loss: mse                 # {bce, mse}
+  n_seeds: 1
   early_stopping_patience: 20
 
 # --------------------------------------------------------------------------- #

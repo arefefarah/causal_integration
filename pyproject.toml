@@ -26,6 +26,7 @@ visualize = "causal_msi.cli.visualize:app"
 
 [tool.poetry]
 packages = [{ include = "causal_msi", from = "src" }]
+package-mode = false
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0"

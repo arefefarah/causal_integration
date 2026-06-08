@@ -52,8 +52,14 @@ def tuning_curves(
         The axes drawn on.
     """
     ax = _ensure_ax(ax)
-    n = responses.shape[1] if max_units is None else min(max_units, responses.shape[1])
-    for j in range(n):
+    n_units = responses.shape[1]
+    if max_units is None or max_units >= n_units:
+        unit_idx = np.arange(n_units)
+    else:
+        # Sample units EVENLY across the population so the displayed subset spans
+        # the full range of preferred values (not just the first max_units units).
+        unit_idx = np.unique(np.linspace(0, n_units - 1, max_units).round().astype(int))
+    for j in unit_idx:
         ax.plot(stimulus, responses[:, j], lw=0.9, alpha=0.6)
     ax.set_xlabel("stimulus (deg)")
     ax.set_ylabel("mean response")
