@@ -22,13 +22,16 @@ Generative model
 Analytical observer (label pipeline)
 -------------------------------------
 Operates ONLY on the noisy scalar measurements (never the true sources) and
-produces the five training targets:
+produces the four training targets -- the Bayesian causal-inference *optimal*
+position estimates of Kording et al. (2007):
 
-    out[0] = mu_vis    (body frame)
-    out[1] = var_vis   (body frame, uses sigma2_vis + sigma2_eye)
-    out[2] = mu_prop
-    out[3] = var_prop
-    out[4] = p(C=1 | x)   (graded common-cause posterior)
+    out[0] = mu_vis    (Eq. 9:  model-averaged optimal visual estimate, body frame)
+    out[1] = var_vis   (posterior/mixture variance of the visual estimate)
+    out[2] = mu_prop   (Eq. 10: model-averaged optimal proprioceptive estimate)
+    out[3] = var_prop  (posterior/mixture variance of the prop estimate)
+
+The common-cause posterior ``p(C=1 | x)`` (Eq. 2) is computed internally to form
+these estimates but is NEITHER an input NOR an output.
 
 All spatial quantities are in DEGREES; all variances are in DEGREES^2 (deg^2).
 """
@@ -107,28 +110,39 @@ class Measurements:
 
 @dataclass(frozen=True)
 class ObserverTargets:
-    """Analytical-observer outputs: the five training targets plus references.
+    """Analytical-observer outputs: the four training targets plus references.
 
-    The first five attributes are the supervised targets (``to_array`` packs them
-    in output order). ``fused_*`` and ``log_bf`` are intermediate quantities kept
-    for analysis (e.g. the integration and Bayes-factor modules); they are NOT
-    network outputs.
+    The four supervised targets are the Bayesian causal-inference *optimal*
+    position estimates (Kording et al., 2007): for each modality the
+    model-averaged estimate (Eqs. 9/10) and its posterior (mixture) variance.
+    ``p(C=1)`` is computed internally (Eq. 2) but is **not** a training target.
+
+    ``to_array`` packs the four targets in output order
+    ``[mu_vis, var_vis, mu_prop, var_prop]``. The remaining attributes are
+    intermediate references kept for analysis (segregated/fused estimates, the
+    common-cause posterior, the log Bayes factor); they are NOT network outputs.
     """
 
-    mu_vis_body: FloatArray
-    var_vis_body: FloatArray
-    mu_prop: FloatArray
-    var_prop: FloatArray
-    p_common: FloatArray
+    # --- the four supervised training targets (Kording Eqs. 9/10 + mixture var) ---
+    mu_vis: FloatArray  # Eq. 9: optimal visual estimate (model-averaged)
+    var_vis: FloatArray  # posterior (mixture) variance of the visual estimate
+    mu_prop: FloatArray  # Eq. 10: optimal proprioceptive estimate (model-averaged)
+    var_prop: FloatArray  # posterior (mixture) variance of the prop estimate
 
-    fused_mu: FloatArray
-    fused_var: FloatArray
-    log_bf: FloatArray
+    # --- internal references for analysis (NOT outputs) ---
+    seg_vis_mu: FloatArray  # Eq. 11: visual estimate given C=2 (separate causes)
+    seg_vis_var: FloatArray  # variance of the C=2 visual posterior
+    seg_prop_mu: FloatArray  # Eq. 11: prop estimate given C=2
+    seg_prop_var: FloatArray  # variance of the C=2 prop posterior
+    fused_mu: FloatArray  # Eq. 12: shared estimate given C=1 (common cause)
+    fused_var: FloatArray  # variance of the C=1 fused posterior
+    p_common: FloatArray  # Eq. 2: posterior probability of a common cause
+    log_bf: FloatArray  # log p(x|C=1) - log p(x|C=2)
 
     def to_array(self) -> FloatArray:
-        """Pack the five training targets into an ``(N, 5)`` array (output order)."""
+        """Pack the four training targets into an ``(N, 4)`` array (output order)."""
         return np.stack(
-            [self.mu_vis_body, self.var_vis_body, self.mu_prop, self.var_prop, self.p_common],
+            [self.mu_vis, self.var_vis, self.mu_prop, self.var_prop],
             axis=1,
         )
 
@@ -142,7 +156,7 @@ class Dataset:
     X
         Population-coded inputs, shape ``(N, input_dim)``.
     Y
-        Targets, shape ``(N, 5)`` (or ``(N, 2)`` for integration-only labelling).
+        Targets, shape ``(N, 4)`` (or ``(N, 2)`` for integration-only labelling).
     latents
         The :class:`LatentBatch` used to generate the trials (for analysis).
     measurements
@@ -536,14 +550,65 @@ def common_cause_posterior(log_bf: FloatArray, p_common: float) -> FloatArray:
     return posterior
 
 
+def model_averaged_estimate(
+    p_common: FloatArray,
+    fused_mu: FloatArray,
+    fused_var: FloatArray,
+    seg_mu: FloatArray,
+    seg_var: FloatArray,
+) -> tuple[FloatArray, FloatArray]:
+    """Bayesian model-averaged optimal estimate for one modality (Kording Eqs. 9/10).
+
+    Combines the common-cause (C=1, Eq. 12) and separate-cause (C=2, Eq. 11)
+    estimates by the posterior probability of a common cause. The mean is the
+    cost-minimising estimate (mean of the 2-component Gaussian mixture posterior);
+    the variance is the variance of that same mixture, via the law of total
+    variance.
+
+    Parameters
+    ----------
+    p_common
+        Posterior ``p(C=1 | x)`` per trial, shape ``(n,)`` (Eq. 2).
+    fused_mu, fused_var
+        The C=1 (common-cause) estimate and its variance, each shape ``(n,)``
+        (Eq. 12).
+    seg_mu, seg_var
+        The C=2 (separate-cause) single-cue estimate and its variance, each shape
+        ``(n,)`` (Eq. 11).
+
+    Returns
+    -------
+    tuple of numpy.ndarray
+        ``(mu, var)`` -- the model-averaged optimal estimate (Eq. 9 or 10) and its
+        posterior (mixture) variance, each shape ``(n,)``.
+
+    Notes
+    -----
+    Mean (Eq. 9/10):  ``mu = p_common * fused_mu + (1 - p_common) * seg_mu``.
+    Mixture variance (law of total variance):
+        ``var = p_common*(fused_var + fused_mu**2)
+                + (1 - p_common)*(seg_var + seg_mu**2) - mu**2``.
+    """
+    w = p_common
+    mu = w * fused_mu + (1.0 - w) * seg_mu
+    second_moment = w * (fused_var + fused_mu**2) + (1.0 - w) * (seg_var + seg_mu**2)
+    var = second_moment - mu**2
+    return mu, var
+
+
 def analytical_observer(
     meas: Measurements, latents: LatentBatch, gen: GenerativeConfig
 ) -> ObserverTargets:
-    """Run the full analytical observer on the noisy measurements.
+    """Run the full Kording (2007) causal-inference observer on the measurements.
 
-    Composes the body-frame transform, the segregated single-cue posteriors, the
-    forced-fusion posterior, the Bayes factor, and the common-cause posterior into
-    the five training targets (plus references kept for analysis).
+    Pipeline:
+    1. Reference-frame transform: map the retinal visual measurement to the body
+       frame (``x_vis_body = x_vis + x_eye``, variance ``sigma2_vis + sigma2_eye``)
+       so both cues live in the body frame before applying Kording's equations.
+    2. Separate-cause (C=2) single-cue estimates per modality (Eq. 11).
+    3. Common-cause (C=1) fused estimate, shared by both modalities (Eq. 12).
+    4. Common-cause posterior ``p(C=1 | x)`` from the Gaussian evidences (Eqs. 2/4).
+    5. Model-averaged optimal estimates + posterior variances (Eqs. 9/10).
 
     Parameters
     ----------
@@ -558,32 +623,45 @@ def analytical_observer(
     Returns
     -------
     ObserverTargets
-        The five targets and the intermediate fused/BF references.
+        The four optimal-estimate targets (Eqs. 9/10) plus internal references
+        (segregated/fused estimates, ``p(C=1)``, log Bayes factor).
     """
     x_vis_body, var_vis_body = transform_visual_to_body(
         meas.x_vis, meas.x_eye, latents.sigma2_vis, latents.sigma2_eye
     )
-    mu_vis_body, post_var_vis = segregated_estimate(
-        x_vis_body, var_vis_body, gen.mu0, gen.sigma0_sq
-    )
-    mu_prop, post_var_prop = segregated_estimate(
+    # C=2 separate-cause single-cue estimates (Eq. 11).
+    seg_vis_mu, seg_vis_var = segregated_estimate(x_vis_body, var_vis_body, gen.mu0, gen.sigma0_sq)
+    seg_prop_mu, seg_prop_var = segregated_estimate(
         meas.x_prop, latents.sigma2_prop, gen.mu0, gen.sigma0_sq
     )
+    # C=1 common-cause fused estimate, shared by both modalities (Eq. 12).
     fused_mu, fused_var = fused_estimate(
         x_vis_body, var_vis_body, meas.x_prop, latents.sigma2_prop, gen.mu0, gen.sigma0_sq
     )
+    # Common-cause posterior p(C=1 | x) from the Gaussian evidences (Eqs. 2/4/6).
     log_bf = log_bayes_factor(
         x_vis_body, var_vis_body, meas.x_prop, latents.sigma2_prop, gen.mu0, gen.sigma0_sq
     )
     p_common = common_cause_posterior(log_bf, gen.p_common)
+    # Model-averaged optimal estimates + posterior variances (Eqs. 9/10).
+    mu_vis, var_vis = model_averaged_estimate(
+        p_common, fused_mu, fused_var, seg_vis_mu, seg_vis_var
+    )
+    mu_prop, var_prop = model_averaged_estimate(
+        p_common, fused_mu, fused_var, seg_prop_mu, seg_prop_var
+    )
     return ObserverTargets(
-        mu_vis_body=mu_vis_body,
-        var_vis_body=post_var_vis,
+        mu_vis=mu_vis,
+        var_vis=var_vis,
         mu_prop=mu_prop,
-        var_prop=post_var_prop,
-        p_common=p_common,
+        var_prop=var_prop,
+        seg_vis_mu=seg_vis_mu,
+        seg_vis_var=seg_vis_var,
+        seg_prop_mu=seg_prop_mu,
+        seg_prop_var=seg_prop_var,
         fused_mu=fused_mu,
         fused_var=fused_var,
+        p_common=p_common,
         log_bf=log_bf,
     )
 
@@ -612,14 +690,20 @@ def build_dataset(rng: np.random.Generator, config: Config, n_trials: int | None
         Materialised inputs, targets, latents, measurements, and observer outputs.
 
     """
-    from causal_msi.encoding import assemble_inputs
+    from causal_msi.encoding import Encoders, assemble_inputs
 
     n = int(n_trials if n_trials is not None else config.training.n_trials)
     latents = sample_latents(rng, n, config.generative)
     meas = render_measurements(rng, latents)
     targets = analytical_observer(meas, latents, config.generative)
 
-    x = assemble_inputs(rng, meas, latents, config.encoding, p_common=config.generative.p_common)
+    # Build the population encoders from a DEDICATED, deterministic RNG seeded by
+    # config.seed (NOT the data RNG). This fixes the random push-pull tuning so that
+    # any two datasets built from the same config share identical encoders -- the
+    # model trained on one can be evaluated on another. Otherwise each build re-rolls
+    # the tuning and a trained model sees a different input basis (garbage R^2).
+    encoders = Encoders.build(np.random.default_rng(config.seed), config.encoding)
+    x = assemble_inputs(rng, meas, latents, config.encoding, encoders=encoders)
 
     if config.model.head_type == "integration_only":
         y = np.stack([targets.fused_mu, targets.fused_var], axis=1)

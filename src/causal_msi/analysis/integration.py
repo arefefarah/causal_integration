@@ -1,22 +1,25 @@
-r"""The sharper integration analysis (implicit multisensory integration).
+r"""The integration analysis (explicit multisensory integration).
 
-Goal: characterize the network's implicit integration WITHOUT the circular
-shortcut of checking the network's own reconstructed estimate against its own
-``p(C=1)``. Three independent estimates of the multisensory location are compared:
+Under the Kording (2007) output design the network is trained to output the
+model-averaged *optimal* estimates directly (Eqs. 9/10), so integration is now
+EXPLICIT in the read-out. Three estimates of the multisensory location are
+compared:
 
-1. ANALYTICAL model-averaged estimate (reference) -- from the analytical
-   ``p(C=1)``, fused, and segregated values.
-2. NETWORK-RECONSTRUCTED estimate -- backed out of the network's 5 outputs.
+1. ANALYTICAL optimal estimate (reference) -- Eq. 9, recomputed from the
+   analytical ``p(C=1)``, fused (Eq. 12), and segregated (Eq. 11) values.
+2. NETWORK estimate -- read directly from the network's output column.
 3. POPULATION-DECODED estimate -- a separate linear decoder from MSL to the
-   analytical model-averaged estimate (what the population carries, independent of
-   the read-out head).
+   analytical optimal estimate (what the population carries, independent of the
+   read-out head).
 
-Comparisons then ask whether the OUTPUT implements optimal averaging and whether
-the POPULATION already carries the fused/averaged estimate internally.
+Comparisons ask whether the OUTPUT matches the optimal estimate and whether the
+POPULATION already carries it internally. The ``fusion_weight_curve`` recovers the
+*implied* common-cause weight behind the network's estimate (decomposing it into
+the C=2 segregated vs C=1 fused references) and compares it to the analytical
+``p(C=1)`` -- the network never sees ``p(C=1)`` directly.
 
-The estimator formulae (model averaging, likelihood inversion, fusion weight,
-disparity sweep, decision-strategy fit) are implemented; decoder fitting and
-curve-binning plumbing is implemented. Units: deg / deg^2.
+All estimator formulae are implemented; decoder fitting and curve-binning plumbing
+is implemented. Units: deg / deg^2.
 """
 
 from __future__ import annotations
@@ -51,72 +54,46 @@ def analytical_model_averaged_estimate(targets: ObserverTargets) -> FloatArray:
 
     Notes
     -----
-    Implements Bayesian model averaging of the visual estimate
-        ``s_hat = p(C=1) * fused_mu + (1 - p(C=1)) * mu_vis_segregated``.
-    (Proprioception is analogous, using ``mu_prop``.) This is the reference the
-    network is implicitly compared against. Tested in
+    Implements Bayesian model averaging of the visual estimate (Kording Eq. 9)
+        ``s_hat = p(C=1) * fused_mu + (1 - p(C=1)) * seg_vis_mu``.
+    This equals ``targets.mu_vis`` (now a direct network target); it is recomputed
+    here from the stored components as the analytical reference. Tested in
     ``tests/test_integration.py::test_model_averaging_endpoints``.
     """
     pc = targets.p_common
-    return pc * targets.fused_mu + (1.0 - pc) * targets.mu_vis_body
+    return pc * targets.fused_mu + (1.0 - pc) * targets.seg_vis_mu
 
 
 # --------------------------------------------------------------------------- #
 # 2. Network-reconstructed estimate
 # --------------------------------------------------------------------------- #
-def network_reconstructed_estimate(outputs: FloatArray, mu0: float, sigma0_sq: float) -> FloatArray:
-    """Reconstruct the model-averaged estimate from the network's 5 outputs.
+def network_optimal_estimate(outputs: FloatArray, modality: str = "vis") -> FloatArray:
+    """Read the network's optimal position estimate for one modality.
+
+    Under the Kording (2007) design the network is trained to output the
+    model-averaged optimal estimate **directly** (Eqs. 9/10), so no reconstruction
+    is needed -- the estimate is simply the corresponding output column. (This
+    replaces the older 5-output design, where integration was implicit and the
+    estimate had to be reconstructed from segregated posteriors + ``p_common``.)
 
     Parameters
     ----------
     outputs
-        Network outputs, shape ``(N, 5)`` =
-        ``[mu_vis, var_vis, mu_prop, var_prop, p_common]``.
-    mu0, sigma0_sq
-        Prior mean (deg) and variance (deg^2) used to back out cue likelihoods.
+        Network outputs, shape ``(N, 4)`` =
+        ``[mu_vis, var_vis, mu_prop, var_prop]``.
+    modality
+        ``"vis"`` (column 0) or ``"prop"`` (column 2).
 
     Returns
     -------
     numpy.ndarray
-        Reconstructed model-averaged estimate per trial, shape ``(N,)`` (deg).
-
-    Notes
-    -----
-    Implements: (a) invert each segregated posterior to recover the cue likelihood
-    by removing the prior
-        ``1/var_like = 1/var_seg - 1/sigma0_sq``;
-        ``x_like = var_like * (mu_seg/var_seg - mu0/sigma0_sq)``;
-    (b) recombine the two likelihoods + prior into the fused estimate;
-    (c) model-average fused vs the visual segregated estimate using the network's
-    ``p_common``. The network is NOT given the fused output, so this reconstruction
-    is the only way to read its implicit integration. The inverse-likelihood
-    variance is clamped to a small positive value to stay finite when a network
-    output violates ``var_seg < sigma0_sq``. Tested in ``tests/test_integration.py``.
+        The network's optimal estimate per trial, shape ``(N,)`` (deg).
     """
-    eps = 1e-9
-    inv_prior = 1.0 / sigma0_sq
-
-    mu_vis, var_vis = outputs[:, 0], outputs[:, 1]
-    mu_prop, var_prop = outputs[:, 2], outputs[:, 3]
-    pc = outputs[:, 4]
-
-    def _delift(mu_seg: FloatArray, var_seg: FloatArray) -> tuple[FloatArray, FloatArray]:
-        """Strip the prior from a segregated posterior to recover the likelihood."""
-        inv_like = np.clip(1.0 / var_seg - inv_prior, eps, None)
-        var_like = 1.0 / inv_like
-        x_like = var_like * (mu_seg / var_seg - mu0 / sigma0_sq)
-        return x_like, var_like
-
-    x_vis, v_vis = _delift(mu_vis, var_vis)
-    x_prop, v_prop = _delift(mu_prop, var_prop)
-
-    # (b) recombine both likelihoods with the prior -> fused posterior mean.
-    inv_fused = 1.0 / v_vis + 1.0 / v_prop + inv_prior
-    var_fused = 1.0 / inv_fused
-    mu_fused = var_fused * (x_vis / v_vis + x_prop / v_prop + mu0 / sigma0_sq)
-
-    # (c) model-average fused vs the (visual) segregated estimate by the net's p(C=1).
-    return pc * mu_fused + (1.0 - pc) * mu_vis
+    if modality == "vis":
+        return outputs[:, 0]
+    if modality == "prop":
+        return outputs[:, 2]
+    raise ValueError(f"modality must be 'vis' or 'prop', got {modality!r}")
 
 
 # --------------------------------------------------------------------------- #

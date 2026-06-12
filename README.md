@@ -13,26 +13,35 @@ multisensory-integration model with a causal-inference read-out.
 
 ---
 
-## The five network outputs
+## The four network outputs
 
-The `causal` head emits five outputs (variances via softplus, p(C=1) via sigmoid,
-means via identity):
+The `causal` head emits **four** outputs (variances via softplus, means via
+identity) — the Bayesian causal-inference **optimal position estimates** of
+Körding et al. (2007):
 
-| # | Output      | Meaning                                                         |
-|---|-------------|-----------------------------------------------------------------|
-| 1 | `mu_vis`    | Visual source estimate, **body frame** (deg)                    |
-| 2 | `var_vis`   | Visual estimate variance, body frame (deg²; uses σ²_vis+σ²_eye) |
-| 3 | `mu_prop`   | Proprioceptive source estimate (deg)                            |
-| 4 | `var_prop`  | Proprioceptive estimate variance (deg²)                         |
-| 5 | `p(C=1\|x)` | **Graded** common-cause posterior (regression / BCE)            |
+| # | Output     | Meaning                                                          | Körding eq. |
+|---|------------|------------------------------------------------------------------|-------------|
+| 1 | `mu_vis`   | Optimal **visual** estimate (model-averaged), body frame (deg)   | Eq. 9       |
+| 2 | `var_vis`  | Posterior (mixture) variance of the visual estimate (deg²)       | —           |
+| 3 | `mu_prop`  | Optimal **proprioceptive** estimate (model-averaged) (deg)       | Eq. 10      |
+| 4 | `var_prop` | Posterior (mixture) variance of the prop estimate (deg²)         | —           |
 
-**Integration is left implicit:** there is no fused / averaged output. The fused
-and model-averaged estimates are *reconstructed in analysis* from the five
-outputs. Output 5 is trained on the **graded analytical posterior** `p(C=1|x)`,
-not on the binary causal label `C`.
+Each optimal estimate is the cost-minimising (posterior-mean) combination of the
+common-cause estimate (Eq. 12, fused) and the separate-cause estimate (Eq. 11,
+segregated), weighted by the common-cause posterior `p(C=1|x)` (Eq. 2):
+
+```
+mu_i = p(C=1|x)·ŝ_{i,C=1} + (1 − p(C=1|x))·ŝ_{i,C=2}        (Eqs. 9/10)
+```
+
+**`p(C=1|x)` is computed internally** from the Gaussian evidences (Eqs. 2/4/6) to
+form these estimates, but it is **neither an input nor an output** — the network
+must infer it implicitly. The paired variance is the variance of the same
+2-component mixture posterior (law of total variance).
 
 A second `integration_only` head (2 outputs: `mu_fused`, `var_fused`) is a
-Project-1-style always-fuse control twin used for the emergent-vs-imposed analysis.
+Project-1-style always-fuse control twin (Eq. 12) used for the emergent-vs-imposed
+analysis.
 
 ---
 
@@ -49,9 +58,10 @@ Project-1-style always-fuse control twin used for the emergent-vs-imposed analys
   `x_eye ~ N(e, σ²_eye)`, `x_prop ~ N(s_or_s2, σ²_prop)`.
 
 The **analytical observer** (the label pipeline) operates only on the noisy scalar
-measurements — never the true sources — and produces the five targets via the
-segregated single-cue posteriors, the forced-fusion posterior, the Gaussian Bayes
-factor, and the common-cause posterior (Körding et al., 2007).
+measurements — never the true sources — and produces the four optimal-estimate
+targets: segregated single-cue posteriors (Eq. 11), the forced-fusion posterior
+(Eq. 12), the Gaussian Bayes factor / common-cause posterior (Eqs. 2/4/6), and the
+model-averaged optimal estimates + variances (Eqs. 9/10) — Körding et al. (2007).
 
 ---
 
@@ -159,9 +169,9 @@ Produces 10 figures under `results/`:
 | `04_encoding_gain_poisson` | encoding | gain ∝ 1/variance; Poisson mean=λ |
 | `05_training_loss` | quality | train/val loss + per-component |
 | `06_output_r2_bars` | quality | per-output R² + common-cause accuracy |
-| `07_output_decoding_scatter` | output | decoded-vs-analytical (5 outputs) + calibration |
+| `07_output_decoding_scatter` | output | network-vs-analytical optimal estimate (4 outputs) |
 | `08_output_error_histograms` | output | per-output error distributions |
-| `09_proportion_common_vs_disparity` | analysis | p(C=1) vs disparity (network vs analytical) |
+| `09_proportion_common_vs_disparity` | analysis | analytical p(C=1) vs disparity (internal latent) |
 | `10_integration_estimates` | analysis | reconstructed/decoded vs analytical + fusion weight |
 
 ### 4. Analysis library
@@ -196,15 +206,21 @@ make visualize      # render figures into results/
 
 ---
 
-## Known result / tuning note
+## Training note (input/target scaling)
 
-Out of the box, with `loss_weights = {est:1, var:1, pc:1}`, the estimate MSE terms
-(~10–20) dwarf the p(C=1) BCE term (<1), so the optimizer barely learns the causal
-output — `09_proportion_common_vs_disparity` shows the network's p(C=1) flat near
-0.5 while the analytical curve is the correct Körding bell. To make the network
-learn the causal read-out, **raise `training.loss_weights.pc`** substantially
-(e.g. 20–50) and/or train longer; the config supports a loss-weight sensitivity
-sweep.
+The four outputs live on different scales (means ≈ ±10 deg vs variances ≈ 5–25
+deg²), and the three input groups differ ~30× in magnitude. A diagnostic study
+found that without scaling, the shared `[64,64]` network learns some outputs (e.g.
+`var_prop`) but starves others (notably `mu_prop`) — even though each is easily
+learnable by a dedicated decoder (R²≈0.97). The robust recipe is:
+
+1. **Standardize the inputs** (z-score per feature on the train set).
+2. **Balance the loss across outputs** (normalize each component by its target
+   variance) so no output dominates.
+3. **Use Adam** for mini-batch training (Rprop is a full-batch method).
+
+These remain modelling choices for you to wire in; the diagnostics confirmed all
+four outputs then reach high R².
 
 ---
 

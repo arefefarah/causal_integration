@@ -22,7 +22,7 @@ from causal_msi.generative import ObserverTargets
 
 FloatArray = NDArray[np.float64]
 
-OUTPUT_NAMES = ("mu_vis", "var_vis", "mu_prop", "var_prop", "p_common")
+OUTPUT_NAMES = ("mu_vis", "var_vis", "mu_prop", "var_prop")
 
 
 @dataclass(frozen=True)

@@ -19,10 +19,11 @@ def _integration_cfg() -> ModelConfig:
 
 
 def test_causal_forward_shape() -> None:
-    """The causal head produces 5 outputs per trial."""
+    """The causal head produces 4 outputs per trial (Kording Eqs. 9/10 + vars)."""
     model = build_model(input_dim=130, cfg=_causal_cfg())
     out = model(torch.randn(8, 130))
-    assert out.shape == (8, 5)
+    assert out.shape == (8, 4)
+    assert model.output_dim == 4
 
 
 def test_integration_forward_shape() -> None:
@@ -30,7 +31,6 @@ def test_integration_forward_shape() -> None:
     model = build_model(input_dim=130, cfg=_integration_cfg())
     out = model(torch.randn(8, 130))
     assert out.shape == (8, 2)
-    # No p(C=1) output on the twin.
     assert model.output_dim == 2
 
 
@@ -42,12 +42,11 @@ def test_variance_outputs_positive() -> None:
     assert torch.all(out[:, 3] > 0)
 
 
-def test_pc_in_unit_interval() -> None:
-    """The common-cause output is squashed into (0, 1) by the sigmoid."""
+def test_no_pc_output() -> None:
+    """The causal head has no p(C=1) output -- exactly 4 columns."""
     model = build_model(input_dim=50, cfg=_causal_cfg())
     out = model(torch.randn(64, 50) * 10)
-    pc = out[:, 4]
-    assert torch.all((pc > 0) & (pc < 1))
+    assert out.shape[1] == 4
 
 
 def test_integration_variance_positive() -> None:

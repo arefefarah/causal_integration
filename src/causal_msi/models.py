@@ -8,15 +8,18 @@ Architecture (matching the prior multisensory-integration model):
 
 Two heads are supported:
 
-- ``head_type="causal"`` (5 outputs): raw read-out
-  ``[mu1, raw_var1, mu2, raw_var2, raw_pc]`` is mapped to
-  ``[mu_vis, var_vis, mu_prop, var_prop, p_common]`` by applying *softplus* to the
-  two variance outputs, *sigmoid* to the common-cause output, and identity to the
-  means. Variances are therefore strictly positive and ``p_common in (0, 1)``.
+- ``head_type="causal"`` (4 outputs): raw read-out
+  ``[mu_vis_raw, var_vis_raw, mu_prop_raw, var_prop_raw]`` is mapped to
+  ``[mu_vis, var_vis, mu_prop, var_prop]`` by applying *softplus* to the two
+  variance outputs and identity to the two means. These four targets are the
+  Bayesian causal-inference *optimal* position estimates of Kording et al. (2007):
+  the model-averaged visual/proprioceptive estimates (Eqs. 9/10) and their
+  posterior variances. ``p(C=1)`` is computed internally by the analytical
+  observer and is NEITHER an input NOR an output.
 
 - ``head_type="integration_only"`` (2 outputs): a Project-1-style always-fuse
-  control twin producing ``[mu_fused, raw_var]`` (softplus on the variance). This
-  twin is never trained on ``p(C=1)`` and is used for the emergent-vs-imposed
+  control twin producing ``[mu_fused, raw_var]`` (softplus on the variance), i.e.
+  the C=1 forced-fusion estimate (Eq. 12). Used for the emergent-vs-imposed
   analysis.
 
 The named hidden layers (SIL, MSL) are exposed via forward hooks so analyses can
@@ -38,7 +41,7 @@ _ACTIVATIONS: dict[str, type[nn.Module]] = {
     "tanh": nn.Tanh,
 }
 
-_HEAD_DIM: dict[str, int] = {"causal": 5, "integration_only": 2}
+_HEAD_DIM: dict[str, int] = {"causal": 4, "integration_only": 2}
 
 
 @dataclass
@@ -109,12 +112,11 @@ class FeedforwardMSI(nn.Module):
             Transformed outputs in the documented output order.
         """
         if self.head_type == "causal":
-            mu1 = raw[:, 0:1]
-            var1 = nn.functional.softplus(raw[:, 1:2])
-            mu2 = raw[:, 2:3]
-            var2 = nn.functional.softplus(raw[:, 3:4])
-            pc = torch.sigmoid(raw[:, 4:5])
-            return torch.cat([mu1, var1, mu2, var2, pc], dim=1)
+            mu_vis = raw[:, 0:1]
+            var_vis = nn.functional.softplus(raw[:, 1:2])
+            mu_prop = raw[:, 2:3]
+            var_prop = nn.functional.softplus(raw[:, 3:4])
+            return torch.cat([mu_vis, var_vis, mu_prop, var_prop], dim=1)
         # integration_only
         mu = raw[:, 0:1]
         var = nn.functional.softplus(raw[:, 1:2])

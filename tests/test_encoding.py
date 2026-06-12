@@ -86,7 +86,7 @@ def test_assembled_input_dim(config) -> None:
     meas = Measurements(
         x_vis=rng.normal(size=16), x_eye=rng.normal(size=16), x_prop=rng.normal(size=16)
     )
-    x = assemble_inputs(rng, meas, latents, config.encoding, p_common=config.generative.p_common)
+    x = assemble_inputs(rng, meas, latents, config.encoding)
     assert x.shape == (16, config.encoding.input_dim)
 
 

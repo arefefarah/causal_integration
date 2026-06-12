@@ -275,10 +275,12 @@ def assemble_inputs(
     meas: Measurements,
     latents: LatentBatch,
     cfg: EncodingConfig,
-    p_common: float | None = None,
     encoders: Encoders | None = None,
 ) -> FloatArray:
     """Encode and concatenate the three groups into the network input matrix.
+
+    The network receives ONLY the three population-coded sensory groups -- never
+    ``p_common``, disparity, the true sources, eye position, or ``C``.
 
     Parameters
     ----------
@@ -290,9 +292,6 @@ def assemble_inputs(
         Latent batch (per-trial reliabilities).
     cfg
         Encoding configuration.
-    p_common
-        Prior ``P(C=1)``; appended as a constant context scalar when
-        ``cfg.include_pc_context`` is True.
     encoders
         Optional pre-built encoders; if None, fresh ones are built from ``rng``.
 
@@ -300,15 +299,10 @@ def assemble_inputs(
     -------
     numpy.ndarray
         Network input ``X``, shape ``(N, input_dim)`` in group order
-        ``[visual_hand, prop_hand, prop_eye, (p_common)]``.
+        ``[visual_hand, prop_hand, prop_eye]``.
     """
     if encoders is None:
         encoders = Encoders.build(rng, cfg)
     groups = encode_groups(rng, meas, latents, cfg, encoders)
     parts = [groups["visual_hand"], groups["prop_hand"], groups["prop_eye"]]
-    if cfg.include_pc_context:
-        if p_common is None:
-            raise ValueError("include_pc_context=True requires p_common")
-        context = np.full((meas.x_vis.shape[0], 1), float(p_common))
-        parts.append(context)
     return np.concatenate(parts, axis=1)

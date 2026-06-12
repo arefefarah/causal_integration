@@ -20,10 +20,12 @@ generative:
   eye_mu: 0.0
   eye_sigma_sq: 25.0
 
-  # Per-trial reliabilities (noise variances) drawn uniformly from [lo, hi] (deg^2)
-  sigma2_vis_range: [1.0, 16.0]
-  sigma2_prop_range: [4.0, 36.0]
-  sigma2_eye_range: [1.0, 9.0]
+  # Per-trial reliabilities (noise variances) drawn uniformly from [lo, hi] (deg^2).
+  # These (with sigma0_sq) set the OUTPUT variance scale: posterior var =
+  # 1 / (1/sigma2_cue + 1/sigma0_sq) <= sigma2_cue. Small ranges -> var ~ 0-10.
+  sigma2_vis_range: [0.5, 6.0]
+  sigma2_prop_range: [1.0, 10.0]
+  sigma2_eye_range: [0.5, 4.0]
 
   # Dense disparity sweep grid for structured datasets (deg, body frame)
   disparity_grid: [-20.0, -15.0, -10.0, -5.0, -2.0, 0.0, 2.0, 5.0, 10.0, 15.0, 20.0]
@@ -47,8 +49,6 @@ encoding:
 
   poisson_noise: true          # Poisson trial-to-trial spike-count noise
 
-  include_pc_context: false    # optionally append p_common as a context scalar input
-
 # --------------------------------------------------------------------------- #
 # MODEL (additive feedforward network)
 # --------------------------------------------------------------------------- #
@@ -56,6 +56,8 @@ model:
   hidden_sizes: [64, 64]       # SIL (sensory-integration), MSL (multisensory) layers
   hidden_activation: sigmoid   # {sigmoid, relu, tanh}
   head_type: causal            # {causal, integration_only}
+                               # causal: 4 outputs [mu_vis, var_vis, mu_prop, var_prop]
+                               #         = Kording (2007) optimal estimates (Eqs. 9/10)
 
 # --------------------------------------------------------------------------- #
 # TRAINING
@@ -68,10 +70,8 @@ training:
   n_trials: 50000
   split: [0.7, 0.15, 0.15]     # train / val / test fractions
   loss_weights:
-    est: 1.0                   # MSE on the two mean outputs
+    est: 1.0                   # MSE on the two mean outputs (mu_vis, mu_prop)
     var: 1.0                   # MSE on the two (softplus) variance outputs
-    pc: 1.0                    # BCE / MSE on the p(C=1) output
-  pc_loss: mse                 # {bce, mse}
   n_seeds: 1
   early_stopping_patience: 20
 

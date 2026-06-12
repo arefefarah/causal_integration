@@ -2,10 +2,13 @@ r"""Training objectives.
 
 The causal head is trained with a weighted sum of:
 
-- MSE on the two mean outputs (``mu_vis``, ``mu_prop``),
-- MSE on the two (softplus) variance outputs (``var_vis``, ``var_prop``),
-- BCE or MSE on the common-cause output ``p(C=1)`` against the GRADED analytical
-  posterior (output 5 is regressed/BCE'd against ``p(C=1|x)``, not binary ``C``).
+- MSE on the two mean outputs (``mu_vis``, ``mu_prop``) -- the Kording (2007)
+  model-averaged optimal estimates (Eqs. 9/10),
+- MSE on the two (softplus) variance outputs (``var_vis``, ``var_prop``) -- the
+  posterior variances of those estimates.
+
+There is no ``p(C=1)`` term: the common-cause posterior is computed internally by
+the analytical observer and never appears as an output.
 
 The integration-only twin is trained with MSE on its fused mean and variance.
 
@@ -21,54 +24,40 @@ from torch.nn import functional as F
 from causal_msi.config import LossWeights
 
 # Output-column indices for the causal head.
-IDX_MU_VIS, IDX_VAR_VIS, IDX_MU_PROP, IDX_VAR_PROP, IDX_PC = 0, 1, 2, 3, 4
+IDX_MU_VIS, IDX_VAR_VIS, IDX_MU_PROP, IDX_VAR_PROP = 0, 1, 2, 3
 
 
 def causal_loss(
     pred: Tensor,
     target: Tensor,
     weights: LossWeights,
-    pc_loss: str = "bce",
 ) -> tuple[Tensor, dict[str, float]]:
     """Weighted multi-output loss for the causal head.
 
     Parameters
     ----------
     pred
-        Network outputs, shape ``(N, 5)`` in order
-        ``[mu_vis, var_vis, mu_prop, var_prop, p_common]``.
+        Network outputs, shape ``(N, 4)`` in order
+        ``[mu_vis, var_vis, mu_prop, var_prop]``.
     target
-        Analytical targets, same shape and order. ``target[:, 4]`` is the graded
-        posterior ``p(C=1|x)`` in ``[0, 1]``.
+        Analytical targets, same shape and order (Kording Eqs. 9/10 + variances).
     weights
-        Per-component weights (``est``, ``var``, ``pc``).
-    pc_loss
-        ``"bce"`` (binary cross-entropy against the graded posterior) or ``"mse"``.
+        Per-component weights (``est`` for the two means, ``var`` for the two
+        variances).
 
     Returns
     -------
     tuple
         ``(total, components)`` where ``components`` maps
-        ``{"est", "var", "pc", "total"}`` to detached floats for logging.
+        ``{"est", "var", "total"}`` to detached floats for logging.
     """
     est = F.mse_loss(pred[:, [IDX_MU_VIS, IDX_MU_PROP]], target[:, [IDX_MU_VIS, IDX_MU_PROP]])
     var = F.mse_loss(pred[:, [IDX_VAR_VIS, IDX_VAR_PROP]], target[:, [IDX_VAR_VIS, IDX_VAR_PROP]])
 
-    pc_pred = pred[:, IDX_PC]
-    pc_tgt = target[:, IDX_PC]
-    if pc_loss == "bce":
-        # Both predicted and target are probabilities in [0, 1]; BCE on soft labels.
-        pc = F.binary_cross_entropy(pc_pred.clamp(1e-6, 1 - 1e-6), pc_tgt)
-    elif pc_loss == "mse":
-        pc = F.mse_loss(pc_pred, pc_tgt)
-    else:
-        raise ValueError(f"unknown pc_loss {pc_loss!r}")
-
-    total = weights.est * est + weights.var * var + weights.pc * pc
+    total = weights.est * est + weights.var * var
     components = {
         "est": float(est.detach()),
         "var": float(var.detach()),
-        "pc": float(pc.detach()),
         "total": float(total.detach()),
     }
     return total, components

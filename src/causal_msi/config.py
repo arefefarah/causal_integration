@@ -61,15 +61,11 @@ class EncodingConfig(_Base):
     intercept_range: tuple[float, float]
 
     poisson_noise: bool
-    include_pc_context: bool
 
     @property
     def input_dim(self) -> int:
-        """Total network input dimension (sum of group sizes + optional context)."""
-        total = self.n_units_visual_hand + self.n_units_prop_hand + self.n_units_prop_eye
-        if self.include_pc_context:
-            total += 1
-        return total
+        """Total network input dimension (sum of the three group sizes)."""
+        return self.n_units_visual_hand + self.n_units_prop_hand + self.n_units_prop_eye
 
     @property
     def group_sizes(self) -> dict[str, int]:
@@ -97,11 +93,10 @@ class ModelConfig(_Base):
 
 
 class LossWeights(_Base):
-    """Per-component weights for the causal loss."""
+    """Per-component weights for the estimate loss (means and variances)."""
 
     est: float = Field(ge=0.0)
     var: float = Field(ge=0.0)
-    pc: float = Field(ge=0.0)
 
 
 class TrainingConfig(_Base):
@@ -114,7 +109,6 @@ class TrainingConfig(_Base):
     n_trials: int = Field(gt=0)
     split: tuple[float, float, float]
     loss_weights: LossWeights
-    pc_loss: Literal["bce", "mse"]
     n_seeds: int = Field(gt=0)
     early_stopping_patience: int = Field(gt=0)
 

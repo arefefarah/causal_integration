@@ -45,12 +45,16 @@ class TrainResult:
     history: list[EpochLog]
     seed: int
     checkpoint_path: Path | None = None
+    splits: dict[str, np.ndarray] | None = None
 
 
 def _make_loaders(
     dataset: Dataset, config: Config, rng: np.random.Generator, device: torch.device
 ) -> tuple[
-    DataLoader[tuple[Tensor, ...]], DataLoader[tuple[Tensor, ...]], DataLoader[tuple[Tensor, ...]]
+    DataLoader[tuple[Tensor, ...]],
+    DataLoader[tuple[Tensor, ...]],
+    DataLoader[tuple[Tensor, ...]],
+    dict[str, np.ndarray],
 ]:
     """Split a dataset and wrap each partition in a DataLoader.
 
@@ -67,8 +71,9 @@ def _make_loaders(
 
     Returns
     -------
-    tuple of DataLoader
-        ``(train_loader, val_loader, test_loader)``.
+    tuple
+        ``(train_loader, val_loader, test_loader, splits)`` where ``splits`` maps
+        ``{"train", "val", "test"}`` to the integer index arrays used.
     """
     x = torch.as_tensor(dataset.X, dtype=torch.float32, device=device)
     y = torch.as_tensor(dataset.Y, dtype=torch.float32, device=device)
@@ -78,7 +83,8 @@ def _make_loaders(
         ds = TensorDataset(x[idx], y[idx])
         return DataLoader(ds, batch_size=config.training.batch_size, shuffle=shuffle)
 
-    return loader(train_idx, True), loader(val_idx, False), loader(test_idx, False)
+    splits = {"train": train_idx, "val": val_idx, "test": test_idx}
+    return loader(train_idx, True), loader(val_idx, False), loader(test_idx, False), splits
 
 
 def _make_optimizer(model: nn.Module, config: Config) -> torch.optim.Optimizer:
@@ -94,7 +100,7 @@ def _make_optimizer(model: nn.Module, config: Config) -> torch.optim.Optimizer:
 def _loss_fn(pred: Tensor, target: Tensor, config: Config) -> tuple[Tensor, dict[str, float]]:
     """Dispatch to the head-appropriate loss."""
     if config.model.head_type == "causal":
-        return causal_loss(pred, target, config.training.loss_weights, config.training.pc_loss)
+        return causal_loss(pred, target, config.training.loss_weights)
     return integration_loss(pred, target, config.training.loss_weights)
 
 
@@ -150,7 +156,7 @@ def train_one(
     model = build_model(input_dim, config.model).to(device)
     optimizer = _make_optimizer(model, config)
 
-    train_loader, val_loader, _ = _make_loaders(dataset, config, rng, device)
+    train_loader, val_loader, _, splits = _make_loaders(dataset, config, rng, device)
 
     best_val = float("inf")
     best_epoch = -1
@@ -201,7 +207,9 @@ def train_one(
             config,
             metrics,
             Path(checkpoint_dir) / f"model_seed{seed}.pth",
-            extra={"seed": seed, "input_dim": input_dim},
+            # Store the exact split indices so analysis/visualisation can evaluate
+            # on the SAME train/val/test partition the model was trained on.
+            extra={"seed": seed, "input_dim": input_dim, "splits": splits},
         )
 
     return TrainResult(
@@ -211,6 +219,7 @@ def train_one(
         history=history,
         seed=seed,
         checkpoint_path=ckpt_path,
+        splits=splits,
     )
 
 
