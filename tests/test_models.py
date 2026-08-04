@@ -1,77 +1,67 @@
-"""Tests for the feedforward model and both heads (implemented -- expected to pass)."""
+"""The network's contract: shapes, positive variances, and a loss that trains."""
 
-from __future__ import annotations
-
+import numpy as np
+import pytest
 import torch
 
-from causal_msi.config import ModelConfig
-from causal_msi.models import build_model
+from cmsi.models import Net, hidden_activations, mse_loss, output_weights, predict, train
 
 
-def _causal_cfg() -> ModelConfig:
-    return ModelConfig(hidden_sizes=[64, 64], hidden_activation="sigmoid", head_type="causal")
+@pytest.fixture
+def net(cfg):
+    return Net(input_dim=130, model_cfg=cfg["model"])
 
 
-def _integration_cfg() -> ModelConfig:
-    return ModelConfig(
-        hidden_sizes=[64, 64], hidden_activation="sigmoid", head_type="integration_only"
-    )
+def test_output_shape_matches_the_head(cfg):
+    x = torch.randn(16, 130)
+    assert Net(130, dict(cfg["model"], head="causal"))(x).shape == (16, 4)
+    assert Net(130, dict(cfg["model"], head="fused"))(x).shape == (16, 2)
 
 
-def test_causal_forward_shape() -> None:
-    """The causal head produces 4 outputs per trial (Kording Eqs. 9/10 + vars)."""
-    model = build_model(input_dim=130, cfg=_causal_cfg())
-    out = model(torch.randn(8, 130))
-    assert out.shape == (8, 4)
-    assert model.output_dim == 4
+def test_variance_outputs_are_positive(net):
+    """Softplus on the variance columns -- a negative variance is meaningless
+    and would poison every downstream comparison."""
+    out = net(torch.randn(256, 130) * 50)
+    assert torch.all(out[:, net.var_cols] > 0)
 
 
-def test_integration_forward_shape() -> None:
-    """The integration-only head produces 2 outputs per trial."""
-    model = build_model(input_dim=130, cfg=_integration_cfg())
-    out = model(torch.randn(8, 130))
-    assert out.shape == (8, 2)
-    assert model.output_dim == 2
+def test_hidden_activations_expose_both_layers(net):
+    acts = hidden_activations(net, np.random.randn(32, 130))
+    assert acts["sil"].shape == (32, 64) and acts["msl"].shape == (32, 64)
+    assert np.array_equal(acts["sil"], acts["layer0"])
+    assert np.array_equal(acts["msl"], acts["layer1"])
 
 
-def test_variance_outputs_positive() -> None:
-    """Softplus keeps the two variance outputs strictly positive."""
-    model = build_model(input_dim=50, cfg=_causal_cfg())
-    out = model(torch.randn(64, 50) * 10)
-    assert torch.all(out[:, 1] > 0)
-    assert torch.all(out[:, 3] > 0)
+def test_standardizer_normalises_the_training_inputs(net):
+    X = np.random.randn(500, 130) * 30 + 100
+    net.fit_standardizer(X)
+    z = (torch.as_tensor(X, dtype=torch.float32) - net.x_mean) / net.x_std
+    assert torch.allclose(z.mean(0), torch.zeros(130), atol=1e-4)
+    assert torch.allclose(z.std(0), torch.ones(130), atol=1e-2)
 
 
-def test_no_pc_output() -> None:
-    """The causal head has no p(C=1) output -- exactly 4 columns."""
-    model = build_model(input_dim=50, cfg=_causal_cfg())
-    out = model(torch.randn(64, 50) * 10)
-    assert out.shape[1] == 4
-
-
-def test_integration_variance_positive() -> None:
-    """The twin's single variance output is positive."""
-    model = build_model(input_dim=50, cfg=_integration_cfg())
-    out = model(torch.randn(64, 50) * 10)
-    assert torch.all(out[:, 1] > 0)
-
-
-def test_activation_hooks_return_sil_msl() -> None:
-    """The activation hooks expose SIL and MSL tensors of the right shape."""
-    cfg = _causal_cfg()
-    model = build_model(input_dim=40, cfg=cfg)
-    cache = model.activations(torch.randn(7, 40))
-    assert cache.sil is not None and cache.msl is not None
-    assert cache.sil.shape == (7, cfg.hidden_sizes[0])
-    assert cache.msl.shape == (7, cfg.hidden_sizes[1])
-
-
-def test_return_cache_matches_plain_forward() -> None:
-    """forward(return_cache=True) returns the same outputs as the plain call."""
-    model = build_model(input_dim=20, cfg=_causal_cfg())
-    model.eval()
-    x = torch.randn(5, 20)
+def test_predict_matches_a_direct_forward_pass(net):
+    X = np.random.randn(70, 130)
     with torch.no_grad():
-        plain = model(x)
-        out, _ = model(x, return_cache=True)
-    torch.testing.assert_close(plain, out)
+        direct = net(torch.as_tensor(X, dtype=torch.float32)).numpy()
+    assert np.allclose(predict(net, X, batch_size=16), direct, atol=1e-6)
+
+
+def test_balancing_equalises_outputs_of_different_scale():
+    """Without it the large-scale column dominates the gradient, which is how
+    mu_prop ends up unlearned while var_prop trains fine."""
+    Y = torch.stack([torch.randn(1000) * 100, torch.randn(1000) * 0.1], dim=1)
+    pred = torch.zeros_like(Y)
+
+    _, unbalanced = mse_loss(pred, Y, None)
+    _, balanced = mse_loss(pred, Y, output_weights(Y))
+    assert unbalanced[0] > 100 * unbalanced[1]
+    assert balanced.max() / balanced.min() < 1.5
+
+
+def test_training_reduces_the_loss_and_respects_the_split(dataset, cfg):
+    model, history, splits = train(dataset, cfg, verbose=False)
+    assert history["val"][-1] <= history["val"][0]
+    assert history["best_epoch"] >= 0
+    assert set(splits) == {"train", "val", "test"}
+    assert len(np.intersect1d(splits["train"], splits["test"])) == 0

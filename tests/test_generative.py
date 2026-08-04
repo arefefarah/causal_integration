@@ -1,130 +1,165 @@
-"""Property tests for the analytical observer (CORE SCIENCE).
+"""Does the observer obey the theory?
 
-Every test here is marked ``science``/``xfail`` against ``NotImplementedError``:
-the functions in ``causal_msi.generative`` are intentionally left unimplemented
-(``TODO(science)``). The assertions encode the properties the implementation must
-satisfy. As each closed form is filled in, its test should flip from xfail to pass.
+These are property tests, not regression tests: each one states something that
+must hold for any correct implementation of Kording et al. (2007), so they stay
+valid if you change the parameters or rewrite the internals.
 """
-
-from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from causal_msi.generative import (
+from cmsi.data.generative import (
     common_cause_posterior,
+    fused_posterior,
     log_bayes_factor,
-    segregated_estimate,
-    transform_visual_to_body,
+    model_average,
+    observer,
+    sample_trials,
+    single_cue_posterior,
+    to_body_frame,
 )
 
-science = pytest.mark.xfail(
-    raises=NotImplementedError, reason="TODO(science): not yet implemented", strict=False
-)
+PRIOR = (0.0, 100.0)   # mu0, sigma0_sq
 
 
-@science
-def test_transformed_visual_variance() -> None:
-    """Body-frame visual variance equals sigma2_vis + sigma2_eye."""
-    n = 100
-    x_vis = np.zeros(n)
-    x_eye = np.zeros(n)
-    sigma2_vis = np.full(n, 4.0)
-    sigma2_eye = np.full(n, 9.0)
-    _, var_body = transform_visual_to_body(x_vis, x_eye, sigma2_vis, sigma2_eye)
-    np.testing.assert_allclose(var_body, 13.0)
+# --------------------------------------------------------------------------- #
+# sampling
+# --------------------------------------------------------------------------- #
+def test_common_cause_trials_share_one_source(cfg, rng):
+    d = sample_trials(5000, cfg["generative"], rng)
+    common = d["C"] == 1
+    assert common.any() and (~common).any(), "both causal structures should occur"
+    assert np.allclose(d["s_vis"][common], d["s_prop"][common])
+    assert not np.allclose(d["s_vis"][~common], d["s_prop"][~common])
 
 
-@science
-def test_transformed_visual_mean() -> None:
-    """Body-frame visual mean equals x_vis + x_eye."""
-    x_vis = np.array([1.0, -2.0, 5.0])
-    x_eye = np.array([0.5, 0.5, -1.0])
-    sigma2 = np.ones(3)
-    mean_body, _ = transform_visual_to_body(x_vis, x_eye, sigma2, sigma2)
-    np.testing.assert_allclose(mean_body, x_vis + x_eye)
+def test_vision_is_retinal(cfg, rng):
+    d = sample_trials(1000, cfg["generative"], rng)
+    assert np.allclose(d["retinal"], d["s_vis"] - d["eye"])
 
 
-@science
-def test_segregated_reduces_to_prior() -> None:
-    """As a cue becomes uninformative (var -> inf), estimate collapses to the prior."""
-    mu0, sigma0_sq = 3.0, 10.0
-    x = np.array([100.0])  # far from prior, but ...
-    var = np.array([1e12])  # ... essentially no information
-    mu, var_post = segregated_estimate(x, var, mu0, sigma0_sq)
-    np.testing.assert_allclose(mu, mu0, rtol=1e-3)
-    np.testing.assert_allclose(var_post, sigma0_sq, rtol=1e-3)
+def test_sampling_is_reproducible(cfg):
+    a = sample_trials(500, cfg["generative"], np.random.default_rng(3))
+    b = sample_trials(500, cfg["generative"], np.random.default_rng(3))
+    assert all(np.array_equal(a[k], b[k]) for k in a)
 
 
-@science
-def test_segregated_reduces_to_single_cue() -> None:
-    """With a very weak prior, the estimate reduces to the measurement itself."""
-    mu0, sigma0_sq = 0.0, 1e12
-    x = np.array([7.0])
-    var = np.array([2.0])
-    mu, var_post = segregated_estimate(x, var, mu0, sigma0_sq)
-    np.testing.assert_allclose(mu, x, rtol=1e-3)
-    np.testing.assert_allclose(var_post, var, rtol=1e-3)
+# --------------------------------------------------------------------------- #
+# posteriors
+# --------------------------------------------------------------------------- #
+def test_single_cue_posterior_sits_between_cue_and_prior():
+    x = np.array([20.0])
+    mu, var = single_cue_posterior(x, np.array([4.0]), *PRIOR)
+    assert 0.0 < mu[0] < x[0], "posterior mean is pulled toward the prior"
+    assert var[0] < 4.0, "adding the prior can only reduce uncertainty"
 
 
-@science
-def test_segregated_variance_shrinks() -> None:
-    """The posterior variance is smaller than both the cue and the prior variance."""
-    mu0, sigma0_sq = 0.0, 10.0
-    x = np.array([1.0])
-    var = np.array([4.0])
-    _, var_post = segregated_estimate(x, var, mu0, sigma0_sq)
-    assert var_post[0] < min(4.0, 10.0)
+def test_fusion_is_more_certain_than_either_cue():
+    args = (np.array([5.0]), np.array([4.0]), np.array([1.0]), np.array([9.0]))
+    _, fused_var = fused_posterior(*args, *PRIOR)
+    _, vis_var = single_cue_posterior(args[0], args[1], *PRIOR)
+    _, prop_var = single_cue_posterior(args[2], args[3], *PRIOR)
+    assert fused_var[0] < min(vis_var[0], prop_var[0])
 
 
-@science
-def test_bf_decreases_with_disparity() -> None:
-    """The log Bayes factor decreases as body-frame disparity grows."""
-    mu0, sigma0_sq = 0.0, 100.0
-    var = np.full(5, 4.0)
-    x_prop = np.zeros(5)
-    x_vis = np.array([0.0, 2.0, 5.0, 10.0, 20.0])  # increasing disparity
-    log_bf = log_bayes_factor(x_vis, var, x_prop, var, mu0, sigma0_sq)
-    assert np.all(np.diff(log_bf) < 0)
+def test_fused_estimate_leans_toward_the_reliable_cue():
+    # vision far more reliable than proprioception -> fused sits nearer vision
+    mu, _ = fused_posterior(np.array([10.0]), np.array([0.5]),
+                            np.array([-10.0]), np.array([50.0]), *PRIOR)
+    assert mu[0] > 0
 
 
-@science
-def test_posterior_to_one_at_zero_disparity() -> None:
-    """p(C=1) -> 1 at zero disparity when the cues are reliable.
-
-    At exactly zero body-frame disparity the posterior is bounded by the cue
-    reliabilities and the prior; it approaches 1 only as the measurement
-    variances shrink relative to the prior variance. Reliable cues (var << sigma0)
-    are used here so the limit is exercised.
-    """
-    mu0, sigma0_sq, p_common = 0.0, 100.0, 0.5
-    var = np.array([0.1])
-    log_bf = log_bayes_factor(np.array([0.0]), var, np.array([0.0]), var, mu0, sigma0_sq)
-    p = common_cause_posterior(log_bf, p_common)
-    assert p[0] > 0.9
+def test_body_frame_transform_adds_eye_uncertainty():
+    x, var = to_body_frame(np.array([3.0]), np.array([2.0]),
+                           np.array([1.0]), np.array([4.0]))
+    assert x[0] == 5.0
+    assert var[0] == 5.0
 
 
-@science
-def test_posterior_to_zero_at_large_disparity() -> None:
-    """p(C=1) -> 0 as body-frame disparity -> inf (cues far apart)."""
-    mu0, sigma0_sq, p_common = 0.0, 100.0, 0.5
-    var = np.array([1.0])
-    log_bf = log_bayes_factor(np.array([0.0]), var, np.array([1000.0]), var, mu0, sigma0_sq)
-    p = common_cause_posterior(log_bf, p_common)
-    assert p[0] < 0.1
+# --------------------------------------------------------------------------- #
+# causal inference
+# --------------------------------------------------------------------------- #
+def test_bayes_factor_falls_with_disparity():
+    disparity = np.linspace(0, 40, 25)
+    var = np.full_like(disparity, 4.0)
+    log_bf = log_bayes_factor(disparity, var, np.zeros_like(disparity), var, *PRIOR)
+    assert np.all(np.diff(log_bf) < 0), "agreement is evidence for a common cause"
 
 
-@science
-def test_posterior_monotone_in_bf() -> None:
-    """p(C=1|x) is monotone increasing in the log Bayes factor."""
-    log_bf = np.linspace(-10.0, 10.0, 50)
-    p = common_cause_posterior(log_bf, p_common=0.5)
+def test_posterior_is_monotone_in_the_bayes_factor():
+    log_bf = np.linspace(-20, 20, 100)
+    p = common_cause_posterior(log_bf, 0.5)
     assert np.all(np.diff(p) > 0)
+    assert np.all((p >= 0) & (p <= 1))
 
 
-@science
-def test_posterior_in_unit_interval() -> None:
-    """The common-cause posterior stays within [0, 1]."""
-    log_bf = np.linspace(-50.0, 50.0, 200)
-    p = common_cause_posterior(log_bf, p_common=0.3)
-    assert np.all((p >= 0.0) & (p <= 1.0))
+def test_posterior_saturates_at_the_extremes():
+    p = common_cause_posterior(np.array([-500.0, 0.0, 500.0]), 0.5)
+    assert p[0] == pytest.approx(0.0, abs=1e-9)
+    assert p[1] == pytest.approx(0.5)
+    assert p[2] == pytest.approx(1.0, abs=1e-9)
+
+
+def test_prior_shifts_the_posterior_the_right_way():
+    log_bf = np.zeros(1)
+    assert common_cause_posterior(log_bf, 0.9)[0] > common_cause_posterior(log_bf, 0.1)[0]
+
+
+# --------------------------------------------------------------------------- #
+# model averaging
+# --------------------------------------------------------------------------- #
+def test_model_averaging_hits_both_endpoints():
+    fused_mu, fused_var = np.array([2.0]), np.array([1.0])
+    seg_mu, seg_var = np.array([8.0]), np.array([3.0])
+
+    mu1, var1 = model_average(np.array([1.0]), fused_mu, fused_var, seg_mu, seg_var)
+    assert mu1[0] == pytest.approx(2.0) and var1[0] == pytest.approx(1.0)
+
+    mu0, var0 = model_average(np.array([0.0]), fused_mu, fused_var, seg_mu, seg_var)
+    assert mu0[0] == pytest.approx(8.0) and var0[0] == pytest.approx(3.0)
+
+
+def test_mixture_variance_exceeds_its_components_when_they_disagree():
+    """The law of total variance: disagreement between the two hypotheses is
+    itself uncertainty, which is why var_vis stays large at mid disparities."""
+    _, var = model_average(np.array([0.5]), np.array([-10.0]), np.array([1.0]),
+                           np.array([10.0]), np.array([1.0]))
+    assert var[0] > 1.0
+
+
+# --------------------------------------------------------------------------- #
+# the whole observer
+# --------------------------------------------------------------------------- #
+def test_observer_outputs_are_finite_and_variances_positive(cfg, rng):
+    d = sample_trials(2000, cfg["generative"], rng)
+    out = observer(d, cfg["generative"])
+    for key, value in out.items():
+        assert np.all(np.isfinite(value)), f"{key} contains non-finite values"
+    for key in ("var_vis", "var_prop", "fused_var", "seg_vis_var", "seg_prop_var"):
+        assert np.all(out[key] > 0), f"{key} must be positive"
+
+
+def test_observer_never_touches_the_true_sources(cfg, rng):
+    """Same measurements, different hidden truth -> identical targets.
+
+    This is the one that matters: if it fails, the labels leak information the
+    network could not possibly have, and every result is inflated.
+    """
+    d = sample_trials(500, cfg["generative"], rng)
+    baseline = observer(d, cfg["generative"])
+
+    tampered = dict(d)
+    tampered["s_vis"] = d["s_vis"] + 100.0
+    tampered["s_prop"] = d["s_prop"] - 100.0
+    tampered["C"] = 3 - d["C"]
+    after = observer(tampered, cfg["generative"])
+
+    assert all(np.array_equal(baseline[k], after[k]) for k in baseline)
+
+
+def test_low_disparity_trials_are_judged_more_common(cfg, rng):
+    d = sample_trials(5000, cfg["generative"], rng)
+    out = observer(d, cfg["generative"])
+    near = np.abs(out["disparity"]) < 2
+    far = np.abs(out["disparity"]) > 20
+    assert out["p_common"][near].mean() > out["p_common"][far].mean()

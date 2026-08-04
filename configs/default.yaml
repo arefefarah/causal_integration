@@ -1,87 +1,71 @@
-# =========================================================================== #
-# Default configuration for the causal_msi project.
+# Every parameter of the project. Copy this file, change a few lines, and pass
+# it with --config to any script; the config that produced a run is always
+# copied into that run's results folder.
 #
-# All spatial quantities are in DEGREES; all variances/uncertainties are in
-# DEGREES^2 (deg^2). One config drives data generation, training, and analysis.
-# Mirror this structure in src/causal_msi/config.py (pydantic models).
-# =========================================================================== #
+# Units: positions in degrees, variances in deg^2.
 
 seed: 0
 
 # --------------------------------------------------------------------------- #
-# GENERATIVE MODEL (visuo-proprioceptive realignment across eye positions)
+# GENERATIVE MODEL
+#   C ~ Bernoulli(p_common):  C=1 one shared source, C=2 two independent ones
+#   vision is retinal (needs the eye signal), proprioception is body-framed
 # --------------------------------------------------------------------------- #
 generative:
-  p_common: 0.5            # prior P(C=1), single shared source
-  mu0: 0.0                 # spatial prior mean (deg)
-  sigma0_sq: 100.0         # spatial prior variance (deg^2)
-
-  # Eye-position distribution e ~ Normal(eye_mu, eye_sigma_sq) (deg / deg^2)
+  p_common: 0.5
+  mu0: 0.0                     # spatial prior mean
+  sigma0_sq: 100.0             # spatial prior variance
   eye_mu: 0.0
   eye_sigma_sq: 25.0
-
-  # Per-trial reliabilities (noise variances) drawn uniformly from [lo, hi] (deg^2).
-  # These (with sigma0_sq) set the OUTPUT variance scale: posterior var =
-  # 1 / (1/sigma2_cue + 1/sigma0_sq) <= sigma2_cue. Small ranges -> var ~ 0-10.
-  sigma2_vis_range: [0.5, 6.0]
+  sigma2_vis_range: [0.5, 6.0]     # per-trial noise variances, drawn uniform
   sigma2_prop_range: [1.0, 10.0]
   sigma2_eye_range: [0.5, 4.0]
 
-  # Dense disparity sweep grid for structured datasets (deg, body frame)
-  disparity_grid: [-20.0, -15.0, -10.0, -5.0, -2.0, 0.0, 2.0, 5.0, 10.0, 15.0, 20.0]
-
 # --------------------------------------------------------------------------- #
-# ENCODING (scalar measurements -> population-code vectors = network input)
+# ENCODING (scalar measurements -> population codes = the network input)
 # --------------------------------------------------------------------------- #
 encoding:
-  n_units_visual_hand: 50  # Gaussian receptive-field code
-  n_units_prop_hand: 50    # linear push-pull code
-  n_units_prop_eye: 30     # linear push-pull code
-
-  visual_field: [-40.0, 40.0]  # range over which RF centers are placed (deg)
-  rf_width: 8.0                # Gaussian RF sigma (deg)
-
-  gain_K: 10.0                 # reliability gain constant (activity ~ K / variance)
-
-  # Push-pull linear code: random slopes (both signs) and intercepts
+  n_vis: 50                    # gaussian receptive fields, retinal visual cue
+  n_prop: 50                   # push-pull code, proprioceptive hand
+  n_eye: 30                    # push-pull code, eye position
+  visual_field: [-40.0, 40.0]
+  rf_width: 8.0
+  gain_K: 10.0                 # activity gain = gain_K / variance
   slope_range: [-1.0, 1.0]
   intercept_range: [0.0, 10.0]
-
-  poisson_noise: true          # Poisson trial-to-trial spike-count noise
+  poisson_noise: true
 
 # --------------------------------------------------------------------------- #
-# MODEL (additive feedforward network)
+# MODEL
 # --------------------------------------------------------------------------- #
 model:
-  hidden_sizes: [64, 64]       # SIL (sensory-integration), MSL (multisensory) layers
-  hidden_activation: sigmoid   # {sigmoid, relu, tanh}
-  head_type: causal            # {causal, integration_only}
-                               # causal: 4 outputs [mu_vis, var_vis, mu_prop, var_prop]
-                               #         = Kording (2007) optimal estimates (Eqs. 9/10)
+  hidden: [64, 64]             # layer 0 = SIL, layer 1 = MSL
+  activation: sigmoid          # sigmoid | relu | tanh
+  head: causal                 # causal (4 outputs) | fused (2 outputs, control twin)
 
 # --------------------------------------------------------------------------- #
 # TRAINING
+#   standardize_inputs and balance_loss are both needed: the input groups differ
+#   ~30x in magnitude and the outputs live on different scales, so without them
+#   the shared trunk learns var_prop and starves mu_prop.
 # --------------------------------------------------------------------------- #
 training:
-  optimizer: rprop             # {rprop, adam}
-  lr: 0.001
-  epochs: 2000
-  batch_size: 256
   n_trials: 50000
-  split: [0.7, 0.15, 0.15]     # train / val / test fractions
-  loss_weights:
-    est: 1.0                   # MSE on the two mean outputs (mu_vis, mu_prop)
-    var: 1.0                   # MSE on the two (softplus) variance outputs
-  n_seeds: 1
-  early_stopping_patience: 20
+  split: [0.7, 0.15, 0.15]
+  optimizer: adam              # adam | rprop (rprop is full-batch only)
+  lr: 0.001
+  epochs: 300
+  batch_size: 256
+  patience: 20
+  standardize_inputs: true
+  balance_loss: true
 
 # --------------------------------------------------------------------------- #
 # ANALYSIS
 # --------------------------------------------------------------------------- #
 analysis:
-  disparity_grid: [-30.0, -20.0, -15.0, -10.0, -5.0, -2.0, 0.0, 2.0, 5.0, 10.0, 15.0, 20.0, 30.0]
-  reliability_levels: [2.0, 8.0, 16.0]   # representative sigma2_vis values (deg^2)
-  decoder:
-    alpha: 1.0                 # ridge regularization for linear decoders
-    cv_folds: 5
-    test_size: 0.25
+  disparity_grid: [-30, -20, -15, -10, -5, -2, 0, 2, 5, 10, 15, 20, 30]
+  reliability_levels: [2.0, 8.0, 16.0]
+  min_separation: 1.0          # deg; below this the implied fusion weight is unstable
+  ridge_alpha: 1.0
+  decoder_test_size: 0.25

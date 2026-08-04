@@ -1,253 +1,186 @@
-# causal_msi — Bayesian causal inference across reference frames
+# research/
 
-An additive feedforward neural network trained to perform **Bayesian causal
-inference** on population-coded sensory cues. The network receives three
-population-code input groups — **visual hand position**, **proprioceptive hand
-position**, and a **proprioceptive eye-position** signal — and learns to estimate
-each cue's source and uncertainty (in a common body frame) and to infer the
-probability that the two cues share a **common cause**. It extends a prior
-multisensory-integration model with a causal-inference read-out.
-
-> Units convention: all spatial quantities are in **degrees**; all variances are
-> in **degrees²** (deg²).
-
----
-
-## The four network outputs
-
-The `causal` head emits **four** outputs (variances via softplus, means via
-identity) — the Bayesian causal-inference **optimal position estimates** of
-Körding et al. (2007):
-
-| # | Output     | Meaning                                                          | Körding eq. |
-|---|------------|------------------------------------------------------------------|-------------|
-| 1 | `mu_vis`   | Optimal **visual** estimate (model-averaged), body frame (deg)   | Eq. 9       |
-| 2 | `var_vis`  | Posterior (mixture) variance of the visual estimate (deg²)       | —           |
-| 3 | `mu_prop`  | Optimal **proprioceptive** estimate (model-averaged) (deg)       | Eq. 10      |
-| 4 | `var_prop` | Posterior (mixture) variance of the prop estimate (deg²)         | —           |
-
-Each optimal estimate is the cost-minimising (posterior-mean) combination of the
-common-cause estimate (Eq. 12, fused) and the separate-cause estimate (Eq. 11,
-segregated), weighted by the common-cause posterior `p(C=1|x)` (Eq. 2):
-
-```
-mu_i = p(C=1|x)·ŝ_{i,C=1} + (1 − p(C=1|x))·ŝ_{i,C=2}        (Eqs. 9/10)
-```
-
-**`p(C=1|x)` is computed internally** from the Gaussian evidences (Eqs. 2/4/6) to
-form these estimates, but it is **neither an input nor an output** — the network
-must infer it implicitly. The paired variance is the variance of the same
-2-component mixture posterior (law of total variance).
-
-A second `integration_only` head (2 outputs: `mu_fused`, `var_fused`) is a
-Project-1-style always-fuse control twin (Eq. 12) used for the emergent-vs-imposed
-analysis.
-
----
-
-## Generative model
-
-- **Spatial prior:** `source ~ Normal(mu0, sigma0²)`.
-- **Causal latent:** `C ~ Bernoulli(p_common)`. If `C=1`, one shared source `s`;
-  if `C=2`, two independent sources `s1` (vision), `s2` (proprioception).
-- **Eye position** `e` from its own distribution; per-trial reliabilities
-  `σ²_vis, σ²_prop, σ²_eye` drawn from configured ranges.
-- **Reference-frame transform:** vision is **retinal** (`retinal = s − e`),
-  proprioception is **body**; body-frame visual = `retinal + e`.
-- **Noisy scalar measurements:** `x_vis ~ N(retinal, σ²_vis)`,
-  `x_eye ~ N(e, σ²_eye)`, `x_prop ~ N(s_or_s2, σ²_prop)`.
-
-The **analytical observer** (the label pipeline) operates only on the noisy scalar
-measurements — never the true sources — and produces the four optimal-estimate
-targets: segregated single-cue posteriors (Eq. 11), the forced-fusion posterior
-(Eq. 12), the Gaussian Bayes factor / common-cause posterior (Eqs. 2/4/6), and the
-model-averaged optimal estimates + variances (Eqs. 9/10) — Körding et al. (2007).
-
----
-
-## Implementation status
-
-The core science is **implemented and tested**; several downstream analysis
-metrics remain as scaffolded `TODO(science)` stubs for you to author.
-
-**✅ Implemented (and runnable end-to-end)**
-
-- `generative.py` — generative model + full analytical observer
-  (`transform_visual_to_body`, `segregated_estimate`, `fused_estimate`,
-  `log_bayes_factor`, `common_cause_posterior`, `analytical_observer`,
-  `build_dataset`).
-- `encoding.py` — Gaussian-RF and push-pull encoders, reliability gain, Poisson noise.
-- `models.py`, `losses.py`, `training.py`, `io.py`, `utils.py`, `config.py`, `viz.py`.
-- `analysis/integration.py` — **all** functions (model averaging, likelihood
-  inversion / reconstruction, population decoding, fusion-weight curve, disparity
-  sweep, reliability dependence, decision-strategy fit).
-- `analysis/bayes_factor.py` — **all** functions (implied log-BF inversion,
-  comparison, population tracking).
-- `analysis/decoding.py` — layer-wise p(C=1) decoding + emergent-vs-imposed twin.
-- `analysis/performance.py` — per-output regression, error distributions,
-  calibration, generalization report.
-
-**🛠️ Still `TODO(science)` (raise `NotImplementedError`; author against the tests)**
-
-- `analysis/indices.py` — AI / RE / RA / gain-index formulae.
-- `analysis/geometry.py` — `pc_axis_explicitness`, `reference_frame_of_causality`.
-- `analysis/rf_shifts.py` — `rf_shift_gain`.
-- `analysis/congruent_opposite.py` — `classify_units`, `balance_predicts_readout`.
-- `analysis/ablation.py` — `ablation_dissociation`.
-- `analysis/performance.py` — `proportion_common_vs_disparity`,
-  `proportion_common_vs_reliability` (curve summaries; the raw binning is shown in
-  `visualize` / notebook 03).
-
-Find them all with:
-
-```bash
-grep -rn "raise NotImplementedError" src/
-```
-
----
-
-## Setup
-
-Requires Python 3.11+ and [Poetry](https://python-poetry.org/).
-
-```bash
-poetry install              # creates the venv + registers console scripts
-poetry run pytest           # 16 passed, 14 xpassed (the science property tests)
-```
-
-> **Note on console scripts.** `generate-data`, `train`, `run-analysis`, and
-> `visualize` are entry points declared in `pyproject.toml` under
-> `[project.scripts]`. They are only created during `poetry install`. If you add a
-> new script and get "Command not found", re-run `poetry install` (or call the
-> module directly, e.g. `poetry run python scripts/visualize.py ...`).
-
----
-
-## How to run (complete workflow)
-
-### 1. Generate a dataset
-
-```bash
-poetry run generate-data --config configs/default.yaml --out data/dataset.npz
-```
-
-Samples latents → renders noisy measurements → encodes the three population-code
-input groups → runs the analytical observer for the targets. Writes a compressed
-`.npz` (inputs, targets, latents, measurements).
-
-### 2. Train
-
-```bash
-# Main model (5-output causal head)
-poetry run train --head-type causal --dataset-path data/dataset.npz
-
-# Control twin (always-fuse, 2 outputs) for the emergent-vs-imposed analysis
-poetry run train --head-type integration_only --dataset-path data/dataset.npz
-```
-
-Trains `training.n_seeds` models with the chosen optimizer (rprop/adam), early
-stopping on validation loss, and per-output logging; saves
-`checkpoints/model_seed{N}.pth`. Omit `--dataset-path` to generate data on the fly.
-
-### 3. Visualize (diagnostics → `results/`)
-
-```bash
-# Quick-train a small model and render all figures
-poetry run visualize --n-trials 8000 --epochs 100
-
-# …or visualize a checkpoint you already trained
-poetry run visualize --checkpoint checkpoints/model_seed0.pth
-```
-
-Produces 10 figures under `results/`:
-
-| File | Group | Shows |
-|------|-------|-------|
-| `01_encoding_tuning_curves` | encoding | RF bumps + push-pull tuning |
-| `02_encoding_population_vectors` | encoding | single-trial code at 3 stimuli |
-| `03_encoding_heatmaps` | encoding | code vs stimulus (bump tracks stimulus) |
-| `04_encoding_gain_poisson` | encoding | gain ∝ 1/variance; Poisson mean=λ |
-| `05_training_loss` | quality | train/val loss + per-component |
-| `06_output_r2_bars` | quality | per-output R² + common-cause accuracy |
-| `07_output_decoding_scatter` | output | network-vs-analytical optimal estimate (4 outputs) |
-| `08_output_error_histograms` | output | per-output error distributions |
-| `09_proportion_common_vs_disparity` | analysis | analytical p(C=1) vs disparity (internal latent) |
-| `10_integration_estimates` | analysis | reconstructed/decoded vs analytical + fusion weight |
-
-### 4. Analysis library
-
-The implemented analyses (`integration`, `bayes_factor`, `decoding`,
-`performance`) are exercised in `notebooks/03_analysis.ipynb` and from the
-`visualize` command, and are importable directly, e.g.:
-
-```python
-from causal_msi.analysis import integration as integ
-analytical    = integ.analytical_model_averaged_estimate(dataset.targets)
-reconstructed = integ.network_reconstructed_estimate(pred, mu0, sigma0_sq)
-fit           = integ.decision_strategy_fit(pop_estimate, p_common, fused, seg)
-```
-
-> The `run-analysis` CLI exposes subcommands (`decoding`, `integration`,
-> `mechanism`, `indices`, `geometry`, `rf_shifts`) as **scaffolds** — they print a
-> TODO until you wire the chosen analyses + result-saving for your study. Use the
-> notebook / `visualize` paths above for the already-implemented analyses.
-
-### Make targets
-
-```bash
-make setup          # poetry install
-make lint           # ruff + black --check + mypy
-make test           # pytest with coverage
-make generate-data  # build a dataset from configs/default.yaml
-make train          # train the causal model
-make analyze        # run-analysis (scaffold)
-make visualize      # render figures into results/
-```
-
----
-
-## Training note (input/target scaling)
-
-The four outputs live on different scales (means ≈ ±10 deg vs variances ≈ 5–25
-deg²), and the three input groups differ ~30× in magnitude. A diagnostic study
-found that without scaling, the shared `[64,64]` network learns some outputs (e.g.
-`var_prop`) but starves others (notably `mu_prop`) — even though each is easily
-learnable by a dedicated decoder (R²≈0.97). The robust recipe is:
-
-1. **Standardize the inputs** (z-score per feature on the train set).
-2. **Balance the loss across outputs** (normalize each component by its target
-   variance) so no output dominates.
-3. **Use Adam** for mini-batch training (Rprop is a full-batch method).
-
-These remain modelling choices for you to wire in; the diagnostics confirmed all
-four outputs then reach high R².
-
----
+A working rewrite of `src/causal_msi/` — same model, same equations, same
+numbers, organised as a research project rather than as a software package. The
+original still runs and is untouched; `scripts/check_observer.py` verifies the
+two observers agree to floating-point noise.
 
 ## Layout
 
 ```
-configs/default.yaml          all parameters (generative / encoding / model / training / analysis)
-src/causal_msi/
-  utils.py        seeding (numpy + torch) and device helpers
-  config.py       pydantic config models + loader
-  generative.py   generative model + analytical observer  [implemented]
-  encoding.py     population-code encoders (3 input groups)
-  models.py       FeedforwardMSI (causal / integration_only heads; SIL/MSL hooks)
-  losses.py       causal_loss + integration_loss
-  training.py     train loop, early stopping, multi-seed runner
-  io.py           dataset / checkpoint / results persistence
-  viz.py          figure helpers
-  analysis/       performance, decoding, integration, bayes_factor (done);
-                  indices, geometry, rf_shifts, congruent_opposite, ablation (TODO)
-  cli/            typer entry points (generate_data, train, run_analysis, visualize)
-scripts/          thin CLI wrappers
-tests/            property tests (generative + integration now pass as xpass)
-notebooks/        01_explore_generative · 02_train_and_test · 03_analysis
-results/          generated figures (gitignored)
+configs/default.yaml     every parameter, in five sections
+src/cmsi/
+  data/        generative.py   generative model + analytical Bayesian observer
+               encoding.py     measurements -> population codes (network input)
+               dataset.py      make_dataset, split_indices, subset
+  models/      network.py      the network, predict, hidden_activations
+               losses.py       the objective and why it is reweighted
+               training.py     training loop with early stopping
+  analysis/    accuracy.py     readout vs observer, per output
+               causal.py       implied fusion weight, curves, decision strategy
+               decoding.py     what the hidden layers carry
+               todo.py         placeholders for analyses not yet written
+  viz/         inputs.py       what the network is shown
+               training.py     did it converge
+               results.py      network vs observer
+               style.py        shared figure defaults
+  utils/       config.py  paths.py  seed.py  io.py
+scripts/       01_generate_data  02_train  03_analyze  04_figures
+               run_all.sh  check_observer.py
+tests/         property tests on the maths and the stage boundaries
+data/          generated datasets (.npz)      gitignored
+results/       one folder per run             gitignored
 ```
 
-## Data / artefacts
+## Run it
 
-`data/`, `checkpoints/`, `results/`, and `outputs/` are gitignored. Datasets are
-`.npz`, checkpoints are torch `.pth` (state dict + config + metrics), results are JSON.
+```bash
+cd research
+bash scripts/run_all.sh quick     # ~2 min: data, train, twin, analysis, figures
+bash scripts/run_all.sh           # the real thing (50k trials)
+```
+
+Or one stage at a time — each reads what the previous one wrote, so you can
+re-run any of them alone:
+
+```bash
+python scripts/01_generate_data.py --name main --n 50000
+python scripts/02_train.py         --data main --run baseline
+python scripts/03_analyze.py       --run baseline --twin twin
+python scripts/04_figures.py       --run baseline --only model
+```
+
+## Tests
+
+```bash
+pytest                       # 48 tests, ~2 seconds
+```
+
+They are property tests, not regression tests: each states something that must
+hold for any correct implementation, so they survive changes to the parameters
+or the internals. The Bayes factor falls with disparity; the posterior is
+monotone in it and saturates at 0 and 1; model averaging hits the fused estimate
+at p=1 and the segregated one at p=0; the mixture variance exceeds both
+components when they disagree; encoders are reproducible from the seed; splits
+are disjoint; a reloaded checkpoint predicts identically.
+
+Three are worth knowing about specifically:
+
+- `test_observer_never_touches_the_true_sources` perturbs the hidden truth and
+  asserts the targets don't move. If it ever fails, the labels leak information
+  the network could not have, and every result is inflated.
+- `test_subset_keeps_trials_aligned` guards against comparing one trial's
+  prediction to another trial's ground truth — the failure that produces
+  plausible-looking nonsense rather than an error.
+- `test_strategy_fit_identifies_the_strategy_that_made_the_data` plants each
+  decision strategy in turn and checks the analysis names it.
+
+Run them after touching anything in `data/` or `analysis/`.
+
+## What a run produces
+
+```
+results/baseline/
+  config.yaml        the exact parameters that produced this run
+  dataset.txt        which dataset it was trained on
+  model.pt           weights + config + the train/val/test split
+  metrics.json       every number the analysis computed
+  analysis.npz       per-trial arrays the figures are drawn from
+  figures/
+    inputs/          tuning curves, population heatmaps, gain, latent distributions
+    training/        loss curves, per-output loss
+    model/           output scatter, errors, p(C=1) vs disparity, fusion weight,
+                     reliability dependence, decoding, emergent vs imposed
+```
+
+Two stage boundaries earn their keep. Numbers are separated from figures, so you
+can re-plot without refitting decoders and diff `metrics.json` between runs. And
+the split is stored in the checkpoint, so every analysis runs on exactly the
+trials the model was validated against.
+
+## Use it from a notebook
+
+```python
+import sys; sys.path.insert(0, "src")
+from cmsi.utils import load_config
+from cmsi.data import make_dataset, subset
+from cmsi.models import train, predict, hidden_activations
+from cmsi import analysis
+
+cfg  = load_config()
+d    = make_dataset(cfg, n=20000)
+model, history, splits = train(d, cfg)
+
+test = subset(d, splits["test"])        # slices X, Y and every latent together
+pred = predict(model, test["X"])
+analysis.print_accuracy(analysis.accuracy(pred, test["Y"], d["target_names"]))
+```
+
+A dataset is one flat dict of numpy arrays, so masking is the natural way to ask
+a sub-question:
+
+```python
+reliable = subset(test, test["sig2_vis"] < 2)
+```
+
+`tweak(cfg, p_common=0.8, epochs=100)` copies a config with values replaced; it
+finds the key in whichever section owns it and raises on typos, which matters
+when you're sweeping.
+
+## The idea in one paragraph
+
+Two cues report where the hand is: vision, in **retinal** coordinates, so it
+needs the eye-position signal before it can be read in body coordinates; and
+proprioception, already in **body** coordinates. They may share one source
+(`C=1`) or come from two separate ones (`C=2`). A Bayesian observer weighs the
+evidence, gets a graded posterior `p(C=1|x)`, and reports the model-averaged
+estimate `p·(fused) + (1−p)·(single-cue)`. The network is trained on those four
+numbers — `mu_vis, var_vis, mu_prop, var_prop` — from population codes alone. It
+never sees `p(C=1)`, the disparity, the true sources, or `C`, so any causal
+inference in it has to be built internally.
+
+## What the analyses ask
+
+**`accuracy`** — does the readout match the observer, output by output.
+
+**`fusion_weight`** — solve `estimate = w·fused + (1−w)·segregated` for `w`.
+Optimal averaging predicts `w == p(C=1)`, so `w` against disparity is the
+fusion→segregation transition, and `transition_fit` gives its midpoint and
+sharpness. Trials where the two references nearly coincide are dropped: the
+denominator goes to zero there and a handful of trials would otherwise dominate
+every summary. Per-trial R² on `w` looks bad even when the binned curve tracks
+the optimum closely — single-trial `w` is a noisy ratio, so read the slope and
+the curve, not R².
+
+**`decode` / `decode_by_layer`** — ridge-decode a latent from a hidden layer.
+Independent of the readout, so it asks "is this represented?" rather than "was it
+trained to output this?". Weak in layer0 and strong in the last layer means the
+network is building it. Running it on the always-fuse twin, which was never asked
+for anything causal, is the emergent-vs-imposed test.
+
+**`strategy_fit`** — model averaging vs model selection vs probability matching.
+
+`analysis/todo.py` holds one-line placeholders for the analyses still to be
+designed: unit indices, population geometry, RF shifts across eye position,
+congruent/opposite unit classification, and MSL ablation.
+
+## Two things that matter for training
+
+`standardize_inputs` and `balance_loss` are both on by default. The three input
+groups differ ~30× in magnitude and the outputs live on different scales (means
+≈ ±10 deg, variances ≈ 5–25 deg²). Without both, the shared trunk learns
+`var_prop` fine and starves `mu_prop`, even though a dedicated decoder reaches
+R²≈0.97 on it. `figures/training/02_per_output_loss.png` is where that shows up.
+Use Adam, not Rprop — Rprop is a full-batch method and misbehaves on mini-batches
+(`check` in `utils/config.py` warns if you configure that combination).
+
+## Relation to the original
+
+The observer maths is a line-by-line port; `scripts/check_observer.py` runs both
+implementations on identical draws and asserts they agree (worst difference so
+far: 2e-13). What was dropped: the pydantic config layer, the typer CLI and its
+`scripts/` wrappers, the frozen dataclasses wrapping every group of arrays
+(`LatentBatch`, `Measurements`, `ObserverTargets`, `Dataset`, `Encoders`, ...),
+and the nine-module `analysis/` split. What was added: the four-stage pipeline,
+the per-run results convention, and input/training figure groups the original
+didn't have.

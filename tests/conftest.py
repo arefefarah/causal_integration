@@ -1,24 +1,31 @@
-"""Shared pytest fixtures."""
+"""Shared fixtures. Also puts src/ on the path so pytest runs with no install."""
 
-from __future__ import annotations
-
+import sys
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from causal_msi.config import Config, load_config
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-CONFIG_PATH = Path(__file__).resolve().parents[1] / "configs" / "default.yaml"
+from cmsi.utils import load_config  # noqa: E402
+
+
+@pytest.fixture(scope="session")
+def cfg():
+    """The default config, shrunk so the whole suite runs in a few seconds."""
+    c = load_config()
+    c["training"]["n_trials"] = 2000
+    c["training"]["epochs"] = 3
+    return c
 
 
 @pytest.fixture
-def config() -> Config:
-    """The default validated configuration."""
-    return load_config(CONFIG_PATH)
+def rng():
+    return np.random.default_rng(0)
 
 
-@pytest.fixture
-def rng() -> np.random.Generator:
-    """A deterministically seeded numpy generator."""
-    return np.random.default_rng(1234)
+@pytest.fixture(scope="session")
+def dataset(cfg):
+    from cmsi.data import make_dataset
+    return make_dataset(cfg)
