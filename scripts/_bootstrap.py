@@ -1,10 +1,8 @@
 """Put src/ on the import path so the scripts run without installing anything.
 
-Every script imports this first. If you'd rather install the package properly:
-
-    pip install -e research
-
-then the import still works and this file becomes a no-op.
+Every script imports this first. After `poetry install` the package is already
+importable and this becomes a no-op -- it is kept so the scripts still work from
+a bare python, e.g. on a machine where you haven't set the environment up yet.
 """
 
 import sys

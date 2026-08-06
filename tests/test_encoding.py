@@ -5,7 +5,6 @@ import pytest
 
 from cmsi.data.dataset import make_dataset, split_indices, subset
 from cmsi.data.encoding import (
-    encode,
     encode_groups,
     gaussian_code,
     group_slices,

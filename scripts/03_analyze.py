@@ -14,9 +14,9 @@ any decoders, and diff metrics.json between runs.
 
 import argparse
 
-import _bootstrap  # noqa: F401
 import numpy as np
 
+import _bootstrap  # noqa: F401
 from cmsi import analysis
 from cmsi.data import subset
 from cmsi.models import hidden_activations, predict

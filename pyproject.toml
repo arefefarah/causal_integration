@@ -1,22 +1,47 @@
-# Optional: `pip install -e .` from this folder puts cmsi on the path for good.
-# The scripts work without it (they add src/ themselves), so this is convenience,
-# not a requirement.
-[project]
-name = "cmsi"
+[tool.poetry]
+name = "causal-integration"
 version = "0.1.0"
-description = "Causal inference across reference frames in a feedforward network"
-requires-python = ">=3.10"
-dependencies = [
-  "numpy", "scipy", "scikit-learn", "matplotlib", "torch", "pyyaml",
-]
+description = "Bayesian causal inference across reference frames in a feedforward network"
+authors = ["Majid Mehrjoo <majidmehrjoo@hotmail.com>"]
+readme = "README.md"
+packages = [{ include = "cmsi", from = "src" }]
+
+# The ranges here say what the project *tolerates*; poetry.lock records the exact
+# versions a run actually used. Commit the lock file -- it is what makes a result
+# reproducible a year from now.
+[tool.poetry.dependencies]
+python = ">=3.10,<3.14"
+numpy = ">=1.26,<3.0"
+scipy = "^1.13"
+scikit-learn = "^1.5"
+matplotlib = "^3.9"
+torch = "^2.4"
+pyyaml = "^6.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+ruff = "^0.6"
 
 [build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
+requires = ["poetry-core>=1.9"]
+build-backend = "poetry.core.masonry.api"
 
-[tool.setuptools.packages.find]
-where = ["src"]
-
+# --------------------------------------------------------------------------- #
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+src = ["src", "scripts", "tests"]
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, import order, pyupgrade, common bugs. Deliberately not
+# the full set -- this is a research codebase, not a library with public API rules.
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+# `_bootstrap` must stay above the cmsi imports in scripts/ -- it is what puts
+# src/ on the path. Declaring both as first-party keeps them in one block, sorted
+# so the underscore comes first.
+known-first-party = ["cmsi", "_bootstrap"]

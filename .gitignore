@@ -14,10 +14,10 @@ dist/
 .venv/
 venv/
 env/
-.python-version
 
-# Poetry
-poetry.lock
+# NOTE: poetry.lock is deliberately NOT ignored. Committing it is what pins the
+# exact versions every result was produced with -- omit it and "it worked last
+# year" becomes unverifiable. Only libraries leave it out.
 
 # Test / coverage / type caches
 .pytest_cache/
@@ -28,11 +28,13 @@ poetry.lock
 htmlcov/
 coverage.xml
 
-# Project artefacts
-data/
+# Generated artefacts -- keep the folders, ignore their contents
+data/*
+!data/.gitkeep
+results/*
+!results/.gitkeep
 outputs/
 checkpoints/
-results/
 *.pth
 *.ckpt
 

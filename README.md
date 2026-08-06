@@ -1,13 +1,47 @@
-# research/
+# causal_integration
 
-A working rewrite of `src/causal_msi/` — same model, same equations, same
-numbers, organised as a research project rather than as a software package. The
-original still runs and is untouched; `scripts/check_observer.py` verifies the
-two observers agree to floating-point noise.
+An additive feedforward network trained to perform Bayesian causal inference on
+population-coded sensory cues, across reference frames. Two cues report where the
+hand is — vision in retinal coordinates, proprioception in body coordinates — and
+the network has to decide, implicitly, whether they share a cause.
+
+## Setup
+
+Requires Python 3.10–3.13 and [Poetry](https://python-poetry.org/docs/#installation).
+
+```bash
+poetry install        # or: make setup
+```
+
+That creates `.venv/` inside the project (configured in `poetry.toml`) and
+installs the exact versions recorded in `poetry.lock` — not merely compatible
+ones. `pyproject.toml` says what the project tolerates; the lock says what your
+results were actually produced with, which is why it's committed rather than
+ignored.
+
+Run things either through Poetry or by activating the environment:
+
+```bash
+poetry run pytest              # one-off
+poetry shell                   # or activate, then just: pytest
+```
+
+**PyCharm:** Settings → Project → Python Interpreter → Add → Poetry Environment,
+and point it at `.venv/bin/python` (`poetry env info --path` prints it). Mark
+`src/` as a Sources Root so imports resolve in the editor.
+
+**Reproducing this environment elsewhere** — a cluster, a colleague's machine,
+your own laptop in two years — is `git clone` then `poetry install`. Nothing else.
+If you ever need a GPU build of torch, that comes from a different package index
+and needs a `[[tool.poetry.source]]` entry; ask before adding it, because it
+changes what the lock resolves to.
 
 ## Layout
 
 ```
+pyproject.toml           dependencies, tool config
+poetry.lock              exact pinned versions -- commit this
+Makefile                 shortcuts: make help
 configs/default.yaml     every parameter, in five sections
 src/cmsi/
   data/        generative.py   generative model + analytical Bayesian observer
@@ -25,35 +59,34 @@ src/cmsi/
                results.py      network vs observer
                style.py        shared figure defaults
   utils/       config.py  paths.py  seed.py  io.py
-scripts/       01_generate_data  02_train  03_analyze  04_figures
-               run_all.sh  check_observer.py
+scripts/       01_generate_data  02_train  03_analyze  04_figures  run_all.sh
 tests/         property tests on the maths and the stage boundaries
-data/          generated datasets (.npz)      gitignored
-results/       one folder per run             gitignored
+data/          generated datasets (.npz)      contents gitignored
+results/       one folder per run             contents gitignored
 ```
 
 ## Run it
 
 ```bash
-cd research
-bash scripts/run_all.sh quick     # ~2 min: data, train, twin, analysis, figures
-bash scripts/run_all.sh           # the real thing (50k trials)
+make quick                        # ~2 min: data, train, twin, analysis, figures
+make all                          # the real thing (50k trials)
+make help                         # everything else
 ```
 
 Or one stage at a time — each reads what the previous one wrote, so you can
 re-run any of them alone:
 
 ```bash
-python scripts/01_generate_data.py --name main --n 50000
-python scripts/02_train.py         --data main --run baseline
-python scripts/03_analyze.py       --run baseline --twin twin
-python scripts/04_figures.py       --run baseline --only model
+poetry run python scripts/01_generate_data.py --name main --n 50000
+poetry run python scripts/02_train.py         --data main --run baseline
+poetry run python scripts/03_analyze.py       --run baseline --twin twin
+poetry run python scripts/04_figures.py       --run baseline --only model
 ```
 
 ## Tests
 
 ```bash
-pytest                       # 48 tests, ~2 seconds
+make test                    # 48 tests, ~2 seconds
 ```
 
 They are property tests, not regression tests: each states something that must
@@ -174,13 +207,16 @@ R²≈0.97 on it. `figures/training/02_per_output_loss.png` is where that shows 
 Use Adam, not Rprop — Rprop is a full-batch method and misbehaves on mini-batches
 (`check` in `utils/config.py` warns if you configure that combination).
 
-## Relation to the original
+## History
 
-The observer maths is a line-by-line port; `scripts/check_observer.py` runs both
-implementations on identical draws and asserts they agree (worst difference so
-far: 2e-13). What was dropped: the pydantic config layer, the typer CLI and its
-`scripts/` wrappers, the frozen dataclasses wrapping every group of arrays
-(`LatentBatch`, `Measurements`, `ObserverTargets`, `Dataset`, `Encoders`, ...),
-and the nine-module `analysis/` split. What was added: the four-stage pipeline,
-the per-run results convention, and input/training figure groups the original
-didn't have.
+This grew out of an earlier `causal_msi` package. The observer maths was ported
+line by line and verified against it on identical draws — worst disagreement
+2e-13, i.e. floating-point noise — before that package was retired; the property
+tests in `tests/test_generative.py` now guard the same equations without needing
+the old code present.
+
+Dropped along the way: a pydantic config layer, a typer CLI with `scripts/`
+wrappers around it, frozen dataclasses wrapping every group of arrays
+(`LatentBatch`, `Measurements`, `ObserverTargets`, `Dataset`, `Encoders`, …), and
+a nine-module `analysis/` split. Added: the four-stage pipeline, the per-run
+results convention, and the input and training figure groups.

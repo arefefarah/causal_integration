@@ -13,9 +13,9 @@ fiddle with a panel. Figures go to:
 
 import argparse
 
-import _bootstrap  # noqa: F401
 import numpy as np
 
+import _bootstrap  # noqa: F401
 from cmsi import analysis
 from cmsi.data import subset
 from cmsi.utils import dataset_path, load_checkpoint, load_dataset, load_json, run_dir

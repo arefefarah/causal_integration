@@ -12,7 +12,6 @@ drift apart.
 import argparse
 
 import _bootstrap  # noqa: F401
-
 from cmsi.data import make_dataset
 from cmsi.utils import dataset_path, load_config, save_dataset, tweak
 

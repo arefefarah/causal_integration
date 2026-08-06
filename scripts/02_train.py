@@ -11,7 +11,6 @@ produced it.
 import argparse
 
 import _bootstrap  # noqa: F401
-
 from cmsi.models import train
 from cmsi.utils import (
     dataset_path,
@@ -42,7 +41,8 @@ def main(args):
     print(f"wrote {out / 'model.pt'}")
 
     if args.figures:
-        from cmsi.viz import apply_style, save_figures, training as viz_training
+        from cmsi.viz import apply_style, save_figures
+        from cmsi.viz import training as viz_training
         apply_style()
         save_figures(viz_training.all_figures(history), out / "figures" / "training")
         print(f"wrote {out / 'figures' / 'training'}")

@@ -4,7 +4,14 @@ import numpy as np
 
 from cmsi.data import make_dataset
 from cmsi.models import predict, train
-from cmsi.utils import load_checkpoint, load_dataset, load_json, save_checkpoint, save_dataset, save_json
+from cmsi.utils import (
+    load_checkpoint,
+    load_dataset,
+    load_json,
+    save_checkpoint,
+    save_dataset,
+    save_json,
+)
 
 
 def test_dataset_survives_a_round_trip(cfg, tmp_path):
