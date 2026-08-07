@@ -1,0 +1,96 @@
+# Physiologically plausible parameters for visuo-proprioceptive hand
+# localisation across eye positions.
+#
+# configs/default.yaml is untouched, so the two can be compared directly.
+#
+# The choices below are anchored to psychophysics rather than to convenience.
+# The key ordering is: vision is the most precise cue, the eye-position signal
+# is intermediate, and proprioception is the least precise (van Beers, Sittig &
+# Denier van der Gon, 1998/1999). That ordering is what makes the task
+# interesting -- the network has to down-weight the cue it can least trust, and
+# which cue that is changes trial to trial.
+#
+# Units: positions in degrees, variances in deg^2.
+
+seed: 0
+
+# --------------------------------------------------------------------------- #
+# GENERATIVE MODEL
+# --------------------------------------------------------------------------- #
+generative:
+  p_common: 0.5              # balanced by design. Real reaching is closer to 0.8
+                             # -- you almost always are looking at your own hand
+                             # -- but 0.5 gives both hypotheses equal exposure.
+  mu0: 0.0
+  sigma0_sq: 225.0           # hand position, sd 15 deg: a normal reaching
+                             # workspace seen from a fixed head.
+  eye_mu: 0.0
+  eye_sigma_sq: 144.0        # eye position, sd 12 deg. Comfortable gaze range is
+                             # roughly +/-35 deg, i.e. about 3 sd here; beyond
+                             # that people turn the head instead.
+
+  # Per-trial measurement noise. Ranges rather than fixed values because
+  # reliability varies with eccentricity, lighting, and limb configuration --
+  # and because the reliability-dependence analysis needs something to vary.
+  sigma2_vis_range:  [0.5, 4.0]    # sd 0.7-2.0 deg: foveal to near-peripheral
+  sigma2_prop_range: [6.0, 36.0]   # sd 2.4-6.0 deg: proprioception is coarse
+                                   # and direction-dependent
+  sigma2_eye_range:  [1.0, 9.0]    # sd 1.0-3.0 deg: eye-position sense sits
+                                   # between the two
+
+# --------------------------------------------------------------------------- #
+# ENCODING
+# --------------------------------------------------------------------------- #
+encoding:
+  n_vis: 76                  # equal group sizes, matching the earlier project
+  n_prop: 76
+  n_eye: 76
+
+  visual_field: [-65.0, 65.0]  # retinal position is hand MINUS eye, so it is the
+                               # widest variable here (sd 19.3 deg). +/-65 keeps
+                               # 99.9% of bumps on the map; narrower and the
+                               # tails clip into a boundary artefact.
+  rf_width: 8.0
+
+  gain_K: 15.0               # gain = gain_K / variance. Chosen so the visual
+                             # population fires ~100 spikes/trial, matching the
+                             # earlier project. Raise this WITH the variances if
+                             # you ever widen them, or the bump starves.
+
+  slope_range: [-1.0, 1.0]
+  intercept_range: [0.0, 10.0]
+  poisson_noise: true
+
+# --------------------------------------------------------------------------- #
+# MODEL
+# --------------------------------------------------------------------------- #
+model:
+  hidden: [64, 64]           # layer 0 = SIL, layer 1 = MSL
+  activation: sigmoid
+  head: causal               # causal (4 outputs) | fused (2, control twin)
+
+# --------------------------------------------------------------------------- #
+# TRAINING
+# --------------------------------------------------------------------------- #
+training:
+  n_trials: 50000
+  split: [0.7, 0.15, 0.15]
+  optimizer: adam
+  lr: 0.001
+  epochs: 300
+  batch_size: 256
+  patience: 20
+  standardize_inputs: true   # the three groups differ ~20x in total activity
+  balance_loss: true         # means ~ +/-15 deg vs variances ~ 6-15 deg^2
+
+# --------------------------------------------------------------------------- #
+# ANALYSIS
+# --------------------------------------------------------------------------- #
+analysis:
+  # Disparity has sd ~16 deg here, so the grid has to reach further out than the
+  # default one to capture the segregated tail.
+  disparity_grid: [-40, -30, -20, -15, -10, -5, -2, 0, 2, 5, 10, 15, 20, 30, 40]
+  reliability_levels: [1.0, 2.0, 3.5]   # must lie inside sigma2_vis_range
+  min_separation: 1.0
+  ridge_alpha: 1.0
+  decoder_test_size: 0.25

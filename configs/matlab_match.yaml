@@ -13,24 +13,24 @@ seed: 0
 # --------------------------------------------------------------------------- #
 generative:
   p_common: 0.5
-  mu0: 0.0                     # spatial prior mean
-  sigma0_sq: 100.0             # spatial prior variance
+  mu0: 0.0            # spatial prior variance
   eye_mu: 0.0
-  eye_sigma_sq: 25.0
-  sigma2_vis_range: [0.5, 6.0]     # per-trial noise variances, drawn uniform
-  sigma2_prop_range: [1.0, 10.0]
-  sigma2_eye_range: [0.5, 4.0]
+  sigma0_sq: 425.0            # hand sd 20.6   (was 100 → sd 10)
+  eye_sigma_sq: 325.0         # eye sd 18.1    (was 25 → sd 5)
+  sigma2_vis_range: [ 4, 22 ]  # MATLAB's 5–95% spread, not just its mean
+  sigma2_prop_range: [ 6, 32 ]
+  sigma2_eye_range: [ 11, 44 ]
 
 # --------------------------------------------------------------------------- #
 # ENCODING (scalar measurements -> population codes = the network input)
 # --------------------------------------------------------------------------- #
 encoding:
-  n_vis: 50                    # gaussian receptive fields, retinal visual cue
+  n_vis: 50                   # gaussian receptive fields, retinal visual cue
   n_prop: 50                   # number of neurons for encoding push-pull code, proprioceptive hand
-  n_eye: 30                    # push-pull code, eye position
-  visual_field: [-40.0, 40.0]
-  rf_width: 8.0
-  gain_K: 10.0                 # activity gain = gain_K / variance
+  n_eye: 50                   # push-pull code, eye position
+  visual_field: [-75.0, 75.0]
+  rf_width: 10.0
+  gain_K: 50.0                 # activity gain = gain_K / variance
   slope_range: [-1.0, 1.0]
   intercept_range: [0.0, 10.0]
   poisson_noise: true
@@ -65,7 +65,7 @@ training:
 # --------------------------------------------------------------------------- #
 analysis:
   disparity_grid: [-30, -20, -15, -10, -5, -2, 0, 2, 5, 10, 15, 20, 30]
-  reliability_levels: [2.0, 8.0, 16.0]
+  reliability_levels: [2.0, 6, 8.0, 10, 12, 16.0]
   min_separation: 1.0          # deg; below this the implied fusion weight is unstable
   ridge_alpha: 1.0
   decoder_test_size: 0.25

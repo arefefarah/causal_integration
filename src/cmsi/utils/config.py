@@ -60,6 +60,12 @@ def check(cfg):
     gen, model, train = cfg["generative"], cfg["model"], cfg["training"]
     if not 0.0 <= gen["p_common"] <= 1.0:
         raise ValueError("p_common must be in [0, 1]")
+    for key in ("sigma0_sq", "eye_sigma_sq"):
+        # eye_sigma_sq is used by the observer as well as the sampler: it sets how
+        # far the eye measurement is shrunk toward its prior in to_body_frame.
+        # Use float("inf") for a flat prior on eye position.
+        if not gen[key] > 0:
+            raise ValueError(f"{key} must be positive, got {gen[key]}")
     for key in ("sigma2_vis_range", "sigma2_prop_range", "sigma2_eye_range"):
         lo, hi = gen[key]
         if not 0 < lo <= hi:

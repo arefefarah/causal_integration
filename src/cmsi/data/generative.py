@@ -59,9 +59,31 @@ def sample_trials(n, gen, rng):
 # --------------------------------------------------------------------------- #
 # The observer, one step per function
 # --------------------------------------------------------------------------- #
-def to_body_frame(x_vis, x_eye, sig2_vis, sig2_eye):
-    """Retinal visual measurement -> body frame. Eye uncertainty adds in."""
-    return x_vis + x_eye, sig2_vis + sig2_eye
+def to_body_frame(x_vis, x_eye, sig2_vis, sig2_eye, eye_mu, eye_sigma_sq):
+    """Retinal visual measurement -> body frame (Eqs. 1/2 of the MSI paper).
+
+    This is the reference-frame transformation
+
+    The eye measurement is first combined with its own prior. That is not a
+    refinement -- it is what the sufficient statistic actually is. Because
+    ``x_vis = s - e + noise`` and ``x_eye = e + noise`` both depend on ``e``,
+    the two are correlated, and the raw sum ``x_vis + x_eye`` is unbiased but
+    not efficient. Shrinking toward the eye prior gives
+
+        var_eye = 1 / (1/sig2_eye + 1/eye_sigma_sq)
+        k       = var_eye / sig2_eye = eye_sigma_sq / (eye_sigma_sq + sig2_eye)
+        eye_hat = k * x_eye + (1 - k) * eye_mu
+
+    Pass ``eye_sigma_sq = np.inf`` for a flat prior on eye position, which
+    recovers the plain ``x_vis + x_eye``, ``sig2_vis + sig2_eye`` of Eqs. 1/2.
+    Both arguments are required rather than defaulted, so the assumption about
+    eye position is always visible at the call site.
+    """
+    prior_precision = 0.0 if np.isinf(eye_sigma_sq) else 1.0 / eye_sigma_sq
+    var_eye = 1.0 / (1.0 / sig2_eye + prior_precision)
+    k = var_eye / sig2_eye
+    eye_hat = k * x_eye + (1.0 - k) * eye_mu
+    return x_vis + eye_hat, sig2_vis + var_eye
 
 
 def single_cue_posterior(x, var, mu0, sigma0_sq):
@@ -119,9 +141,17 @@ def model_average(p, fused_mu, fused_var, seg_mu, seg_var):
 
 
 def observer(d, gen):
-    """Run the whole observer on a trial dict; returns the keys it computes."""
+    """Run the whole observer on a trial dict; returns the keys it computes.
+
+    Order matters and follows the analytical decomposition: the retinal cue is
+    first brought into the body frame using eye position (Eqs. 1/2), and only
+    then integrated with proprioception (Eq. 3). The common-cause decision is
+    likewise made after the transform -- both cues have to be in one frame
+    before their disagreement means anything.
+    """
     x_vis_body, var_vis_body = to_body_frame(
-        d["x_vis"], d["x_eye"], d["sig2_vis"], d["sig2_eye"]
+        d["x_vis"], d["x_eye"], d["sig2_vis"], d["sig2_eye"],
+        gen["eye_mu"], gen["eye_sigma_sq"],
     )
     mu0, s0 = gen["mu0"], gen["sigma0_sq"]
 

@@ -76,7 +76,7 @@ def fusion_weight_by_reliability(curves):
     for level, (centres, means, _) in sorted(curves.items()):
         ax.plot(centres, means, "o-", label=f"sigma2_vis ~ {level:g}")
     ax.set(xlabel="body-frame disparity (deg)", ylabel="weight on fused estimate",
-           ylim=(-0.1, 1.1), title="transition vs cue reliability")
+           ylim=(-0.1, 1.1), title="shift by different cue reliability")
     ax.legend()
     fig.tight_layout()
     return fig

@@ -70,10 +70,41 @@ def test_fused_estimate_leans_toward_the_reliable_cue():
 
 
 def test_body_frame_transform_adds_eye_uncertainty():
-    x, var = to_body_frame(np.array([3.0]), np.array([2.0]),
-                           np.array([1.0]), np.array([4.0]))
+    """Variances ADD here -- this is the frame transformation, not cue
+    combination, so the two uncertainties accumulate rather than shrink."""
+    x, var = to_body_frame(np.array([3.0]), np.array([2.0]), np.array([1.0]),
+                           np.array([4.0]), eye_mu=0.0, eye_sigma_sq=np.inf)
     assert x[0] == 5.0
     assert var[0] == 5.0
+
+
+def test_eye_prior_shrinks_the_eye_contribution():
+    """With a proper prior on eye position the measurement is pulled toward it,
+    and the transformed estimate is correspondingly more certain."""
+    args = (np.array([3.0]), np.array([2.0]), np.array([1.0]), np.array([4.0]))
+    flat_x, flat_var = to_body_frame(*args, eye_mu=0.0, eye_sigma_sq=np.inf)
+    x, var = to_body_frame(*args, eye_mu=0.0, eye_sigma_sq=25.0)
+
+    k = 25.0 / (25.0 + 4.0)
+    assert x[0] == pytest.approx(3.0 + k * 2.0)
+    assert var[0] == pytest.approx(1.0 + 1 / (1 / 4.0 + 1 / 25.0))
+    assert abs(x[0] - 3.0) < abs(flat_x[0] - 3.0)
+    assert var[0] < flat_var[0]
+
+
+def test_eye_prior_gives_a_better_body_frame_estimate(cfg, rng):
+    """The raw sum x_vis + x_eye is unbiased but not efficient: the two share e,
+    so they are correlated and the sum is not the sufficient statistic. Ignoring
+    the eye prior therefore costs accuracy against the true source."""
+    d = sample_trials(50000, cfg["generative"], rng)
+    gen = cfg["generative"]
+    shared = (d["x_vis"], d["x_eye"], d["sig2_vis"], d["sig2_eye"])
+
+    raw, _ = to_body_frame(*shared, eye_mu=gen["eye_mu"], eye_sigma_sq=np.inf)
+    optimal, _ = to_body_frame(*shared, eye_mu=gen["eye_mu"],
+                               eye_sigma_sq=gen["eye_sigma_sq"])
+
+    assert np.mean((optimal - d["s_vis"]) ** 2) < np.mean((raw - d["s_vis"]) ** 2)
 
 
 # --------------------------------------------------------------------------- #

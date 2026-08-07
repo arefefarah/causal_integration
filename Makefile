@@ -6,8 +6,9 @@
 .DEFAULT_GOAL := help
 .PHONY: help setup test lint format data train analyze figures all quick clean clean-runs
 
-RUN  ?= baseline
-DATA ?= main
+RUN    ?= baseline
+DATA   ?= main
+CONFIG ?= configs/default.yaml
 
 help:  ## show this list
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -28,8 +29,8 @@ format:  ## fix what ruff can fix automatically
 	poetry run ruff check --fix .
 
 data:  ## generate the main dataset and the always-fuse twin
-	poetry run python scripts/01_generate_data.py --name $(DATA)
-	poetry run python scripts/01_generate_data.py --name twin --head fused
+	poetry run python scripts/01_generate_data.py --config $(CONFIG) --name $(DATA)
+	poetry run python scripts/01_generate_data.py --config $(CONFIG) --name twin --head fused
 
 train:  ## train on DATA into results/RUN
 	poetry run python scripts/02_train.py --data $(DATA) --run $(RUN)
@@ -40,11 +41,11 @@ analyze:  ## compare RUN against the analytical observer
 figures:  ## render every figure for RUN
 	poetry run python scripts/04_figures.py --run $(RUN)
 
-all:  ## the whole pipeline, including the control twin
-	poetry run bash scripts/run_all.sh
+all:  ## whole pipeline + control twin  (make all CONFIG=configs/wide_rf.yaml)
+	poetry run bash scripts/run_all.sh --config $(CONFIG)
 
-quick:  ## the whole pipeline, small and fast
-	poetry run bash scripts/run_all.sh quick
+quick:  ## whole pipeline, small and fast  (accepts CONFIG= too)
+	poetry run bash scripts/run_all.sh --config $(CONFIG) --quick
 
 clean:  ## remove caches and compiled files
 	find . -name '__pycache__' -type d -prune -exec rm -rf {} +
