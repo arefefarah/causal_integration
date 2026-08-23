@@ -55,10 +55,21 @@ def analyse(run, twin=None):
     # only meaningful for the causal head: the twin always fuses, so w == 1
     # by construction and there is nothing to compare against.
     if cfg["model"]["head"] == "causal":
+        # The same weight can be read off EITHER output, since both are mixtures
+        # of the same two hypotheses with the same p. The denominators differ:
+        #   fused - seg_vis   is proportional to Pp  (proprioception's pull)
+        #   fused - seg_prop  is proportional to Pv  (vision's pull)
+        # so whichever cue is more reliable gives the better-conditioned readout.
+        # With vision the more precise cue, the prop-side estimate is the less
+        # noisy of the two. Both still vanish at zero disparity.
         w = analysis.fusion_weight(pred[:, 0], d["seg_vis_mu"], d["fused_mu"],
                                    acfg["min_separation"])
+        w_prop = analysis.fusion_weight(pred[:, 2], d["seg_prop_mu"], d["fused_mu"],
+                                        acfg["min_separation"])
         arrays["fusion_weight"] = w
+        arrays["fusion_weight_prop"] = w_prop
         metrics["implied_weight_vs_p_common"] = analysis.compare(d["p_common"], w)
+        metrics["implied_weight_vs_p_common_prop"] = analysis.compare(d["p_common"], w_prop)
 
         midpoint, sharpness = analysis.transition_fit(np.abs(d["disparity"]), w)
         opt_mid, opt_sharp = analysis.transition_fit(np.abs(d["disparity"]), d["p_common"])
@@ -66,8 +77,9 @@ def analyse(run, twin=None):
             "network": {"midpoint_deg": midpoint, "sharpness": sharpness},
             "analytical": {"midpoint_deg": opt_mid, "sharpness": opt_sharp},
         }
-        print("\nimplied fusion weight vs analytical p(C=1):",
-              _round(metrics["implied_weight_vs_p_common"]))
+        print("\nimplied fusion weight vs analytical p(C=1)")
+        print("  from mu_vis :", _round(metrics["implied_weight_vs_p_common"]))
+        print("  from mu_prop:", _round(metrics["implied_weight_vs_p_common_prop"]))
         print("transition midpoint (deg):  network "
               f"{midpoint:.2f}   analytical {opt_mid:.2f}")
 

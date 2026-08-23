@@ -91,6 +91,6 @@ analysis:
   # default one to capture the segregated tail.
   disparity_grid: [-40, -30, -20, -15, -10, -5, -2, 0, 2, 5, 10, 15, 20, 30, 40]
   reliability_levels: [1.0, 2.0, 3.5]   # must lie inside sigma2_vis_range
-  min_separation: 1.0
+  min_separation: 1
   ridge_alpha: 1.0
   decoder_test_size: 0.25

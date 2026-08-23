@@ -49,6 +49,7 @@ def main(args):
         d = subset(d_full, splits["test"])
 
         w = saved["fusion_weight"] if "fusion_weight" in saved.files else None
+        w_prop = saved["fusion_weight_prop"] if "fusion_weight_prop" in saved.files else None
         curves = None
         if w is not None:
             curves = analysis.by_reliability(
@@ -59,7 +60,7 @@ def main(args):
         metrics = load_json(out / "metrics.json") if (out / "metrics.json").exists() else {}
         figs = results.all_figures(
             saved["pred"], d, d_full["target_names"], cfg["analysis"],
-            w=w, curves=curves,
+            w=w, w_prop=w_prop, curves=curves,
             decoding=metrics.get("p_common_decoding_r2"),
             twin_decoding=metrics.get("twin_p_common_decoding_r2"))
         written += save_figures(figs, out / "figures" / "model")

@@ -51,21 +51,33 @@ def p_common_vs_disparity(disparity, p_common, grid):
     return fig
 
 
-def fusion_weight_curve(disparity, w_network, p_analytical, grid):
+def fusion_weight_curve(disparity, w_network, p_analytical, grid, w_prop=None):
     """The key panel: implied network weight against the optimal weight p(C=1).
 
-    Trials near zero disparity are dropped by fusion_weight (fused ~= segregated),
-    so the very centre of the curve rests on fewer trials and is noisier.
-    """
-    c_net, m_net, _ = mean_by_bin(disparity, w_network, grid)
-    c_opt, m_opt, _ = mean_by_bin(disparity, p_analytical, grid)
+    Both output columns encode the same weight, so `w_network` (from mu_vis) and
+    `w_prop` (from mu_prop) are two readings of one quantity. Their denominators
+    are proportional to Pp and Pv respectively, so the one derived from the LESS
+    reliable cue is the better conditioned of the two.
 
-    fig, ax = plt.subplots(figsize=(5.5, 4))
+    Near zero disparity the two hypotheses coincide and no reading is possible
+    from either -- fusion_weight returns NaN there, so the centre of the curve
+    rests on few trials and swings wildly. That is a property of the estimator,
+    not of the network.
+    """
+    fig, ax = plt.subplots(figsize=(5.8, 4))
+    c_opt, m_opt, _ = mean_by_bin(disparity, p_analytical, grid)
     ax.plot(c_opt, m_opt, "--o", color=COLORS["analytical"], label="analytical p(C=1)")
-    ax.plot(c_net, m_net, "o-", color=COLORS["network"], label="network implied weight")
+
+    c_net, m_net, _ = mean_by_bin(disparity, w_network, grid)
+    ax.plot(c_net, m_net, "o-", color=COLORS["network"], label="implied, from mu_vis")
+
+    if w_prop is not None:
+        c_p, m_p, _ = mean_by_bin(disparity, w_prop, grid)
+        ax.plot(c_p, m_p, "s-", color=COLORS["prop"], label="implied, from mu_prop")
+
     ax.set(xlabel="body-frame disparity (deg)", ylabel="weight on fused estimate",
            ylim=(-0.1, 1.1), title="fusion -> segregation transition")
-    ax.legend()
+    ax.legend(fontsize=9)
     fig.tight_layout()
     return fig
 
@@ -113,7 +125,7 @@ def decoding_comparison(by_model, title="emergent vs imposed"):
 
 
 def all_figures(pred, d, names, analysis_cfg, w=None, curves=None,
-                decoding=None, twin_decoding=None):
+                decoding=None, twin_decoding=None, w_prop=None):
     """Every model figure -> results/<run>/figures/model.
 
     `d` should already be restricted to the trials `pred` was computed on
@@ -129,7 +141,8 @@ def all_figures(pred, d, names, analysis_cfg, w=None, curves=None,
     }
     if w is not None:
         figs["04_fusion_weight"] = fusion_weight_curve(
-            d["disparity"], w, d["p_common"], analysis_cfg["disparity_grid"])
+            d["disparity"], w, d["p_common"], analysis_cfg["disparity_grid"],
+            w_prop=w_prop)
     if curves:
         figs["05_fusion_weight_by_reliability"] = fusion_weight_by_reliability(curves)
     if decoding:

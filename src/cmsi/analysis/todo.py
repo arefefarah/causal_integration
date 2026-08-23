@@ -42,3 +42,13 @@ def ablation(model, X, unit_mask):
     """Silence sub-populations of MSL and look for a dissociation: does the
     location estimate degrade while the implied p(C=1) survives, or vice versa?"""
     raise NotImplementedError
+
+
+
+#another to do coming from my discussion with claude :
+# Keep the SIL/MSL structure and unit-level analyses intact, and add two: classify MSL units by congruency
+# (correlate each unit's response to visual-position sweeps vs. proprioceptive-position sweeps, Rideaux's Eq. 11 logic)
+# to test whether congruent/opposite subpopulations emerge, and test whether the congruent–opposite activity balance predicts the network('s p(C) output.
+# If it does, 'you')d be showing that the mechanism Rideaux found
+# in a visual-vestibular fusion/scission network also emerges when a network is trained directly on the Bayes-optimal mixture and
+# must simultaneously solve a coordinate transformation — that's the distinctive contribution of this design.

@@ -13,7 +13,7 @@ seed: 0
 # --------------------------------------------------------------------------- #
 generative:
   p_common: 0.5
-  mu0: 0.0                     # spatial prior mean
+  mu0: 0.0                     # spatial prior mean on hand position:
   sigma0_sq: 100.0             # spatial prior variance
   eye_mu: 0.0
   eye_sigma_sq: 25.0
