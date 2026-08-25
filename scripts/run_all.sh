@@ -18,7 +18,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-CONFIG="configs/default.yaml"
+CONFIG="configs/flagship.yaml"
 NAME=""
 N=""
 EPOCHS=""
@@ -67,6 +67,9 @@ echo "config : $CONFIG"
 echo "name   : $NAME"
 echo
 
+echo "=== 0. calibrate (design SS8: gate before any training) ==="
+python scripts/00_calibrate.py --config "$CONFIG"
+
 echo "=== 1. data ==============================================="
 python scripts/01_generate_data.py --config "$CONFIG" --name "$NAME"        $N_ARG
 python scripts/01_generate_data.py --config "$CONFIG" --name "${NAME}_twin" $N_ARG --head fused
@@ -76,7 +79,16 @@ python scripts/02_train.py --data "$NAME"        --run "$NAME"        $EPOCH_ARG
 python scripts/02_train.py --data "${NAME}_twin" --run "${NAME}_twin" $EPOCH_ARG
 
 echo "=== 3. analyse ============================================"
-python scripts/03_analyze.py --run "$NAME" --twin "${NAME}_twin"
+# Hand stage 3 the p_common=1 control's sigma_out (SS7.1) only if that control
+# has actually been analysed with THIS version of the script -- an old
+# metrics.json has no residual_std field. Stage 3 also degrades gracefully, so
+# this test is belt and braces.
+CONTROL_ARG=""
+if [[ -f "results/pcommon1/metrics.json" ]] \
+   && grep -q '"residual_std"' "results/pcommon1/metrics.json"; then
+  CONTROL_ARG="--control pcommon1"
+fi
+python scripts/03_analyze.py --run "$NAME" --twin "${NAME}_twin" $CONTROL_ARG
 
 echo "=== 4. figures ============================================"
 python scripts/04_figures.py --run "$NAME"

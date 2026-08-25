@@ -124,24 +124,166 @@ def decoding_comparison(by_model, title="emergent vs imposed"):
     return fig
 
 
+def position_regression_scatter(pred_col, seg, fused, post, reg, output_name):
+    """SS7.1 headline: (estimate - seg) against w_opt * Delta, with the fit."""
+    x = post * (fused - seg)
+    y = pred_col - seg
+    fig, ax = plt.subplots(figsize=(5.2, 4.6))
+    ax.scatter(x, y, s=2, alpha=0.15, color=COLORS["network"])
+    lo, hi = np.percentile(x, [0.5, 99.5])
+    ax.plot([lo, hi], [lo, hi], "--", lw=1, color=COLORS["analytical"],
+            label="Bayes-optimal (slope 1)")
+    ax.plot([lo, hi], [reg["slope"] * lo + reg["intercept"],
+                       reg["slope"] * hi + reg["intercept"]],
+            lw=1.5, color=COLORS["network"],
+            label=f"fit: slope {reg['slope']:.2f} "
+                  f"[{reg['slope_ci95'][0]:.2f}, {reg['slope_ci95'][1]:.2f}]")
+    ax.set(xlabel="w_opt * (fused - seg)  (deg)",
+           ylabel="network - seg  (deg)",
+           title=f"position-domain regression: {output_name}")
+    ax.legend(fontsize=8)
+    fig.tight_layout()
+    return fig
+
+
+def variance_hump(sig, output_name):
+    """SS7.3: network Var output vs posterior bin, with the analytical mixture
+    variance, its between-component term, and the humpless fixed-weight line."""
+    c = np.asarray(sig["centres"])
+    fig, ax = plt.subplots(figsize=(5.8, 4.2))
+    ax.plot(c, sig["mixture"], "--o", color=COLORS["analytical"],
+            label="analytical mixture variance")
+    ax.plot(c, sig["net"], "o-", color=COLORS["network"], label="network output")
+    ax.plot(c, sig["between"], ":", color=COLORS["analytical"],
+            label="between-component term w(1-w)d^2")
+    ax.plot(c, sig["fixed"], "-", lw=1, color=COLORS.get("prop", "gray"),
+            label="best fixed-weight (no hump)")
+    ax.set(xlabel="analytical p(C=1|x)", ylabel="variance (deg^2)",
+           title=f"uncertainty vs causal ambiguity: {output_name}")
+    ax.legend(fontsize=8)
+    fig.tight_layout()
+    return fig
+
+
+def model_comparison_curves(mc, output_name):
+    """SS7.4: per-posterior-decile implied weight, network vs the five strategies.
+
+    The left panel is the discriminating one: model AVERAGING predicts a smooth
+    sigmoid tracking the posterior, model SELECTION a step at p = 0.5. The
+    per-bin weight is a least-squares slope, not a mean of signed biases --
+    the latter cancels within a bin because the disparity is signed.
+    """
+    c = np.asarray(mc["bin_centres"])
+    fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.2))
+    axes[0].plot(c, mc["bin_weight_net"], "ko-", lw=2, label="network", zorder=5)
+    for k in ("averaging", "integration", "segregation", "selection", "fixed"):
+        axes[0].plot(c, mc["bin_weight"][k], "--", label=k)
+    axes[0].set(xlabel="analytical p(C=1|x) (decile centres)",
+                ylabel="implied weight on the fused estimate",
+                ylim=(-0.15, 1.15),
+                title=f"per-decile weight: {output_name}")
+    axes[0].legend(fontsize=8)
+    for k in ("averaging", "integration", "segregation", "selection", "fixed"):
+        axes[1].plot(c, mc["bin_rmse"][k], "o-", label=k)
+    axes[1].set(xlabel="analytical p(C=1|x) (decile centres)",
+                ylabel="RMSE vs network (deg)",
+                title=f"which strategy explains the network "
+                      f"(best: {mc['best']})")
+    axes[1].legend(fontsize=8)
+    fig.tight_layout()
+    return fig
+
+
+def behavioral_bias(saved):
+    """SS7.6: Kording Fig. 2e analog + conditioning on the inferred cause."""
+    fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.2))
+    axes[0].plot(saved["bias_centres"], saved["bias_net"], "o-",
+                 color=COLORS["network"], label="network")
+    if "bias_opt" in saved:
+        axes[0].plot(saved["bias_centres_opt"], saved["bias_opt"], "--o",
+                     color=COLORS["analytical"], label="Bayes-optimal")
+    axes[0].axhline(0, lw=0.5, color="gray")
+    axes[0].set(xlabel="body-frame disparity (deg)",
+                ylabel="hand-report pull toward vision (deg)",
+                title="bias vs disparity (Kording 2e analog)")
+    axes[0].legend(fontsize=8)
+    for label, style in (("common", "o-"), ("separate", "s-")):
+        c = saved.get(f"cond_bias_{label}_centres")
+        b = saved.get(f"cond_bias_{label}")
+        if c is not None and len(c):
+            axes[1].plot(c, b, style, label=f"inferred {label} cause")
+    axes[1].axhline(0, lw=0.5, color="gray")
+    axes[1].set(xlabel="|disparity| (deg)", ylabel="bias (deg)",
+                title="conditioned on the network's causal judgment (3b-c)")
+    axes[1].legend(fontsize=8)
+    fig.tight_layout()
+    return fig
+
+
+def congruency_panels(saved, balance_stats=None):
+    """SS7.5: congruency-index distribution + balance-vs-posterior scatter."""
+    idx = saved["congruency_index"]
+    has_balance = "congruent_opposite_balance" in getattr(saved, "files", saved)
+    fig, axes = plt.subplots(1, 2 if has_balance else 1,
+                             figsize=(10.5 if has_balance else 5.5, 4.2))
+    axes = np.atleast_1d(axes)
+    axes[0].hist(idx, bins=30, color=COLORS["network"])
+    axes[0].axvline(0.5, ls="--", lw=1, color=COLORS["analytical"])
+    axes[0].axvline(-0.5, ls="--", lw=1, color=COLORS["analytical"])
+    axes[0].set(xlabel="congruency index (corr of vis vs prop tuning)",
+                ylabel="MSL units", title="congruent / opposite units")
+    if has_balance:
+        bal = saved["congruent_opposite_balance"]
+        post = saved["post_c1"]
+        axes[1].scatter(bal, post, s=3, alpha=0.2, color=COLORS["network"])
+        title = "balance predicts p(C=1|x)"
+        if balance_stats:
+            title += f"  (corr {balance_stats.get('corr', float('nan')):.2f})"
+        axes[1].set(xlabel="congruent - opposite mean activity",
+                    ylabel="analytical p(C=1|x)", title=title)
+    fig.tight_layout()
+    return fig
+
+
+def rf_shift_hist(saved):
+    """Continuity analysis: distribution of RF shift gains and gain fields."""
+    fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.0))
+    g = saved["rf_shift_gain"]
+    axes[0].hist(g[np.isfinite(g)], bins=30, color=COLORS["network"])
+    axes[0].axvline(0, ls="--", lw=1, color=COLORS["analytical"], label="spatial code")
+    axes[0].axvline(1, ls=":", lw=1, color=COLORS["analytical"], label="retinal code")
+    axes[0].set(xlabel="RF shift gain (d preferred-spatial / d eye)",
+                ylabel="MSL units", title="reference frame of MSL units")
+    axes[0].legend(fontsize=8)
+    gf = saved["rf_gain_field"]
+    axes[1].hist(gf[np.isfinite(gf)], bins=30, color=COLORS["network"])
+    axes[1].set(xlabel="d peak response / d eye  (gain field slope)",
+                ylabel="MSL units", title="eye-position gain fields")
+    fig.tight_layout()
+    return fig
+
+
 def all_figures(pred, d, names, analysis_cfg, w=None, curves=None,
-                decoding=None, twin_decoding=None, w_prop=None):
+                decoding=None, twin_decoding=None, w_prop=None,
+                saved=None, metrics=None):
     """Every model figure -> results/<run>/figures/model.
 
     `d` should already be restricted to the trials `pred` was computed on
-    (use data.subset(d, splits["test"])). `decoding` and `twin_decoding` are
-    {layer: r2} dicts straight out of metrics.json.
+    (use data.subset(d, splits["test"])). `saved` is the analysis.npz mapping,
+    `metrics` the metrics.json dict -- both optional; figures that need them
+    are skipped when absent.
     """
+    metrics = metrics or {}
     target = np.stack([d[k] for k in names], axis=1)
     figs = {
         "01_output_scatter": output_scatter(pred, target, names),
         "02_error_histograms": error_histograms(pred, target, names),
-        "03_p_common_vs_disparity": p_common_vs_disparity(
-            d["disparity"], d["p_common"], analysis_cfg["disparity_grid"]),
+        "03_post_c1_vs_disparity": p_common_vs_disparity(
+            d["disparity"], d["post_c1"], analysis_cfg["disparity_grid"]),
     }
     if w is not None:
         figs["04_fusion_weight"] = fusion_weight_curve(
-            d["disparity"], w, d["p_common"], analysis_cfg["disparity_grid"],
+            d["disparity"], w, d["post_c1"], analysis_cfg["disparity_grid"],
             w_prop=w_prop)
     if curves:
         figs["05_fusion_weight_by_reliability"] = fusion_weight_by_reliability(curves)
@@ -150,4 +292,25 @@ def all_figures(pred, d, names, analysis_cfg, w=None, curves=None,
     if decoding and twin_decoding:
         figs["07_emergent_vs_imposed"] = decoding_comparison(
             {"causal model": decoding, "always-fuse twin": twin_decoding})
+
+    if "position_regression_vis" in metrics:
+        i = names.index("mu_vis")
+        figs["08_position_regression"] = position_regression_scatter(
+            pred[:, i], d["seg_vis_mu"], d["fused_mu"], d["post_c1"],
+            metrics["position_regression_vis"], "mu_vis")
+    if "variance_signature_vis" in metrics:
+        figs["09_variance_hump_vis"] = variance_hump(
+            metrics["variance_signature_vis"], "var_vis")
+        figs["10_variance_hump_prop"] = variance_hump(
+            metrics["variance_signature_prop"], "var_prop")
+    if "model_comparison_vis" in metrics:
+        figs["11_model_comparison"] = model_comparison_curves(
+            metrics["model_comparison_vis"], "mu_vis")
+    if saved is not None and "bias_centres" in getattr(saved, "files", saved):
+        figs["12_behavioral_bias"] = behavioral_bias(saved)
+    if saved is not None and "congruency_index" in getattr(saved, "files", saved):
+        figs["13_congruency"] = congruency_panels(
+            saved, metrics.get("balance_vs_post"))
+    if saved is not None and "rf_shift_gain" in getattr(saved, "files", saved):
+        figs["14_rf_shifts"] = rf_shift_hist(saved)
     return figs

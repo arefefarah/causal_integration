@@ -1,9 +1,34 @@
-# p_common = 1 CONTROL (design SS9.1). Identical to configs/flagship.yaml in
-# every respect except the Bernoulli constant, so the comparison is
-# uncontaminated. Targets must reduce EXACTLY to the always-fuse solution
-# (w == 1); the trained network must reproduce the published behaviour, and its
-# residual output noise sigma_out feeds the sigma_w filter of SS7.1 -- pass it
-# to stage 3 with:  03_analyze.py --run flagship --control pcommon1
+# FLAGSHIP config -- the p_common = 0.5 network of the design document.
+#
+# Derived from configs/matlab_match.yaml by the calibration pass the design
+# demands before any training (SS8 + SS4 + SS3). What changed and why:
+#
+#   sensory noise x0.30   matlab_match put 56% of trials at intermediate
+#                         posteriors; the design asks for ~25% (SS8.1,
+#                         "all-intermediate -> widen sigma_P or tighten sensory
+#                         noise"). Tightening the noise was chosen over widening
+#                         sigma0_sq because it leaves the retinal spread -- and
+#                         therefore the containment rejection rate -- untouched.
+#                         Realised: 25% intermediate, 37% confident.
+#
+#   gain_K 50 -> 180      SS4 Poisson validity. At K=50/rf_width=10 the visual
+#   rf_width 10 -> 6      population's decoded variance ran 26-28% ABOVE the
+#   n_vis 50 -> 76        nominal sigma^2, so every target was miscalibrated in
+#                         exactly the regime causal ambiguity lives in. The
+#                         three changes together bring it to ~2-3%. The
+#                         push-pull (hand / eye) codes were already within 2%
+#                         at every K and are unchanged in kind.
+#
+#   visual_field +-85     SS3 range containment. Retinal sd is 27.6 deg here;
+#                         +-85 with a 2*rf_width margin rejects 0.8% of trials,
+#                         inside the design's "keep rejection < a few %".
+#                         (matlab_match's +-75/rf_width 10 would have rejected
+#                         4.6%, and had no rejection mechanism at all.)
+#
+#   equal group sizes     76 units per population, matching the earlier project.
+#
+# Every satellite and control (configs/pcommon*.yaml) is this file with ONLY
+# the Bernoulli constant changed, per SS9.3.
 #
 # Units: positions in degrees, variances in deg^2.
 
@@ -15,7 +40,7 @@ seed: 0
 #   vision is retinal (needs the eye signal), proprioception is body-framed
 # --------------------------------------------------------------------------- #
 generative:
-  p_common: 1.0
+  p_common: 0.5
 
   mu0: 0.0                     # spatial prior mean on hand position
   sigma0_sq: 425.0             # hand sd 20.6 deg

@@ -22,7 +22,7 @@ def test_dataset_survives_a_round_trip(cfg, tmp_path):
     assert loaded_cfg == cfg
     assert loaded["target_names"] == d["target_names"]
     assert np.array_equal(loaded["X"], d["X"])
-    assert np.array_equal(loaded["p_common"], d["p_common"])
+    assert np.array_equal(loaded["post_c1"], d["post_c1"])
     assert all(np.array_equal(loaded["encoders"][k], v)
                for k, v in d["encoders"].items())
 

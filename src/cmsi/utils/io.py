@@ -45,6 +45,11 @@ def load_dataset(path):
             d["encoders"][key[len(_ENC_PREFIX):]] = z[key]
         else:
             d[key] = z[key]
+    # back-compat: datasets written before the rename stored the trial-wise
+    # posterior p(C=1|x) under the confusing name "p_common" (the config key
+    # for the PRIOR). Re-expose it as post_c1.
+    if "post_c1" not in d and "p_common" in d:
+        d["post_c1"] = d.pop("p_common")
     return d, cfg
 
 

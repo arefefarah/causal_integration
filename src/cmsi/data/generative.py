@@ -17,8 +17,9 @@ and produces the four supervised targets:
     mu_vis, var_vis, mu_prop, var_prop
 
 each the model-averaged optimal estimate (Eqs. 9/10) and the variance of the
-same two-component mixture posterior. p(C=1|x) is computed on the way there but
-is neither an input nor an output: the network has to infer it implicitly.
+same two-component mixture posterior. The trial-wise posterior p(C=1|x) is
+computed on the way there (stored as "post_c1") but is neither an input nor an
+output: the network has to infer it implicitly.
 
 Trials are one flat dict of arrays, so you can mask them freely:
     hi = d["sig2_vis"] < 2
@@ -32,8 +33,10 @@ from scipy.special import expit
 # --------------------------------------------------------------------------- #
 # Sampling
 # --------------------------------------------------------------------------- #
-def sample_trials(n, gen, rng):
-    """Sample latents and render noisy measurements. `gen` is cfg["generative"]."""
+def _draw_trials(n, gen, rng):
+    """One raw draw of n trials -- the strict sampling order of the design (SS3)."""
+
+    # creates an array named C containing 500 random elements consisting of either 1 or 2, based on a 50 / 50 probability.\
     C = np.where(rng.random(n) < gen["p_common"], 1, 2)
 
     sigma0 = np.sqrt(gen["sigma0_sq"])
@@ -54,6 +57,55 @@ def sample_trials(n, gen, rng):
         "x_eye": rng.normal(eye, np.sqrt(sig2_eye)),
         "x_prop": rng.normal(s_prop, np.sqrt(sig2_prop)),
     }
+
+
+def sample_trials(n, gen, rng, contain=None):
+    """Sample latents and render noisy measurements. `gen` is cfg["generative"].
+
+    contain (design SS3 range containment / failure mode #9): optional
+    (lo, hi) bounds on the RETINAL VISUAL MEASUREMENT x_vis -- normally the
+    encoded visual field pulled in by a 2*rf_width margin. Trials whose x_vis
+    falls outside are rejected and redrawn through the identical code path, so
+    the rejection rule is structurally the same for C=1 and C=2 (the marginal
+    of x_vis is identical under both, so rejection cannot become a C cue).
+    The realised rejection rate is returned under "rejection_rate" (length-1
+    array); keep it below a few percent -- truncation slightly deforms the
+    effective prior relative to the Gaussian the targets assume (SS3 note).
+    """
+    d = _draw_trials(n, gen, rng)
+    if contain is None:
+        d["rejection_rate"] = np.array([0.0])
+        return d
+
+    lo, hi = contain
+    n_rejected, n_drawn = 0, n
+    for _ in range(100):                       # safety cap; never reached in practice
+        bad = (d["x_vis"] < lo) | (d["x_vis"] > hi)
+        if not bad.any():
+            break
+        n_rejected += int(bad.sum())
+        n_drawn += int(bad.sum())
+        redraw = _draw_trials(int(bad.sum()), gen, rng)
+        for key, value in redraw.items():
+            d[key][bad] = value
+    else:
+        raise RuntimeError("containment resampling did not converge -- "
+                           "the bounds exclude too much of the x_vis distribution")
+    d["rejection_rate"] = np.array([n_rejected / n_drawn])
+    return d
+
+
+def containment_bounds(enc, n_widths=2.0):
+    """(lo, hi) for x_vis: the encoded visual field pulled in by n_widths*rf_width.
+
+    Returns None when the field already contains everything worth keeping
+    (margin >= half the field would reject everything).
+    """
+    lo, hi = enc["visual_field"]
+    margin = n_widths * enc["rf_width"]
+    if hi - margin <= lo + margin:
+        raise ValueError("visual_field too narrow for the containment margin")
+    return lo + margin, hi - margin
 
 
 # --------------------------------------------------------------------------- #
@@ -178,5 +230,8 @@ def observer(d, gen):
         "seg_vis_mu": seg_vis_mu, "seg_vis_var": seg_vis_var,
         "seg_prop_mu": seg_prop_mu, "seg_prop_var": seg_prop_var,
         "fused_mu": fused_mu, "fused_var": fused_var,
-        "log_bf": log_bf, "p_common": p,
+        # NOTE the name: post_c1 is the TRIAL-WISE POSTERIOR p(C=1|x), not the
+        # prior p_common in the config. Decoding analyses must target this
+        # (design SS7.5 / failure mode #1: decode p(C=1|x), never p_common).
+        "log_bf": log_bf, "post_c1": p,
     }

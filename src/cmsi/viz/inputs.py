@@ -68,7 +68,7 @@ def latent_distributions(d):
     fig, axes = plt.subplots(1, 3, figsize=(13, 3.6))
     axes[0].hist(d["disparity"], bins=60, color=COLORS["network"])
     axes[0].set(title="body-frame disparity", xlabel="deg")
-    axes[1].hist(d["p_common"], bins=60, color=COLORS["network"])
+    axes[1].hist(d["post_c1"], bins=60, color=COLORS["network"])
     axes[1].set(title="analytical p(C=1)", xlabel="probability")
     for sig, color in [("sig2_vis", "visual"), ("sig2_prop", "prop"), ("sig2_eye", "eye")]:
         axes[2].hist(d[sig], bins=40, alpha=0.5, label=sig, color=COLORS[color])

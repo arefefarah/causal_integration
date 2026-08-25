@@ -46,10 +46,14 @@ def push_pull_code(x, slope, intercept, gain):
     return gain[:, None] * np.clip(drive, 0, None)
 
 
-def encode_groups(d, encoders, enc, rng):
-    """The three population codes, as a dict of (n_trials, n_units) arrays."""
+def encode_groups(d, encoders, enc, rng, return_clean=False):
+    """The three population codes, as a dict of (n_trials, n_units) arrays.
+
+    With return_clean=True, returns (noisy_groups, clean_groups): the pre-Poisson
+    rates (design SS8.5 asks the noiseless activations to be saved per trial).
+    """
     K = enc["gain_K"]
-    groups = {
+    clean = {
         "visual_hand": gaussian_code(
             d["x_vis"], encoders["rf_centers"], enc["rf_width"], K / d["sig2_vis"]
         ),
@@ -62,16 +66,26 @@ def encode_groups(d, encoders, enc, rng):
             K / d["sig2_eye"]
         ),
     }
+    groups = clean
     if enc["poisson_noise"]:
         groups = {k: rng.poisson(np.clip(v, 0, None)).astype(float)
-                  for k, v in groups.items()}
-    return groups
+                  for k, v in clean.items()}
+    return (groups, clean) if return_clean else groups
 
 
-def encode(d, encoders, enc, rng):
-    """Concatenated network input X, shape (n_trials, n_vis + n_prop + n_eye)."""
+def encode(d, encoders, enc, rng, return_clean=False):
+    """Concatenated network input X, shape (n_trials, n_vis + n_prop + n_eye).
+
+    With return_clean=True, returns (X, X_clean) where X_clean holds the
+    noiseless (pre-Poisson) rates in the same layout.
+    """
+    order = ("visual_hand", "prop_hand", "prop_eye")
+    if return_clean:
+        g, clean = encode_groups(d, encoders, enc, rng, return_clean=True)
+        return (np.concatenate([g[k] for k in order], axis=1),
+                np.concatenate([clean[k] for k in order], axis=1))
     g = encode_groups(d, encoders, enc, rng)
-    return np.concatenate([g["visual_hand"], g["prop_hand"], g["prop_eye"]], axis=1)
+    return np.concatenate([g[k] for k in order], axis=1)
 
 
 def group_slices(enc):

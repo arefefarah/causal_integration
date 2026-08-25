@@ -61,8 +61,9 @@ def main(args):
         figs = results.all_figures(
             saved["pred"], d, d_full["target_names"], cfg["analysis"],
             w=w, w_prop=w_prop, curves=curves,
-            decoding=metrics.get("p_common_decoding_r2"),
-            twin_decoding=metrics.get("twin_p_common_decoding_r2"))
+            decoding=metrics.get("post_c1_decoding_r2"),
+            twin_decoding=metrics.get("twin_post_c1_decoding_r2"),
+            saved=saved, metrics=metrics)
         written += save_figures(figs, out / "figures" / "model")
 
     for path in written:

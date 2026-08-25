@@ -193,4 +193,4 @@ def test_low_disparity_trials_are_judged_more_common(cfg, rng):
     out = observer(d, cfg["generative"])
     near = np.abs(out["disparity"]) < 2
     far = np.abs(out["disparity"]) > 20
-    assert out["p_common"][near].mean() > out["p_common"][far].mean()
+    assert out["post_c1"][near].mean() > out["post_c1"][far].mean()

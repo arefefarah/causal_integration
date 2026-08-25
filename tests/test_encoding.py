@@ -109,6 +109,6 @@ def test_subset_keeps_trials_aligned(dataset):
     idx = np.array([5, 1, 99, 3])
     part = subset(dataset, idx)
     assert np.array_equal(part["X"], dataset["X"][idx])
-    assert np.array_equal(part["p_common"], dataset["p_common"][idx])
+    assert np.array_equal(part["post_c1"], dataset["post_c1"][idx])
     assert np.array_equal(part["mu_vis"], dataset["Y"][idx, 0])
     assert part["target_names"] == dataset["target_names"]

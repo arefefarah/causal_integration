@@ -4,11 +4,11 @@
 # environment first.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup test lint format data train analyze figures all quick clean clean-runs
+.PHONY: help setup test lint format calibrate data train analyze figures all quick clean clean-runs
 
 RUN    ?= baseline
 DATA   ?= main
-CONFIG ?= configs/default.yaml
+CONFIG ?= configs/flagship.yaml
 
 help:  ## show this list
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -27,6 +27,9 @@ lint:  ## check style and imports
 
 format:  ## fix what ruff can fix automatically
 	poetry run ruff check --fix .
+
+calibrate:  ## SS8 pre-training calibration gate for CONFIG
+	poetry run python scripts/00_calibrate.py --config $(CONFIG)
 
 data:  ## generate the main dataset and the always-fuse twin
 	poetry run python scripts/01_generate_data.py --config $(CONFIG) --name $(DATA)

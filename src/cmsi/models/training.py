@@ -38,7 +38,11 @@ def train(d, cfg, seed=None, splits=None, verbose=True):
     X = torch.as_tensor(d["X"], dtype=torch.float32, device=device)
     Y = torch.as_tensor(d["Y"], dtype=torch.float32, device=device)
     if splits is None:
-        splits = split_indices(len(X), train_cfg["split"], rng)
+        # Stratify over the analytical posterior (SS8.4) so the held-out set
+        # covers every posterior decile; falls back to a plain shuffle when the
+        # dataset predates the post_c1 key.
+        splits = split_indices(len(X), train_cfg["split"], rng,
+                               stratify=d.get("post_c1"))
     train_idx = torch.as_tensor(np.asarray(splits["train"]), device=device)
     val_idx = torch.as_tensor(np.asarray(splits["val"]), device=device)
 

@@ -1,9 +1,6 @@
-# p_common = 1 CONTROL (design SS9.1). Identical to configs/flagship.yaml in
-# every respect except the Bernoulli constant, so the comparison is
-# uncontaminated. Targets must reduce EXACTLY to the always-fuse solution
-# (w == 1); the trained network must reproduce the published behaviour, and its
-# residual output noise sigma_out feeds the sigma_w filter of SS7.1 -- pass it
-# to stage 3 with:  03_analyze.py --run flagship --control pcommon1
+# SATELLITE p_common = 0.28 (design SS9.3), for direct comparison with the human
+# prior fitted by Kording et al. (2007). Only the Bernoulli constant differs
+# from configs/flagship.yaml -- same seed, same ranges.
 #
 # Units: positions in degrees, variances in deg^2.
 
@@ -15,7 +12,7 @@ seed: 0
 #   vision is retinal (needs the eye signal), proprioception is body-framed
 # --------------------------------------------------------------------------- #
 generative:
-  p_common: 1.0
+  p_common: 0.28
 
   mu0: 0.0                     # spatial prior mean on hand position
   sigma0_sq: 425.0             # hand sd 20.6 deg

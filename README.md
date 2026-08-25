@@ -42,7 +42,8 @@ changes what the lock resolves to.
 pyproject.toml           dependencies, tool config
 poetry.lock              exact pinned versions -- commit this
 Makefile                 shortcuts: make help
-configs/default.yaml     every parameter, in five sections
+configs/flagship.yaml    the calibrated p_common = 0.5 network -- start here
+configs/pcommon{0,1}.yaml the two controls;  pcommon{03,07,028} the satellites
 src/cmsi/
   data/        generative.py   generative model + analytical Bayesian observer
                encoding.py     measurements -> population codes (network input)
@@ -51,7 +52,11 @@ src/cmsi/
                losses.py       the objective and why it is reweighted
                training.py     training loop with early stopping
   analysis/    accuracy.py     readout vs observer, per output
-               causal.py       implied fusion weight, curves, decision strategy
+               causal.py       implied weight, position regression, variance
+                               signature, five-way model comparison
+               calibration.py  the pre-training gate (SS8 / SS4 / SS9.4)
+               units.py        congruent/opposite units, balance, lesion, RF shift
+               behavior.py     Kording-style bias curves
                decoding.py     what the hidden layers carry
                todo.py         placeholders for analyses not yet written
   viz/         inputs.py       what the network is shown
@@ -59,7 +64,8 @@ src/cmsi/
                results.py      network vs observer
                style.py        shared figure defaults
   utils/       config.py  paths.py  seed.py  io.py
-scripts/       01_generate_data  02_train  03_analyze  04_figures  run_all.sh
+scripts/       00_calibrate  01_generate_data  02_train  03_analyze  04_figures
+               run_all.sh
 tests/         property tests on the maths and the stage boundaries
 data/          generated datasets (.npz)      contents gitignored
 results/       one folder per run             contents gitignored
@@ -68,25 +74,37 @@ results/       one folder per run             contents gitignored
 ## Run it
 
 ```bash
-make quick                        # ~2 min: data, train, twin, analysis, figures
-make all                          # the real thing (50k trials)
-make help                         # everything else
+make calibrate CONFIG=configs/flagship.yaml   # the gate -- run this first
+make all       CONFIG=configs/flagship.yaml   # the real thing (50k trials)
+make quick     CONFIG=configs/flagship.yaml   # ~2 min end to end
+make help                                     # everything else
 ```
 
 Or one stage at a time — each reads what the previous one wrote, so you can
 re-run any of them alone:
 
 ```bash
-poetry run python scripts/01_generate_data.py --name main --n 50000
-poetry run python scripts/02_train.py         --data main --run baseline
-poetry run python scripts/03_analyze.py       --run baseline --twin twin
-poetry run python scripts/04_figures.py       --run baseline --only model
+poetry run python scripts/00_calibrate.py     --config configs/flagship.yaml
+poetry run python scripts/01_generate_data.py --config configs/flagship.yaml --name flagship
+poetry run python scripts/02_train.py         --data flagship --run flagship
+poetry run python scripts/03_analyze.py       --run flagship --twin flagship_twin \
+                                              --control pcommon1
+poetry run python scripts/04_figures.py       --run flagship --only model
 ```
+
+Stage 0 is a gate, not a report: it exits non-zero if the config fails a design
+criterion, so `run_all.sh` stops before spending a training run on a dataset
+whose targets are miscalibrated. Run it on any config you edit.
+
+`--control pcommon1` hands stage 3 the p_common = 1 network's residual spread as
+`sigma_out`, which is what makes the per-trial `sigma_w = sigma_out / |Delta|`
+filter meaningful. Without it stage 3 falls back to the run's own residuals,
+which on the flagship also contain any causal-inference misweighting.
 
 ## Tests
 
 ```bash
-make test                    # 48 tests, ~2 seconds
+make test                    # 67 tests, ~40 seconds
 ```
 
 They are property tests, not regression tests: each states something that must
@@ -97,7 +115,13 @@ at p=1 and the segregated one at p=0; the mixture variance exceeds both
 components when they disagree; encoders are reproducible from the seed; splits
 are disjoint; a reloaded checkpoint predicts identically.
 
-Three are worth knowing about specifically:
+Four are worth knowing about specifically:
+
+- `test_targets_match_brute_force_integration` checks the closed-form observer
+  against a numerical integration of the full posterior over (C, source, eye)
+  on a grid. It certifies the whole target derivation at once — likelihoods,
+  the eye-position transform, the prior terms, the mixture variance — so if the
+  targets are ever subtly wrong, this is what says so.
 
 - `test_observer_never_touches_the_true_sources` perturbs the hidden truth and
   asserts the targets don't move. If it ever fails, the labels leak information
@@ -113,7 +137,8 @@ Run them after touching anything in `data/` or `analysis/`.
 ## What a run produces
 
 ```
-results/baseline/
+results/calibration/<config>/     stage 0: the gate's verdict and its figures
+results/<run>/
   config.yaml        the exact parameters that produced this run
   dataset.txt        which dataset it was trained on
   model.pt           weights + config + the train/val/test split
@@ -122,8 +147,10 @@ results/baseline/
   figures/
     inputs/          tuning curves, population heatmaps, gain, latent distributions
     training/        loss curves, per-output loss
-    model/           output scatter, errors, p(C=1) vs disparity, fusion weight,
-                     reliability dependence, decoding, emergent vs imposed
+    model/           output scatter, errors, p(C=1|x) vs disparity, fusion
+                     weight, reliability dependence, decoding, emergent vs
+                     imposed, position regression, variance hump, five-way
+                     model comparison, behavioural bias, congruency, RF shifts
 ```
 
 Two stage boundaries earn their keep. Numbers are separated from figures, so you
@@ -156,6 +183,11 @@ a sub-question:
 reliable = subset(test, test["sig2_vis"] < 2)
 ```
 
+One naming trap worth knowing: `d["post_c1"]` is the **trial-wise posterior**
+`p(C=1|x)`, while `cfg["generative"]["p_common"]` is the **prior**. They used to
+share a name, which is exactly the confusion the design document warns about;
+datasets written before the rename are remapped on load.
+
 `tweak(cfg, p_common=0.8, epochs=100)` copies a config with values replaced; it
 finds the key in whichever section owns it and raises on typos, which matters
 when you're sweeping.
@@ -176,16 +208,51 @@ inference in it has to be built internally.
 
 **`accuracy`** — does the readout match the observer, output by output.
 
+**`position_regression`** — the headline. Regress `(estimate − seg)` on
+`w_opt · Δ` across trials; Bayes-optimal model averaging predicts slope 1,
+intercept 0. No division, so every trial enters with its natural leverage and
+the small-`|Δ|` trials — where behaviour *cannot* reveal the weight — carry
+almost none. Read this before `fusion_weight`.
+
 **`fusion_weight`** — solve `estimate = w·fused + (1−w)·segregated` for `w`.
-Optimal averaging predicts `w == p(C=1)`, so `w` against disparity is the
+Optimal averaging predicts `w == p(C=1|x)`, so `w` against disparity is the
 fusion→segregation transition, and `transition_fit` gives its midpoint and
 sharpness. Trials where the two references nearly coincide are dropped: the
 denominator goes to zero there and a handful of trials would otherwise dominate
-every summary. Per-trial R² on `w` looks bad even when the binned curve tracks
+every summary. `sigma_w` makes that principled — per-trial `sigma_out / |Δ|`,
+filtered at a stated criterion. `joint_fusion_weight` pools both outputs, which
+share one `w`; their agreement on well-conditioned trials is an internal
+coherence test. Per-trial R² on `w` looks bad even when the binned curve tracks
 the optimum closely — single-trial `w` is a noisy ratio, so read the slope and
 the curve, not R².
 
+**`reliability_within_disparity`** — the Bayes-vs-heuristic test. At matched
+disparity the optimal weight still varies with the cue reliabilities; a pure
+disparity heuristic predicts a within-bin slope of 0, Bayes predicts 1.
+
+**`variance_signature`** — the uncertainty channel. The full mixture variance
+carries a between-component term `w(1−w)(fused − seg)²` that humps at
+intermediate ambiguity; no fixed-weight model can produce it. This is the
+analysis that covers the ambiguous zone where the weight recovery is blind.
+
+**`model_comparison`** — network against averaging, full integration, full
+segregation, model selection, and the best fixed-weight model, binned by
+posterior decile. Per bin the implied weight is a least-squares slope, not a
+mean of signed biases — the latter cancels within a bin because Δ is signed.
+Averaging tracks the posterior smoothly; selection steps at 0.5.
+
+**`congruency` / `balance` / `lesion`** — classify MSL units by the correlation
+of their visual- and proprioceptive-sweep tuning (Rideaux's congruency logic),
+then ask whether the congruent−opposite activity balance carries `p(C=1|x)`,
+and what the readout loses when each subpopulation is silenced.
+
+**`bias_vs_disparity` / `conditioned_bias`** — the Körding Fig. 2e and 3b–c
+analogs, the second conditioned on the network's own causal judgment.
+
 **`decode` / `decode_by_layer`** — ridge-decode a latent from a hidden layer.
+The causal target is `post_c1`, the **trial-wise posterior** `p(C=1|x)` — never
+the prior `p_common`, which is one number per network and whose "decoding" would
+just read out a disparity confound.
 Independent of the readout, so it asks "is this represented?" rather than "was it
 trained to output this?". Weak in layer0 and strong in the last layer means the
 network is building it. Running it on the always-fuse twin, which was never asked
@@ -193,9 +260,8 @@ for anything causal, is the emergent-vs-imposed test.
 
 **`strategy_fit`** — model averaging vs model selection vs probability matching.
 
-`analysis/todo.py` holds one-line placeholders for the analyses still to be
-designed: unit indices, population geometry, RF shifts across eye position,
-congruent/opposite unit classification, and MSL ablation.
+`analysis/todo.py` holds one-line placeholders for the two analyses still to be
+designed: per-unit additivity indices and population geometry.
 
 ## Two things that matter for training
 
