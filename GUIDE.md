@@ -995,34 +995,69 @@ restricted to its ambiguous trials.
 
 ### Lesion
 
-Zeros a subpopulation's MSL activations before the read-out and re-measures
-overall RMSE.
+Ablates a subpopulation's MSL units and re-measures the read-out error. Two
+things make this interpretable, and both were added after the first version of
+this analysis gave misleading numbers:
 
-**Your results (RMSE, all four outputs pooled):**
+**1. Mean-clamping, not zeroing.** An ablated unit is clamped to its *mean
+activation across trials*. That removes the unit's information — it no longer
+varies with the trial — while leaving the read-out's operating point intact.
+Zeroing is wrong for a sigmoid layer: on the flagship the per-unit mean
+activations run 0.013 to 0.990 (median 0.408), so forcing a unit to 0 does not
+remove it, it injects a large constant perturbation the read-out's weights and
+biases were never calibrated for. The damage then measures the size of that
+perturbation, not the unit's role.
 
-| run | intact | no congruent | no opposite | no mixed |
+**2. A size-matched random baseline.** Ablating any *k* of 64 units costs
+something. The question is whether ablating *these k* costs more than ablating
+*k arbitrary ones*. For each subpopulation the code draws `n_random` random
+subsets of the same size, ablates each, and reports where the real lesion falls
+in that null distribution as a z-score and a percentile.
+
+**Your flagship, both modes, 200 random draws** (intact RMSE 1.479):
+
+| ablation | k | mode | RMSE | random null | z | percentile |
+|---|---|---|---|---|---|---|
+| congruent | 17 | zero | 10.209 | 7.928 ± 2.100 | +1.09 | 85% |
+| opposite | 24 | zero | 7.546 | 8.876 ± 1.878 | −0.71 | 22% |
+| mixed | 21 | zero | 8.882 | 8.467 ± 2.089 | +0.20 | 70% |
+| **congruent** | 17 | **mean** | **8.696** | 4.986 ± 0.592 | **+6.27** | **100%** |
+| **opposite** | 24 | **mean** | **3.979** | 6.480 ± 0.687 | **−3.64** | **0%** |
+| mixed | 21 | mean | 5.902 | 5.845 ± 0.676 | +0.08 | 53% |
+
+Per output, mean-clamp mode, z against the random baseline:
+
+| ablation | mu_vis | var_vis | mu_prop | var_prop |
 |---|---|---|---|---|
-| flagship | 1.480 | 10.206 | 7.545 | 8.882 |
-| pcommon07 | 1.607 | 8.912 | 7.977 | 7.194 |
-| pcommon028 | 1.313 | 9.765 | 7.481 | 6.552 |
-| pcommon1 | 0.446 | 12.787 | 4.884 | 2.993 |
-| pcommon0 | 0.586 | 11.742 | 8.305 | 5.417 |
+| no congruent | **+7.77** | −1.48 | **+3.11** | −0.88 |
+| no opposite | −3.53 | −0.12 | −2.42 | −1.10 |
+| no mixed | −0.39 | −1.64 | +1.10 | −1.45 |
 
-**How to read it, carefully.** Every lesion is catastrophic — 5× to 20× the
-intact error. That is *not* evidence that each subpopulation is specifically
-important. Zeroing roughly a third of a densely-connected layer's activations
-destroys the read-out's operating point regardless of which third you pick; the
-remaining units' biases no longer sum to anything sensible.
+**How to read it.** Under the corrected ablation the conclusion is specific and
+it is *not* the one the raw numbers first suggested:
 
-The one comparison that does carry information is *within* a run: on
-`pcommon1`, removing congruent units (12.79) hurts far more than removing
-opposite ones (4.88), consistent with an always-fuse network relying on
-congruent cells. On the flagship the gap is much narrower (10.21 vs 7.55),
-consistent with both populations mattering.
+- **Congruent units are load-bearing, strongly and specifically** — z = +6.27
+  overall, and the effect is concentrated in the two *mean* channels (+7.77 on
+  `mu_vis`, +3.11 on `mu_prop`), not the variance channels.
+- **Opposite units are not load-bearing for the read-out at all.** Removing them
+  costs *less* than removing 24 random units (z = −3.64, 0th percentile).
+- **Mixed units are exactly average** (z = +0.08) — unremarkable, which is what
+  the label implies.
 
-To make this analysis properly interpretable it needs a **size-matched random
-lesion** as a baseline — remove *n* random units and compare. That control is
-not currently implemented.
+The same analysis on the always-fuse control `pcommon1` (37 congruent, 6
+opposite) gives congruent z = +5.94 and opposite z = +0.31 — congruent units
+matter there too, and its handful of opposite units do not.
+
+**What this does and does not say.** It says the position estimates are carried
+by congruent units, and that the network does not *need* opposite units to
+produce its four outputs. It does **not** say opposite units carry nothing: the
+balance analysis above shows their activity tracks the posterior at r = 0.50 on
+this same network. A code can carry information redundantly, so that no single
+subpopulation is necessary. Necessity and representation are different
+questions, and this analysis only answers the first.
+
+The earlier reading — "both subpopulations load-bearing" — was an artefact of
+zeroing sigmoid units, and is withdrawn.
 
 ### Reference-frame (RF) shift and gain fields
 

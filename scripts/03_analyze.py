@@ -267,8 +267,21 @@ def analyse(run, twin=None, control=None):
           f"r2 {metrics['balance_vs_post']['r2']:.3f}")
 
     if cong["n_congruent"] > 0 and cong["n_opposite"] > 0:
+        # Mean-clamp ablation against a size-matched random baseline. Both parts
+        # matter: zeroing a sigmoid unit injects a perturbation rather than
+        # removing information, and without the baseline the damage number just
+        # reflects how many units were removed.
         metrics["lesion"] = analysis.lesion_comparison(
-            model, d["X"], cong["classes"], target)
+            model, d["X"], cong["classes"], target,
+            mode="mean", n_random=acfg.get("lesion_n_random", 100))
+        print("MSL lesion (mean-clamp, vs size-matched random baseline):")
+        for lab in ("no_congruent", "no_opposite", "no_mixed"):
+            r = metrics["lesion"].get(lab, {})
+            if "rmse" not in r:
+                continue
+            print(f"  {lab:14s} k={r['n_units']:2d}  rmse {r['rmse']:6.3f}  "
+                  f"random {r['null_mean']:6.3f}+-{r['null_sd']:.3f}  "
+                  f"z={r['z']:+5.2f}")
 
     shifts = analysis.rf_shift(model, d_full["encoders"], cfg)
     metrics["rf_shift_median_gain"] = shifts["median_shift_gain"]

@@ -126,17 +126,10 @@ def balance(acts_layer, classes, post):
 
 
 @torch.no_grad()
-def lesion(model, X, unit_mask, batch_size=4096):
-    """Predictions with a subset of LAST-hidden-layer (MSL) units silenced.
-
-    unit_mask: boolean, True = keep, False = zero the unit's activation before
-    the readout. Zeroing the activation removes exactly that unit's
-    contribution W_out[:, u] * h_u.
-    """
+def msl_activations(model, X, batch_size=4096):
+    """Last-hidden-layer activations, as a numpy array."""
     model.eval()
     device = next(model.parameters()).device
-    mask = torch.as_tensor(np.asarray(unit_mask, float),
-                           dtype=torch.float32, device=device)
     out = []
     for i in range(0, len(X), batch_size):
         xb = torch.as_tensor(np.asarray(X[i:i + batch_size]),
@@ -144,7 +137,53 @@ def lesion(model, X, unit_mask, batch_size=4096):
         h = (xb - model.x_mean) / model.x_std
         for layer in model.layers:
             h = layer(h)
-        o = model.readout(h * mask)
+        out.append(h.cpu().numpy())
+    return np.concatenate(out, axis=0)
+
+
+@torch.no_grad()
+def lesion(model, X, unit_mask, mode="mean", clamp_to=None, batch_size=4096):
+    """Predictions with a subset of LAST-hidden-layer (MSL) units ablated.
+
+    unit_mask: boolean, True = keep, False = ablate.
+
+    mode="mean" (default): each ablated unit is CLAMPED TO ITS MEAN activation
+    across the trials in X. This removes the unit's *information* -- it no
+    longer varies with the trial -- while leaving the read-out's operating
+    point intact.
+
+    mode="zero": each ablated unit is set to 0. Kept for comparison, but it is
+    the wrong ablation for a sigmoid layer and will overstate every effect. A
+    sigmoid unit's resting output is nowhere near 0 (in practice the per-unit
+    means run 0.01-0.99, median ~0.4), so forcing it to 0 does not remove the
+    unit -- it injects a large constant perturbation that the read-out's
+    weights and biases were never calibrated for. The damage then reflects the
+    size of that perturbation, not the unit's role.
+
+    clamp_to: optional per-unit values to clamp to instead of the mean of X.
+    """
+    model.eval()
+    device = next(model.parameters()).device
+    keep = torch.as_tensor(np.asarray(unit_mask, bool), device=device)
+
+    if mode == "mean":
+        ref = msl_activations(model, X, batch_size).mean(0) if clamp_to is None \
+            else np.asarray(clamp_to, float)
+        ref_t = torch.as_tensor(ref, dtype=torch.float32, device=device)
+    elif mode == "zero":
+        ref_t = torch.zeros(int(keep.numel()), dtype=torch.float32, device=device)
+    else:
+        raise ValueError(f"unknown lesion mode {mode!r}")
+
+    out = []
+    for i in range(0, len(X), batch_size):
+        xb = torch.as_tensor(np.asarray(X[i:i + batch_size]),
+                             dtype=torch.float32, device=device)
+        h = (xb - model.x_mean) / model.x_std
+        for layer in model.layers:
+            h = layer(h)
+        h = torch.where(keep, h, ref_t.expand_as(h))
+        o = model.readout(h)
         cols = list(o.unbind(dim=1))
         for c in model.var_cols:
             cols[c] = torch.nn.functional.softplus(cols[c])
@@ -152,23 +191,67 @@ def lesion(model, X, unit_mask, batch_size=4096):
     return np.concatenate(out, axis=0)
 
 
-def lesion_comparison(model, X, classes, target):
-    """RMSE of the readout with each subpopulation silenced (SS7.5 optional).
+def _rmse(pred, target):
+    return float(np.sqrt(((pred - target) ** 2).mean()))
 
-    Silencing congruent units should hurt the fused regime; silencing opposite
-    units should hurt where segregation (and the causal read-out) matters.
+
+def lesion_comparison(model, X, classes, target, mode="mean",
+                      n_random=200, seed=0):
+    """Ablate each subpopulation, against a SIZE-MATCHED RANDOM baseline (SS7.5).
+
+    The baseline is what makes this interpretable. Ablating any k of the 64 MSL
+    units costs something; the question is whether ablating *these* k costs more
+    than ablating k arbitrary ones. For each subpopulation of size k we draw
+    `n_random` random subsets of the same size, ablate each, and report where
+    the real lesion falls in that null distribution:
+
+        z          (rmse - null_mean) / null_sd
+        percentile fraction of random lesions that hurt LESS
+
+    A subpopulation is only "special" if it sits well out in the upper tail.
+    Without this baseline the raw damage number says nothing: it is dominated
+    by how many units were removed.
     """
     from cmsi.models.network import predict
-    base = predict(model, X)
-    rows = {"intact": base}
+    rng = np.random.default_rng(seed)
+    n_units = len(classes)
+    ref = msl_activations(model, X).mean(0)
+
+    base = _rmse(predict(model, X), target)
+    out = {"intact": {"rmse": base, "mode": mode, "n_random": int(n_random)}}
+
+    null_cache = {}
     for label in ("congruent", "opposite", "mixed"):
-        keep = classes != label
-        rows[f"no_{label}"] = lesion(model, X, keep)
-    out = {}
-    for label, pred in rows.items():
-        err = pred - target
-        out[label] = {"rmse_per_output": np.sqrt((err ** 2).mean(0)).tolist(),
-                      "rmse": float(np.sqrt((err ** 2).mean()))}
+        idx = np.flatnonzero(classes == label)
+        k = len(idx)
+        if k == 0:
+            out[f"no_{label}"] = {"n_units": 0, "skipped": "no units in class"}
+            continue
+
+        keep = np.ones(n_units, bool)
+        keep[idx] = False
+        pred = lesion(model, X, keep, mode=mode, clamp_to=ref)
+        rmse = _rmse(pred, target)
+
+        if k not in null_cache:
+            draws = []
+            for _ in range(n_random):
+                rkeep = np.ones(n_units, bool)
+                rkeep[rng.choice(n_units, size=k, replace=False)] = False
+                draws.append(_rmse(lesion(model, X, rkeep, mode=mode, clamp_to=ref),
+                                   target))
+            null_cache[k] = np.array(draws)
+        null = null_cache[k]
+
+        out[f"no_{label}"] = {
+            "n_units": int(k),
+            "rmse": rmse,
+            "null_mean": float(null.mean()),
+            "null_sd": float(null.std()),
+            "z": float((rmse - null.mean()) / null.std()) if null.std() > 0 else np.nan,
+            "percentile": float((null < rmse).mean()),
+            "rmse_per_output": np.sqrt(((pred - target) ** 2).mean(0)).tolist(),
+        }
     return out
 
 

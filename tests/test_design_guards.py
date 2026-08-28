@@ -279,3 +279,66 @@ def test_conditioned_bias_shows_truncation_for_inferred_separate():
     shared = sorted(set(common) & set(sep))
     assert shared, "need overlapping bins to compare"
     assert np.mean([common[c] - sep[c] for c in shared]) > 0
+
+
+# --------------------------------------------------------------------------- #
+# SS7.5 -- lesion ablation must be information-removing, not perturbing
+# --------------------------------------------------------------------------- #
+def test_mean_clamp_lesion_of_all_units_leaves_a_constant_output():
+    """Clamping EVERY unit to its mean must make the read-out constant across
+    trials -- that is what 'the layer carries no trial information' means.
+    Zeroing everything instead gives some other constant, but the mean-clamp
+    one is the network's own average operating point."""
+    import torch
+
+    from cmsi.analysis.units import lesion, msl_activations
+    from cmsi.models.network import Net
+
+    torch.manual_seed(0)
+    net = Net(input_dim=30, model_cfg={"hidden": [8, 8], "activation": "sigmoid",
+                                       "head": "causal"})
+    X = np.random.default_rng(0).normal(size=(200, 30))
+    out = lesion(net, X, np.zeros(8, bool), mode="mean")
+    assert np.allclose(out, out[0], atol=1e-5), "output must not vary across trials"
+
+    # and that constant must equal what the readout gives for the mean activation
+    ref = msl_activations(net, X).mean(0)
+    with torch.no_grad():
+        expected = net.readout(torch.as_tensor(ref, dtype=torch.float32))
+        cols = list(expected.unbind(0))
+        for c in net.var_cols:
+            cols[c] = torch.nn.functional.softplus(cols[c])
+        expected = torch.stack(cols).numpy()
+    assert np.allclose(out[0], expected, atol=1e-5)
+
+
+def test_lesion_of_nothing_matches_the_intact_prediction():
+    import torch
+
+    from cmsi.analysis.units import lesion
+    from cmsi.models.network import Net, predict
+
+    torch.manual_seed(1)
+    net = Net(input_dim=30, model_cfg={"hidden": [8, 8], "activation": "sigmoid",
+                                       "head": "causal"})
+    X = np.random.default_rng(1).normal(size=(120, 30))
+    assert np.allclose(lesion(net, X, np.ones(8, bool), mode="mean"),
+                       predict(net, X), atol=1e-6)
+
+
+def test_lesion_comparison_reports_a_random_baseline():
+    import torch
+
+    from cmsi.analysis.units import lesion_comparison
+    from cmsi.models.network import Net
+
+    torch.manual_seed(2)
+    net = Net(input_dim=30, model_cfg={"hidden": [8, 8], "activation": "sigmoid",
+                                       "head": "causal"})
+    X = np.random.default_rng(2).normal(size=(200, 30))
+    target = np.random.default_rng(3).normal(size=(200, 4))
+    classes = np.array(["congruent"] * 3 + ["opposite"] * 3 + ["mixed"] * 2)
+    out = lesion_comparison(net, X, classes, target, n_random=15)
+    for lab in ("no_congruent", "no_opposite", "no_mixed"):
+        assert {"rmse", "null_mean", "null_sd", "z", "percentile"} <= set(out[lab])
+        assert 0.0 <= out[lab]["percentile"] <= 1.0
