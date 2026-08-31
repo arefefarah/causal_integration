@@ -4,11 +4,13 @@
 # environment first.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup test lint format calibrate data train analyze figures all quick clean clean-runs
+.PHONY: help setup test lint format calibrate data train analyze figures all quick sweep clean clean-runs
 
 RUN    ?= baseline
 DATA   ?= main
 CONFIG ?= configs/flagship.yaml
+PRIORS ?= 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
+SEEDS  ?= 0
 
 help:  ## show this list
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -49,6 +51,10 @@ all:  ## whole pipeline + control twin  (make all CONFIG=configs/wide_rf.yaml)
 
 quick:  ## whole pipeline, small and fast  (accepts CONFIG= too)
 	poetry run bash scripts/run_all.sh --config $(CONFIG) --quick
+
+sweep:  ## SS9.3 cross-prior sweep, one network per prior per seed  (make sweep SEEDS="0 1 2")
+	poetry run python scripts/05_prior_sweep.py \
+		--priors $(PRIORS) --seeds $(SEEDS) --control pcommon1
 
 clean:  ## remove caches and compiled files
 	find . -name '__pycache__' -type d -prune -exec rm -rf {} +

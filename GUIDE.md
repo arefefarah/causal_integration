@@ -5,10 +5,16 @@ analysis, and every figure — with the calculation behind each one and the numb
 your own runs actually produced.
 
 **Provenance.** Every number below was read out of files in your repo:
-`results/<run>/metrics.json` and `results/calibration/<config>/metrics.json`,
-as they stood after your `make all` runs. Nothing here is estimated, remembered,
-or carried over from anywhere else. Where a result is absent or degenerate I say
-so rather than filling the gap.
+`results/<run>/metrics.json`, `results/calibration/<config>/metrics.json`, and
+`results/prior_sweep/sweep.json`, as they stood after your `make all` and
+`make sweep SEEDS="0 1 2"` runs. Nothing here is estimated, remembered, or
+carried over from anywhere else. Where a result is absent or degenerate I say so
+rather than filling the gap.
+
+**Start here if you are writing the paper.** Part 12 grades every analysis in
+this document as a finding, a supporting result, a control, or something that
+should not be presented as a result at all. It also flags one reproducibility
+problem you need to fix first (§12.0).
 
 ---
 
@@ -644,6 +650,15 @@ enormous apparent error. σ_w quantifies that per trial, and the default
 criterion (`sigma_w_criterion: 0.1`) keeps only trials where the weight is
 readable to better than 0.1.
 
+**Where the σ_w filter must not be used.** Filtering is fine for *reporting a
+per-trial weight*. It is **biased** for *estimating a weight within a bin*,
+because the filter keeps preferentially large-|Δ| trials and those are
+systematically the lowest-weight ones — so a binned average of filtered ratios
+sits below the analytical posterior even for a perfectly Bayesian network. Any
+binned weight curve should instead use the division-free least-squares form in
+`analysis.binned_implied_weight` (§8.2), which uses every trial. §7.3 is the
+same idea applied to the whole dataset at once.
+
 ## 7.3 The position-domain regression — the headline
 
 The problem with computing a per-trial weight is the division. This analysis
@@ -773,44 +788,109 @@ weighted combination — the first two bins carry the result.
 
 ## 7.6 The variance signature of causal ambiguity
 
-This is the analysis that covers the zone where weight recovery is blind.
+This analysis interrogates a different output from every other section in §7.
+Everything above reads the **mean** channels (`mu_vis`, `mu_prop`). This one
+reads the **variance** channels, and it discriminates where the mean channels
+are weakest: for a mean estimate, model averaging and a well-tuned fixed weight
+produce similar numbers; for a variance estimate they are qualitatively
+different, and the figure shows why.
 
-The mixture variance decomposes as
+### The equation the figure is built on
+
+If you average two hypotheses with weight `w`, the variance of the mixture is
+**not** the weighted average of the two variances. By the law of total variance:
 
 ```
-Var = w*fused_var + (1-w)*seg_var        <- the within-component part
-    + w*(1-w)*(fused_mu - seg_mu)^2      <- the BETWEEN-component part
+Var  =  w*V_fused + (1-w)*V_seg      <- WITHIN:  how noisy each hypothesis is
+      + w*(1-w)*d^2                   <- BETWEEN: how far apart they are,
+                                                  times how unsure you are
 ```
 
-The second term is zero when `w` is 0 or 1 and maximal at intermediate `w` with
-separated means. **No fixed-weight model can produce it** — that is what makes
-it diagnostic.
+with `d = fused_mu - seg_mu`.
 
-The analysis bins trials by `post_c1` into 10 bins and reports, per bin: the
-network's mean Var output, the analytical mixture variance, the
-between-component term alone, and the best fixed-weight prediction
-(`w̄·fused_var + (1−w̄)·seg_var` with `w̄` the mean posterior), which is flat by
-construction.
+The second term is the diagnostic one. It is zero at `w = 0` and zero at
+`w = 1`. It is nonzero only when you do not know which hypothesis to believe.
+It is uncertainty **about the causal structure**, as distinct from measurement
+noise. **No fixed-weight model can produce it**, because fixing `w` deletes the
+`w(1-w)` factor.
+
+### The four lines
+
+The analysis bins trials by `post_c1` into 10 bins and plots, per bin:
+
+| line | what it is |
+|---|---|
+| **black dashed** | the full right-hand side above — the correct answer |
+| **blue** | the network's mean Var output |
+| **black dotted** | the `w(1-w)d^2` term **alone** |
+| **green** | control: best possible *fixed* weight, `w̄·V_fused + (1−w̄)·V_seg` |
+
+The x-axis is the analytical posterior, **not disparity**. Far left: certain
+there were two causes. Far right: certain there was one. Middle: genuinely
+unsure which.
 
 The scalar summary is the **hump**: mean variance in the intermediate bins
 (0.2 < centre < 0.8) minus mean variance in the confident bins.
 
-**Your flagship, `var_vis`, per bin** (from `metrics.json`):
+### Your flagship, `var_vis`, per bin (from `metrics.json`)
 
 | posterior bin | network | analytical mixture | between term | fixed-weight | n |
 |---|---|---|---|---|---|
 | 0.05 | 11.89 | 11.82 | 0.41 | 7.54 | 2588 |
-| 0.15 | 16.38 | 18.07 | 7.30 | 7.89 | 137 |
+| 0.15 | 16.39 | 18.07 | 7.30 | 7.89 | 137 |
 | 0.25 | 16.27 | 18.89 | 8.91 | 7.93 | 122 |
-| 0.35 | 16.08 | 18.73 | 9.46 | 7.97 | 139 |
+| 0.35 | 16.09 | 18.73 | 9.46 | 7.97 | 139 |
 | 0.45 | 13.88 | 15.99 | 7.96 | 7.64 | 148 |
 | 0.55 | 13.15 | 14.08 | 6.62 | 7.92 | 208 |
-| 0.65 | 10.63 | 10.80 | 4.22 | 7.83 | 346 |
+| 0.65 | 10.62 | 10.80 | 4.22 | 7.83 | 346 |
 | 0.75 | 7.81 | 7.67 | 1.89 | 7.99 | 883 |
-| 0.85 | 5.48 | 5.25 | 0.40 | 7.59 | 2233 |
+| 0.85 | 5.49 | 5.25 | 0.40 | 7.59 | 2233 |
 | 0.95 | 4.54 | 4.08 | 0.21 | 7.28 | 696 |
 
-**Hump values across your runs:**
+### Reading it: two effects are stacked
+
+Splitting the mixture into its two brackets (`within = mixture − between`,
+derived from the table above) is what makes the blue curve legible:
+
+| posterior | 0.05 | 0.15 | 0.25 | 0.35 | 0.45 | 0.55 | 0.65 | 0.75 | 0.85 | 0.95 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| within | 11.41 | 10.76 | 9.98 | 9.27 | 8.03 | 7.46 | 6.57 | 5.78 | 4.84 | 3.87 |
+| between | 0.41 | 7.30 | 8.91 | **9.46** | 7.96 | 6.62 | 4.22 | 1.89 | 0.40 | 0.21 |
+| between as % of total | 3% | 40% | 47% | **51%** | 50% | 47% | 39% | 25% | 8% | 5% |
+
+**The ramp.** `within` falls monotonically 11.41 → 3.87. Segregation is
+expensive: if the cues are separate, the visual estimate is just the visual
+measurement (variance 11.4), while fusion buys 3.9. The curve therefore slopes
+downhill left-to-right even with zero causal uncertainty.
+
+**The hump.** The dotted line rides on top of that ramp, peaking at 9.46.
+
+Blue is the sum of the two, which is why it is high on the left, humped in the
+middle, and low on the right.
+
+**At the peak, half the network's reported uncertainty is causal uncertainty** —
+9.46 of 18.73 at bin 0.35. That is the headline of the figure.
+
+### Three features that look wrong and are not
+
+**The peak sits at 0.35, not 0.5.** Two factors multiply. `w(1-w)` peaks at
+0.5, but `d^2` is falling as `w` rises — mean |disparity| across the bins runs
+31.4° at the left edge down to about 2° at the right. Rising times falling peaks
+left of centre.
+
+**The leftmost point is not part of the hump.** Bin 0.05 has the largest
+disparity of any bin (mean 31.4°) — the hypotheses are further apart there than
+anywhere else — yet its between term is the *smallest* (0.41). The reason is
+that mean `w(1-w)` in that bin is 0.0052: the network is certain the causes are
+separate. The between term measures **indecision, not disagreement**. That
+bin's total of 11.9 is essentially all `within`.
+
+**The green line is flat by construction, not by fit.** Any constant weight,
+whatever value is chosen, gives a flat line, because fixing `w` removes the
+`w(1-w)` factor. Green pinned at 7.28–7.99 across every bin is the null
+hypothesis drawn on the plot.
+
+### Hump values across your runs
 
 | run | prior | var_vis network | var_vis analytical | var_prop network | var_prop analytical |
 |---|---|---|---|---|---|
@@ -818,18 +898,43 @@ The scalar summary is the **hump**: mean variance in the intermediate bins
 | pcommon07 | 0.7 | **+4.58** | +7.07 | +1.09 | +1.59 |
 | pcommon028 | 0.28 | **+1.15** | +1.89 | +0.29 | +0.49 |
 
-**How to read it.** The hump is present in every run and in both output
-channels. The network reproduces it at roughly 60–75% of its analytical
-magnitude — the same conservatism the position regression reports, showing up in
-the uncertainty channel.
+The hump is present in every run and in both output channels. The network
+reproduces it at roughly 60–75% of its analytical magnitude — the same
+conservatism the position regression reports, appearing in the uncertainty
+channel.
 
-The fixed-weight column is the control: it sits flat at 7.3–8.0 across every
-bin, confirming that no constant weight can generate this shape.
+The network also slightly *over*-reports variance in the most confident bins
+(4.54 vs 4.08 at centre 0.95) and *under*-reports in the ambiguous ones. That is
+compression toward the mean, the signature of a read-out smoothing a sharply
+peaked target.
 
-One detail in the table worth noticing: the network slightly *over*-reports
-variance in the most confident bins (4.54 vs 4.08 at centre 0.95) and
-*under*-reports in the ambiguous ones. That is compression toward the mean, the
-signature of a read-out that is smoothing a sharply peaked target.
+### `var_prop` is the same figure at about quarter scale
+
+Figure 10 is not an independent result; it is a consistency check. Its between
+term peaks at 2.26 against 8.91 for `var_vis`, and its hump is +0.94 against
++3.40.
+
+The reason is arithmetic. Recovering `|d|` per bin as
+`sqrt(between / mean[w(1-w)])`, the vis/prop ratio is
+
+```
+1.95  1.99  1.99  2.11  1.93  1.97  1.92  2.07  1.97  1.95
+```
+
+— flat at about 1.97 across all ten bins. The between term goes as `d^2`, hence
+roughly a quarter.
+
+`d_prop` is half `d_vis` because **proprioception is the more reliable cue in
+this setup** (segregated variance 5.58 against 11.41 for vision), so the fused
+estimate sits nearer proprioception. Precision weighting predicts the ratio
+should be `sigma^2_vis / sigma^2_prop = 2.05` (from the unrounded 11.4098 and
+5.5773 the table shows as 11.41 and 5.58); the measured 1.97
+differs by the prior term in the fused estimate.
+
+### One caveat to carry
+
+The middle bins are thin: 122–208 trials each, against 2588 at the left edge.
+The shape of the hump is estimated from roughly 750 trials in total.
 
 ## 7.7 The five-way model comparison
 
@@ -1137,6 +1242,14 @@ Fits `w = 1 / (1 + exp(k(|d| − d0)))` to the implied weight against
 segregation) and a sharpness `k`. Also fitted to the analytical posterior for
 comparison.
 
+**A guard on the fit.** `curve_fit` can report convergence on a midpoint far
+outside the data — on an undertrained smoke run it returned −48219°, which is
+not a transition but a flat curve fitted by a logistic whose midpoint ran away.
+The fit is therefore rejected (returning NaN) unless `k > 0` and `d0` lies
+within a quarter-span of the observed disparity range. A NaN midpoint means "no
+transition was measurable", which is information; a large finite one would be a
+silent lie.
+
 **Your results:**
 
 | run | prior | network midpoint | analytical midpoint | network sharpness | analytical sharpness |
@@ -1154,10 +1267,19 @@ Bayes says it should.
 
 ---
 
-# Part 8 — The cross-prior comparison
+# Part 8 — The cross-prior experiments
 
-The satellites exist to test one prediction: **implied weights should shift with
-the prior, per Bayes**. Since the only difference between these configs is the
+Two things go under this heading. The **satellite runs** (§8.1) are three full
+pipelines at three priors, each with the complete analysis suite. The **prior
+sweep** (§8.2) is a dedicated experiment at nine priors and three seeds that
+measures a smaller set of quantities. The sweep is the stronger evidence and is
+what belongs in the manuscript; the satellites are what let you inspect any
+individual network in depth.
+
+## 8.1 The three satellite runs
+
+The satellites test one prediction: **implied weights should shift with the
+prior, per Bayes**. Since the only difference between these configs is the
 Bernoulli constant, any systematic movement is attributable to the prior.
 
 | quantity | p = 0.28 | p = 0.5 | p = 0.7 | moves with prior? |
@@ -1174,16 +1296,183 @@ Bernoulli constant, any systematic movement is attributable to the prior.
 
 **What this supports.** Three independent measures — the transition midpoint,
 the position-regression slope, and the variance hump — move monotonically with
-the prior and in the direction Bayes predicts. The midpoint tracks the
-analytical value quantitatively. Model averaging wins at every prior.
+the prior and in the direction Bayes predicts.
 
 **What it does not support.** The congruent/opposite balance result does not
-replicate at 0.7. The reliability slope moves but not monotonically. Neither
-should be presented as established without more evidence.
+replicate at 0.7. Neither it nor the reliability slope should be presented as
+established on this evidence.
 
-**The gap.** `pcommon03` has a config but no run. Four points would be
-substantially more convincing than three, particularly for the reliability slope
-where the current pattern is unclear.
+Three points and one seed each is, however, a weak design for a claim about a
+continuous dependence. That is what §8.2 exists to fix.
+
+## 8.2 The prior sweep — nine priors, three seeds
+
+`scripts/05_prior_sweep.py` trains a network at every combination of nine priors
+(0.1 … 0.9) and three seeds — **27 networks**, 50,000 trials and 300 epochs
+each — and recovers the implied fusion weight from behaviour alone. No network
+has a causal read-out; each is trained on the same four numbers as the flagship.
+
+Between any two priors **only the Bernoulli constant differs**: same encoders,
+same σ ranges, same architecture, same training protocol. Because the latent
+streams are drawn before `C` selects between them, two datasets at different
+priors are bit-identical on every trial whose causal structure did not flip.
+
+### What the sweep is a test of
+
+There is a weaker version of this claim that would be trivial and a stronger one
+that would be false, so it is worth stating exactly.
+
+**Not the claim:** "the network discovered the prior from nothing." It did not.
+The prior is present in every target it was trained on.
+
+**The claim:** the network's *implicit* fusion-vs-segregation trade-off — never
+an output, only recovered from behaviour — depends on the prior in the way Bayes
+says it must, quantitatively, with no free parameters.
+
+Its force comes from what the alternatives predict:
+
+| account | prediction as `p_common` varies |
+|---|---|
+| disparity heuristic | midpoint fixed — disparity statistics barely change |
+| fixed-weight model | no transition at all, at any prior |
+| model **selection** | a step at posterior 0.5 that moves, but with sharpness → ∞ |
+| **model averaging with the correct posterior** | midpoint tracks the analytical value at every prior |
+
+Only the last survives.
+
+### How the per-bin weight is recovered, and why the obvious method is wrong
+
+Within each disparity bin, regress `(network − seg)` on `Δ = fused − seg`
+through the origin:
+
+```
+w_bin = Σ(Δ · (network − seg)) / Σ(Δ²)          SE = σ_out / √(Σ Δ²)
+```
+
+The intuitive alternative — take the per-trial ratio `(network − seg)/Δ`, filter
+it by σ_w, and average within the bin — is **biased low**. The σ_w filter keeps
+preferentially large-|Δ| trials, and within a disparity bin those are the trials
+whose hypotheses are most separated, which are also the lowest-weight trials.
+The filtered average therefore sits below the analytical posterior *even for a
+perfectly Bayesian network*. The least-squares form uses every trial and has no
+such selection. (`analysis.binned_implied_weight`.)
+
+Two consequences are visible in Panel A and are deliberate:
+
+- **Bins are coarse near zero disparity.** There the two hypotheses coincide,
+  Σ(Δ²) collapses, and no amount of data identifies a weight. A fine grid there
+  produces a spike that is an artefact of the estimator. Bins are also dropped
+  when their slope SE exceeds 0.05.
+- **Gaps break the line rather than being bridged.** At high priors many
+  far-disparity bins hold too few trials to keep. Joining across them would draw
+  a transition that was never measured.
+
+### Your results — the aggregated table
+
+From `results/prior_sweep/sweep.json`, `aggregated` block. All ± are **SEM
+across the three seeds**, not within-run CIs. The distinction matters: a
+within-run CI says how well *one network's* behaviour is pinned down; only the
+across-seed spread says whether the result survives retraining.
+
+| `p_common` | midpoint net | midpoint opt | posreg slope | hump net | hump opt | sharp net | sharp opt | MSL R² |
+|---|---|---|---|---|---|---|---|---|
+| 0.1 | 2.72 ± 0.67 | 0.44 | 0.764 ± 0.035 | −0.65 ± 0.33 | −0.15 | 0.391 | 0.254 | 0.861 |
+| 0.2 | 3.83 ± 0.23 | 3.68 | 0.826 ± 0.017 | 0.38 ± 0.06 | 0.75 | 0.346 | 0.281 | 0.929 |
+| 0.3 | 5.70 ± 0.26 | 5.52 | 0.831 ± 0.017 | 1.54 ± 0.06 | 2.05 | 0.402 | 0.304 | 0.942 |
+| 0.4 | 6.96 ± 0.15 | 6.88 | 0.820 ± 0.025 | 2.22 ± 0.05 | 3.12 | 0.365 | 0.329 | 0.958 |
+| 0.5 | 8.06 ± 0.18 | 7.97 | 0.848 ± 0.006 | 3.26 ± 0.11 | 4.46 | 0.359 | 0.353 | 0.959 |
+| 0.6 | 8.90 ± 0.42 | 8.97 | 0.906 ± 0.010 | 3.82 ± 0.05 | 5.71 | 0.356 | 0.381 | 0.953 |
+| 0.7 | 9.82 ± 0.21 | 9.93 | 0.906 ± 0.013 | 4.30 ± 0.14 | 6.97 | 0.375 | 0.413 | 0.944 |
+| 0.8 | 11.61 ± 0.11 | 10.96 | 0.950 ± 0.007 | 3.94 ± 0.05 | 7.93 | 0.420 | 0.455 | 0.924 |
+| 0.9 | 12.65 ± 0.17 | 12.31 | 0.932 ± 0.005 | 2.83 ± 0.32 | 10.27 | 0.323 | 0.515 | 0.870 |
+
+Read-out R² on `mu_vis` runs 0.988–0.995 across the whole sweep, so no network
+is simply fitting the task worse at the extremes.
+
+### The three headline numbers
+
+**1. The midpoint tracks Bayes with no free parameters.** Regressing the network
+midpoint on the analytical midpoint:
+
+```
+all nine priors     slope 0.882   intercept +1.27 deg   R² 0.968
+                    mean |net − analytical| = 0.44 deg    max 2.28 deg (at p = 0.1)
+
+p_common >= 0.2     slope 1.027   intercept -0.06 deg   R² 0.994
+                    mean |net − analytical| = 0.21 deg    max 0.65 deg
+```
+
+Over a midpoint range of 0.4–12.7°, restricted to the nine-tenths of the range
+where the measurement is well-posed, the network lands **within a fifth of a
+degree of the Bayesian prediction on average, with a fitted slope of 1.03 and
+R² = 0.994.** That is the strongest quantitative result in the project.
+
+**2. Model averaging wins at every prior and every seed** — 27 of 27 — in the
+five-way comparison against full integration, full segregation, model selection,
+and the best fixed-weight model.
+
+**3. A consistent, mild conservatism.** The position-regression slope rises
+monotonically in trend from 0.764 at `p_common` = 0.1 to 0.950 at 0.8
+(+0.213 per unit prior, r = 0.950), and **`slope + 1.96·SEM < 1` at all nine
+priors** (worst case 0.963 at p = 0.8). The network applies slightly less pull
+toward the fused solution than the ideal observer, at every prior, across every
+seed. This is the same deviation the flagship position regression reports, now
+established as a property of the model rather than of one training run.
+
+### Why p_common = 0.1 is excluded from the second fit
+
+Not to flatter the result. At `p_common` = 0.1 the analytical midpoint is 0.44°,
+essentially at the origin, where a logistic midpoint is barely identifiable —
+there is almost no fusion regime for the transition to be a transition *out of*.
+The symptom is in the seed spread: the three midpoints are **2.34, 4.03, 1.80**,
+an across-seed SEM of 0.67° against 0.11–0.42° everywhere else. It is the
+noisiest point in the sweep by a factor of two, and it is the single point
+driving the +1.27° intercept.
+
+Report both fits. Excluding a point silently would be indefensible; excluding it
+with the seed spread shown, and the reason stated, is ordinary practice.
+
+## 8.3 What the sweep settles that three runs could not
+
+| question | three satellites said | 27 networks say |
+|---|---|---|
+| does the midpoint track Bayes? | yes, 3 points | **yes, slope 1.03, R² 0.994 over p ≥ 0.2** |
+| is the conservatism real? | slopes 0.80–0.93, one seed each | **yes — CI excludes 1 at all nine priors, 3 seeds** |
+| does model averaging always win? | 3 for 3 | **27 for 27** |
+| does the reliability slope move? | "no clear pattern" | **declining trend, r = −0.867** (see below) |
+| does the balance result replicate? | no | *not measured by the sweep* |
+
+**The reliability slope needs a second look.** With three runs it looked like
+noise. Across 27 networks it declines with the prior — 0.951, 0.882, 0.805,
+0.653, 0.639, 0.605, 0.672, 0.691, 0.456 — with r = −0.867 and a trend of
+−0.477 per unit prior, and its CI excludes 1 at seven of the nine priors. So
+there is a real pattern where there previously appeared to be none. What it
+*means* is a separate question, and the honest position is that this analysis
+was not designed to answer it: the statistic is computed on the subset of
+disparity bins that survive a spread filter, that subset changes composition
+with the prior, and no control rules out the change being a property of the
+surviving bins rather than of the network. Treat it as a lead, not a result.
+
+### The variance hump across the sweep
+
+The hump is a real effect over the middle of the range and a measurement failure
+at the top. The network-to-analytical ratio, `p_common` = 0.2 → 0.9:
+
+```
+0.51   0.75   0.71   0.73   0.67   0.62   0.50   0.28
+```
+
+It holds around two-thirds from 0.3 to 0.6 and then collapses. The reason is
+trial counts, not mechanism: the hump statistic is defined on
+intermediate-posterior trials (0.2 < posterior < 0.8), and at extreme priors
+there are almost none. At `p_common` = 0.9 the flagship-scale run has on the
+order of a couple of hundred such trials. At `p_common` = 0.1 the hump is
+*negative* in both network and analytical values (−0.65 and −0.15) — there is no
+hump to measure there at all.
+
+**For the manuscript:** supplementary, restricted to `p_common` ∈ [0.2, 0.7],
+with the trial counts stated. Do not present the full range as a monotone
+result; it is not one, and a reader checking counts will notice.
 
 ---
 
@@ -1283,6 +1572,12 @@ Your flagship `var_vis`: the network peaks at 16.4 around posterior 0.15–0.35
 and falls to 4.5 at 0.95, against a fixed-weight line pinned at 7.3–8.0
 throughout. The hump is +3.40 for the network against +4.55 analytical.
 
+Note the x-axis is the **posterior**, not disparity, and that the curve carries
+two superimposed effects — a downhill within-component ramp plus the hump —
+which is why the leftmost point is high without being part of the hump.
+**§7.6 works through both figures line by line**; read that first if the shape
+is not obvious.
+
 **`11_model_comparison.png`** — two panels. Left: per-posterior-decile implied
 weight for the network and all five strategies. This is the discriminating
 panel — averaging predicts a smooth sigmoid tracking the posterior, selection
@@ -1313,16 +1608,51 @@ inconsistency noted in §7.9.
 across MSL units, with 0 (spatial code) and +1 (retinal code) marked. Right:
 distribution of gain-field slopes. Your flagship median shift gain: 0.013.
 
+## 9.4 `results/prior_sweep/figures/` — the cross-prior experiment
+
+Produced by `scripts/05_prior_sweep.py`, not by `04_figures.py`. These are not
+per-run figures: each one summarises all 27 networks.
+
+**`prior_sweep.png`** (and `.pdf`, 300 dpi) — the main figure, three panels.
+
+- **Panel A** — implied fusion weight against signed body-frame disparity, one
+  curve per prior, colour on a sequential viridis ramp (light = low prior).
+  Solid with error bars: the network, from `binned_implied_weight` (§8.2).
+  Dashed: the analytical posterior for the same prior. The curves fan out in an
+  orderly family — at a low prior the network abandons fusion within a few
+  degrees; at a high prior it holds a near-complete weight past 10°.
+  Error bars are `1.96 × SE` where `SE = σ_out / √(ΣΔ²)` within the bin.
+  Broken lines are dropped bins, not missing data — see §8.2.
+- **Panel B** — network transition midpoint against analytical midpoint, one
+  point per prior, with an identity line. No parameter relates the two axes.
+  With three or more seeds the points carry across-seed SEM bars. If every
+  logistic fit is rejected by the §7.11 guard the panel prints "no usable
+  transition fit" instead of crashing.
+- **Panel C** — position-regression slope against prior, with the Bayes-optimal
+  value of 1 marked. The legend states which kind of error bar is drawn:
+  "within-run 95% CI" for a single seed, "mean ± 95% CI across N seeds"
+  otherwise. Read the label — the two mean different things (§8.2).
+
+**`variance_hump_vs_prior.png`** — supplementary. Mid-ambiguity variance
+elevation, network against analytical, per prior. Interpret only over
+`p_common` ∈ [0.2, 0.7]; outside that band the statistic is trial-count limited
+rather than informative (§8.3).
+
 ---
 
 # Part 10 — How to run things
 
 ```bash
-make test                                       # 67 property tests, ~40 s
+make test                                       # 70 property tests, ~40 s
 make calibrate CONFIG=configs/flagship.yaml     # the gate alone
 make all       CONFIG=configs/flagship.yaml     # full pipeline, 50k trials
 make quick     CONFIG=configs/flagship.yaml     # same, 8k trials / 60 epochs
+make sweep     SEEDS="0 1 2"                    # the cross-prior sweep, ~45 min
 ```
+
+**`make all` does not include the sweep**, and the sweep does not depend on
+`make all` having been run — except for `pcommon1`, which supplies σ_out. The
+two are separate experiments with separate output directories.
 
 Stage by stage:
 
@@ -1342,28 +1672,46 @@ residuals. The fallback is conservative rather than wrong — the flagship's own
 residuals also contain any causal-inference misweighting, so σ_w comes out too
 large, never too small.
 
+The sweep, stage by stage:
+
+```bash
+python scripts/05_prior_sweep.py --priors 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 \
+                                 --seeds 0 1 2 --control pcommon1
+```
+
+`--seeds` trains every (prior, seed) combination and collapses them to one row
+per prior with across-seed SEMs; the figure picks the error bars up
+automatically. Results are written after **every** seed, so an interrupted run
+leaves usable partial output. `sweep.json` keeps both levels — `rows` is the raw
+per-(prior, seed) records, `aggregated` is what the figure is drawn from.
+Per-trial arrays go to `curves.npz` for the first seed only, so a curve can be
+restyled or re-binned without retraining.
+
 To finish the satellite series:
 
 ```bash
 make all CONFIG=configs/pcommon03.yaml          # the missing 0.3 point
 ```
 
+This is now optional. The sweep covers 0.3 with three seeds; a full satellite
+run at 0.3 would only add the unit-level and behavioural analyses, which the
+sweep does not measure.
+
 ---
 
 # Part 11 — Things to be careful about when reading these results
 
-**One seed, one architecture.** Everything above is `seed: 0`. None of the
-numbers carry a run-to-run error bar. Before anything goes in a paper, the
-headline quantities need several seeds.
+**One seed for everything except the sweep.** Every number in Parts 6, 7 and 8.1
+is `seed: 0` and carries no run-to-run error bar. The prior sweep (§8.2) is the
+exception: three seeds per prior, 27 networks, with across-seed SEMs. So the
+transition midpoint, the position-regression slope and the model comparison
+*are* seed-checked; the unit-level analyses, the behavioural curves and the
+calibration gate are not.
 
 **Two results do not replicate across priors.** The congruent/opposite balance
 (0.50, 0.54, but −0.05) and the truncation effect (True at 0.28, False at 0.5
-and 0.7). Both are currently single-run observations.
-
-**The lesion analysis lacks its control.** Every lesion is catastrophic because
-zeroing a third of a layer breaks the read-out's operating point. Without a
-size-matched random lesion, only within-run comparisons between subpopulations
-mean anything.
+and 0.7). Both are currently single-run observations, and the sweep does not
+measure either.
 
 **The hand-vs-visual consistency correlation is not what it looks like.** Read
 the mean absolute difference (0.12–0.18), not the correlation (≈0.11), for the
@@ -1380,9 +1728,230 @@ the code is the one that matches the exact posterior. The document is the thing
 to amend.
 
 **The consistent sub-optimality is real.** Position-regression slopes of
-0.80–0.93 with CIs excluding 1, a variance hump at 60–75% of analytical, and a
+0.76–0.95 with `slope + 1.96·SEM < 1` at all nine priors across three seeds, a
+variance hump at 60–75% of analytical over the well-measured range, and a
 top-decile weight shortfall all point the same way: the network's implicit
 causal inference is close to Bayesian but systematically conservative. Since
 every pipeline guard is verified and both controls are clean, this is
 attributable to the network. Per the design document, that makes it a reportable
 finding rather than a failure.
+
+**The lesion result answers necessity, not representation.** Mean-clamping plus
+a size-matched random baseline (§7.9) shows congruent units are load-bearing
+(z = +6.27) and opposite units are not (z = −3.64). That does not mean opposite
+units carry nothing — their activity tracks the posterior at r = 0.50 on the
+same network. A redundant code can make every subpopulation dispensable.
+
+**The reliability slope is a lead, not a result.** It has a real declining trend
+across 27 networks (r = −0.867), but the statistic is computed on a
+prior-dependent subset of bins and has no control for that. §8.3 gives the
+argument.
+---
+
+# Part 12 — What is a result, and what is not
+
+This part exists because the guide documents **every** analysis in the codebase,
+and only some of them are findings. Several are controls, several are method
+verification, and several are leads that a reviewer would take apart. Putting a
+control in the Results section as though it were a discovery is one of the
+easier ways to lose a referee's confidence in everything around it.
+
+Grades used below:
+
+| grade | meaning | where it goes |
+|---|---|---|
+| **A** | headline finding — carries a claim, deserves a figure | Results, main figures |
+| **B** | supporting result — real, but subordinate to an A | Results, a sentence or a supplementary panel |
+| **C** | method verification or control | Methods, or a supplement. **Not** a finding |
+| **D** | not a finding — negative, non-replicating, or measurement-limited | Omit, or state explicitly as a limitation |
+
+## 12.0 Read this before citing any unit-level number
+
+**Every `metrics.json` in `results/` predates the lesion fix.** The five run
+directories are dated 2026-08-24; `units.py` and `03_analyze.py` were corrected
+on 2026-08-26. The stored `lesion` blocks therefore contain the **old
+zero-ablation** numbers with no random baseline — the mean-clamp table in §7.9
+(z = +6.27, −3.64) cannot currently be reproduced from any file in `results/`.
+
+Stage 3 does not retrain. Regenerating is cheap:
+
+```bash
+for r in flagship pcommon07 pcommon028 pcommon0; do
+  python scripts/03_analyze.py --run $r --twin ${r}_twin --control pcommon1
+done
+```
+
+Do this before the lesion result goes anywhere near a manuscript. Everything
+graded **A** below is unaffected — those come from the prior sweep and from
+analyses whose stored values are current.
+
+## 12.1 Grade A — the findings
+
+**A1. The implied fusion weight depends on the prior exactly as Bayes requires.**
+§8.2. Twenty-seven networks. Over `p_common` ≥ 0.2 the network transition
+midpoint regresses on the analytical midpoint with slope **1.027**, intercept
+**−0.06°**, **R² = 0.994**, mean deviation **0.21°** — with **no free parameter
+relating the two axes**. This is the strongest result in the project and should
+be the paper's central figure.
+
+Its force is in what it rules out: a disparity heuristic predicts a
+prior-independent midpoint, a fixed-weight scheme predicts no transition at all,
+and model selection predicts a step with sharpness → ∞. All three are excluded
+by the same measurement.
+
+**A2. Model averaging, not model selection.** §7.7 and §8.2. The five-way
+comparison selects averaging in **27 of 27** sweep networks plus the flagship
+and both satellites. This is the Körding et al. (2007) question asked of a
+network that was never given a causal read-out, and it answers cleanly.
+
+**A3. The variance output carries the between-component signature of causal
+ambiguity.** §7.6. The `w(1−w)d²` term is the part of the mixture variance that
+**no fixed-weight model can produce**, and the network reproduces it — at the
+peak, half its reported uncertainty (9.46 of 18.73 deg²) is causal uncertainty
+rather than measurement noise. Present in both output channels and every run.
+The flat fixed-weight control line makes the argument visually on the figure.
+
+The claim is strongest as an *existence and shape* result. Its amplitude, and
+its prior dependence, are weaker — see D4.
+
+**A4. The posterior is emergent, not imposed.** §7.8. The trial-wise posterior
+decodes linearly from the multisensory layer at R² = 0.93–0.96 while rising from
+only 0.27–0.48 at the single-modality layer, and the always-fuse twin — same
+architecture, same inputs, fused targets only — reaches just 0.19–0.21. The twin
+is what turns this from an observation into a controlled contrast, and it should
+be reported alongside, not separately.
+
+**A5. A small, consistent conservatism.** §7.3 and §8.2. Position-regression
+slopes run 0.764–0.950 and `slope + 1.96·SEM < 1` at **all nine priors across
+three seeds** (worst case 0.963). The network applies slightly less pull toward
+the fused solution than the ideal observer, everywhere.
+
+**Frame this as a finding, not an apology.** It is a reproducible property of a
+network trained on exactly Bayesian targets, it is visible in three independent
+measures (position slope, variance-hump amplitude, top-decile weight shortfall),
+and every pipeline guard and both controls are clean. A referee will ask whether
+it is a bug; §12.0 aside, the answer is documented and it is not.
+
+## 12.2 Grade B — supporting results
+
+**B1. The disparity-heuristic alternative is excluded directly.** §7.5.
+Within-disparity-bin slopes of 0.57–0.91, far from the 0 a heuristic predicts.
+Supporting rather than headline because only 2–3 of 8 bins survive the spread
+filter — past ~20° the posterior is numerically pinned and there is nothing to
+test. A2 and A1 rule out the same alternative on much more data.
+
+**B2. Congruent units are necessary for the position read-out; opposite units
+are not.** §7.9, with mean-clamping and a size-matched random baseline
+(congruent z = +6.27, opposite z = −3.64, mixed z = +0.08), and the effect
+concentrated in the two mean channels. **Subject to §12.0** — regenerate before
+citing.
+
+State the scope precisely: this is a claim about **necessity**, not about
+representation. Opposite units track the posterior at r = 0.50 on the same
+network, and a redundant code can make any subpopulation dispensable.
+
+**B3. The reference-frame transformation is complete by the multisensory
+layer.** §7.9, median RF shift gain 0.013 (0.014 and 0.017 at the other priors).
+This is the continuity check with Farahmandi et al. — it says the present
+network reproduces the previous result before adding anything causal, which is
+what licenses the comparison.
+
+**B4. Congruent/opposite units emerge at all.** §7.9, a bimodal congruency-index
+histogram (17 congruent, 24 opposite on the flagship). Descriptive, and the link
+to Rideaux et al. (2021). The *balance* analysis built on it is D1 — the
+classification is fine, the correlation is not.
+
+**B5. The Körding Fig. 2e bias curve is reproduced.** §7.10, non-monotonic pull
+that grows with disparity then collapses. A recognisable qualitative signature;
+it is not independent evidence, since it is the same behaviour A1 measures
+quantitatively.
+
+**B6. Hand and visual channels imply the same weight.** §7.4, mean absolute
+difference 0.12–0.18 on a quantity bounded in [0, 1]. Quote the MAD. Do not
+quote the correlation — see D5.
+
+## 12.3 Grade C — method verification and controls
+
+None of these is a finding. They belong in Methods or a supplement, and they
+matter — a referee who wants to know whether the pipeline is sound is asking for
+exactly this list. But writing them up as discoveries reads as padding.
+
+| item | § | what it establishes |
+|---|---|---|
+| the eight-check calibration gate | Part 6 | the dataset can support the analyses at all |
+| read-out accuracy, R² 0.988–0.995 | §7.1 | the network learned the task; not a result about causal inference |
+| σ_out measured on the `p_common` = 1 control | §7.2 | the noise scale is measured where the target is single-valued |
+| the always-fuse twin | §7.8 | the contrast that makes A4 a controlled claim |
+| `pcommon0` / `pcommon1` decoding R² ≈ 0 | §7.8 | **expected** — the posterior is constant, so there is no variance to explain |
+| Poisson validity, range containment, anti-confound AUCs | Part 6 | the encoders behave as specified and no confound is available |
+| the `transition_fit` range guard | §7.11 | a failed fit returns NaN instead of a fabricated midpoint |
+| least-squares binned weight vs the filtered ratio | §7.2, §8.2 | the estimator is unbiased; the obvious alternative is not |
+
+The last two are worth a Methods sentence each. They are the kind of detail that
+pre-empts a reviewer question rather than inviting one.
+
+## 12.4 Grade D — do not present these as findings
+
+**D1. The congruent-minus-opposite balance correlation.** §7.9. 0.538 at
+`p_common` = 0.28, 0.500 at 0.5, **−0.053** at 0.7. It does not replicate. One
+seed each, and the sweep does not measure it. Either omit it, or run it across
+the sweep's 27 networks and report whatever comes out — but do not report the
+two positive values without the third.
+
+**D2. The truncation / negative-bias effect.** §7.10,
+`conditioned_bias_negative_seen`: True at 0.28, False at 0.5 and 0.7. One run
+each. The direction is theoretically sensible, which makes it tempting and makes
+it worse — a plausible single-run observation is exactly the thing that fails to
+replicate. A lead for future work.
+
+**D3. The reliability-within-disparity slope.** §8.3. It does have a real
+declining trend across 27 networks (r = −0.867), so it is no longer noise. But
+the statistic is computed on the subset of bins that survive a spread filter,
+that subset changes composition with the prior, and there is no control
+separating a property of the network from a property of the surviving bins.
+Report it as an observation needing follow-up, or not at all.
+
+**D4. The variance hump above `p_common` = 0.7, and at 0.1.** §8.3. The
+network-to-analytical ratio holds near two-thirds from 0.3 to 0.6, then falls to
+0.50 at 0.8 and **0.28** at 0.9 — because the statistic is defined on
+intermediate-posterior trials and at extreme priors there are almost none. At
+`p_common` = 0.1 the hump is negative in both network and analytical values,
+so there is nothing there to reproduce. Restrict the supplementary panel to
+[0.2, 0.7] and state the trial counts.
+
+**D5. The hand-vs-visual consistency correlation (≈ 0.11).** §7.4. Low not
+because the two disagree but because the underlying weight barely varies across
+the trials that pass the filter, so the correlation has nothing to correlate.
+Quoting it would understate the agreement. Use the MAD (B6).
+
+**D6. The `p_common` = 0.1 transition midpoint.** §8.2. Across-seed SEM 0.67°
+against 0.11–0.42° elsewhere; the three seeds give 2.34, 4.03, 1.80. The
+analytical midpoint is 0.44°, essentially at the origin, where a logistic
+midpoint is barely identifiable. Show the point, show the error bar, and report
+the fit both with and without it.
+
+**D7. Any lesion claim about causal behaviour specifically.** §7.9 measures
+lesion effects on read-out RMSE. It does not establish that either subpopulation
+is necessary for the *causal* computation as distinct from the position
+estimate — and the per-output breakdown points the other way, with the congruent
+effect concentrated in the mean channels (+7.77, +3.11) and absent from the
+variance channels (−1.48, −0.88), which are where the causal signature lives
+(A3). Do not extend B2 into a claim about causal inference.
+
+## 12.5 The shortest honest version of the paper's claims
+
+If the Results section had to be four sentences:
+
+> A feedforward network trained only to report position and uncertainty, with no
+> causal read-out, develops an implicit fusion-vs-segregation trade-off that
+> tracks the Bayesian posterior over causal structure quantitatively across nine
+> priors and three seeds (slope 1.03, R² 0.994, no free parameters). A five-way
+> model comparison selects model averaging over model selection, full
+> integration, full segregation and the best fixed-weight observer in all 27
+> networks. The network's uncertainty output carries the between-component
+> variance term that no fixed-weight scheme can produce. The posterior itself is
+> linearly decodable from the multisensory layer, but not from an
+> identically-structured network trained on fused targets alone.
+
+Everything in 12.2 supports those four sentences. Everything in 12.3 belongs in
+Methods. Everything in 12.4 belongs in a limitations paragraph or nowhere.

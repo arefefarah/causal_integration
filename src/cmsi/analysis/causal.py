@@ -91,9 +91,21 @@ def transition_fit(abs_disparity, weight):
     try:
         popt, _ = curve_fit(lambda dd, d0, k: 1 / (1 + np.exp(k * (dd - d0))),
                             d, w, p0=[np.median(d), 1.0], maxfev=10000)
-        return float(popt[0]), float(popt[1])
     except (RuntimeError, ValueError):
         return np.nan, np.nan
+    d0, k = float(popt[0]), float(popt[1])
+    # curve_fit can "converge" on a midpoint far outside the data when the
+    # weight has no usable transition -- an undertrained network, or a prior so
+    # extreme that every trial sits on one side. Such a fit is not a small
+    # error, it is a meaningless number (values in the thousands of degrees
+    # have been observed), and silently averaging it would destroy any summary
+    # it entered. Reject anything outside the observed range.
+    lo, hi = float(d.min()), float(d.max())
+    span = hi - lo
+    if not np.isfinite(d0) or not np.isfinite(k) or k <= 0 \
+            or d0 < lo - 0.25 * span or d0 > hi + 0.25 * span:
+        return np.nan, np.nan
+    return d0, k
 
 
 def by_reliability(x, y, reliability, levels, grid):
@@ -429,3 +441,59 @@ def model_comparison(estimate, post, fused, segregated, n_bins=10, seed=0):
                 break
     out["best"] = best
     return out
+
+
+def binned_implied_weight(estimate, segregated, fused, x, grid,
+                          min_count=25, sigma_out=None, max_se=0.1):
+    """Implied weight per bin of `x`, as a least-squares slope (no division).
+
+    Within each bin, regress (estimate - seg) on Delta = fused - seg through
+    the origin:  w_bin = sum(Delta * (estimate - seg)) / sum(Delta^2),
+    whose standard error is  sigma_out / sqrt(sum(Delta^2)).
+
+    This is the unbiased way to draw a weight-vs-disparity curve. The per-trial
+    ratio (estimate - seg)/Delta needs a sigma_w filter to stay finite, and that
+    filter keeps preferentially high-|Delta| trials -- which within a disparity
+    bin are the ones with the most separated hypotheses, and therefore the
+    lowest weights. Binning the filtered ratio pulls the curve systematically
+    below the analytical posterior even for a perfectly Bayesian network. The
+    least-squares form uses every trial and has no such selection.
+
+    Bins are dropped when they hold fewer than `min_count` trials, or (given
+    `sigma_out`) when the slope's standard error exceeds `max_se`. The second
+    guard is the bin-level analogue of the per-trial sigma_w criterion: near
+    zero disparity the two hypotheses coincide, sum(Delta^2) collapses, and the
+    weight is simply not identifiable there however many trials the bin holds.
+    Without it the curve spikes at the origin -- an artefact of the estimator,
+    not a property of the network.
+
+    Returns (centres, weights, counts, standard_errors).
+    """
+    estimate, segregated = np.asarray(estimate), np.asarray(segregated)
+    fused, x = np.asarray(fused), np.asarray(x)
+    grid = np.asarray(grid, float)
+    delta = fused - segregated
+    resid = estimate - segregated
+    ok = np.isfinite(delta) & np.isfinite(resid) & np.isfinite(x)
+    idx = np.abs(x[:, None] - grid[None, :]).argmin(1)
+
+    centres, weights, counts, ses = [], [], [], []
+    for b in range(len(grid)):
+        m = ok & (idx == b)
+        den = float((delta[m] ** 2).sum())
+        if m.sum() < min_count or den <= 0:
+            continue
+        w = float((delta[m] * resid[m]).sum() / den)
+        if sigma_out is None:
+            se = float(np.sqrt(((resid[m] - w * delta[m]) ** 2).sum()
+                               / max(int(m.sum()) - 1, 1) / den))
+        else:
+            se = float(sigma_out / np.sqrt(den))
+        if not np.isfinite(se) or se > max_se:
+            continue
+        centres.append(float(grid[b]))
+        weights.append(w)
+        counts.append(int(m.sum()))
+        ses.append(se)
+    return (np.array(centres), np.array(weights),
+            np.array(counts), np.array(ses))

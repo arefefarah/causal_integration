@@ -8,7 +8,7 @@ Every function returns a Figure and saves nothing; `style.save_figures` writes a
 whole group at once.
 """
 
-from cmsi.viz import inputs, results, training
+from cmsi.viz import inputs, prior_sweep, results, training
 from cmsi.viz.style import COLORS, apply_style, save_figures
 
-__all__ = ["inputs", "training", "results", "apply_style", "save_figures", "COLORS"]
+__all__ = ["inputs", "training", "results", "prior_sweep", "apply_style", "save_figures", "COLORS"]

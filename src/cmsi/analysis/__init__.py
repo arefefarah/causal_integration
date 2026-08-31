@@ -12,6 +12,7 @@
 from cmsi.analysis.accuracy import accuracy, errors, generalization, print_accuracy
 from cmsi.analysis.behavior import bias_vs_disparity, conditioned_bias
 from cmsi.analysis.causal import (
+    binned_implied_weight,
     by_reliability,
     compare,
     fusion_weight,
@@ -42,7 +43,7 @@ __all__ = [
     "accuracy", "errors", "generalization", "print_accuracy",
     "fusion_weight", "implied_log_bf", "compare", "mean_by_bin",
     "transition_fit", "by_reliability", "strategy_fit",
-    "position_regression", "sigma_out", "sigma_w", "joint_fusion_weight",
+    "binned_implied_weight", "position_regression", "sigma_out", "sigma_w", "joint_fusion_weight",
     "weight_consistency", "reliability_within_disparity",
     "variance_signature", "model_comparison",
     "decode", "decode_by_layer", "summarise",
