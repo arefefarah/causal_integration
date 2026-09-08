@@ -22,38 +22,38 @@ import _bootstrap  # noqa: F401
 from cmsi.analysis.calibration import calibrate, checks
 from cmsi.utils import load_config, save_json
 from cmsi.utils.paths import RESULTS
-from cmsi.viz import apply_style
+from cmsi.viz import SIZE, apply_style, label_panels, save_figures
 
 
 def figures(stats, arrays, out_dir):
     from matplotlib import pyplot as plt
-    out_dir.mkdir(parents=True, exist_ok=True)
-    written = []
+    figs = {}
 
     # SS8.1 posterior histogram
-    fig, ax = plt.subplots(figsize=(5.6, 4))
+    fig, ax = plt.subplots(figsize=SIZE["single"])
     ax.hist(arrays["post_c1"], bins=60, color="#4878cf")
     ax.axvspan(0.2, 0.8, color="orange", alpha=0.12)
     mi = stats["posterior_mass_intermediate"]
     ax.set(xlabel="analytical p(C=1|x)", ylabel="trials",
            title=f"posterior histogram -- {mi:.0%} intermediate (target ~25%)")
     fig.tight_layout()
-    fig.savefig(out_dir / "01_posterior_histogram.png", dpi=150)
-    plt.close(fig); written.append("01_posterior_histogram.png")
+    figs["01_posterior_histogram"] = fig
 
     # SS8.2 joint (w, |Delta|)
-    fig, axes = plt.subplots(1, 2, figsize=(10.5, 4))
+    fig, axes = plt.subplots(1, 2, figsize=SIZE["pair"])
     for ax, key, name in ((axes[0], "delta_vis", "visual output"),
                           (axes[1], "delta_prop", "hand output")):
-        ax.hist2d(arrays["post_c1"], np.abs(arrays[key]), bins=50, cmap="Blues")
+        *_, mesh = ax.hist2d(arrays["post_c1"], np.abs(arrays[key]), bins=50,
+                             cmap="Blues")
+        mesh.set_rasterized(True)      # 2,500 cells -> one image in the SVG
         ax.set(xlabel="p(C=1|x)", ylabel="|Delta| (deg)",
                title=f"joint (w, |Delta|): {name}")
+    label_panels(axes)
     fig.tight_layout()
-    fig.savefig(out_dir / "02_joint_w_delta.png", dpi=150)
-    plt.close(fig); written.append("02_joint_w_delta.png")
+    figs["02_joint_w_delta"] = fig
 
     # SS8.3 reliability coverage: posterior spread within disparity bins
-    fig, ax = plt.subplots(figsize=(5.6, 4))
+    fig, ax = plt.subplots(figsize=SIZE["single"])
     rng_ = stats["reliability_coverage"]["within_bin_posterior_range"]
     std_ = stats["reliability_coverage"]["within_bin_posterior_std"]
     x = np.arange(len(rng_))
@@ -63,13 +63,12 @@ def figures(stats, arrays, out_dir):
     ax.set(xlabel="|disparity| bin (quantiles)",
            ylabel="spread of p(C=1|x) within bin",
            title="reliability-driven posterior spread at matched disparity")
-    ax.legend(fontsize=8)
+    ax.legend()
     fig.tight_layout()
-    fig.savefig(out_dir / "03_reliability_coverage.png", dpi=150)
-    plt.close(fig); written.append("03_reliability_coverage.png")
+    figs["03_reliability_coverage"] = fig
 
     # SS4 Poisson validity
-    fig, ax = plt.subplots(figsize=(5.6, 4))
+    fig, ax = plt.subplots(figsize=SIZE["single"])
     po = stats["poisson"]
     labels = [f"sigma2={po[t]['sigma2']:g}" for t in ("min", "max")]
     vals = [po[t]["inflation"] * 100 for t in ("min", "max")]
@@ -77,11 +76,12 @@ def figures(stats, arrays, out_dir):
     ax.axhline(5, ls="--", color="crimson", lw=1, label="5% tolerance")
     ax.set(ylabel="decoded variance above nominal (%)",
            title="Poisson validity (SS4)")
-    ax.legend(fontsize=8)
+    ax.legend()
     fig.tight_layout()
-    fig.savefig(out_dir / "04_poisson_validity.png", dpi=150)
-    plt.close(fig); written.append("04_poisson_validity.png")
-    return written
+    figs["04_poisson_validity"] = fig
+
+    paths = save_figures(figs, out_dir)
+    return [p.name for p in paths]
 
 
 def main(args):

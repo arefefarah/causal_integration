@@ -1478,6 +1478,31 @@ result; it is not one, and a reader checking counts will notice.
 
 # Part 9 — Every figure, and the calculation behind it
 
+**Every figure is written to the PLOS ONE specification** (`cmsi/viz/style.py`
+carries the numbers): drawn at its final printed size — 5.2 in wide for a
+single panel, 7.5 in for a multi-panel figure, never taller than 8.75 in —
+at 300 dpi, in Arial (Liberation Sans on Linux, which is metrically identical)
+with every font between 8 and 12 pt, and lettered panels on every multi-panel
+figure. Each figure is saved three times: `.png` to look at, `.tif` for
+submission (flattened RGB, no alpha channel, LZW-compressed, 300 dpi metadata),
+and `.svg` to edit. The sweep figures additionally get a `.pdf` for the LaTeX
+draft. `save_figures` reads every file back and warns if it breaks a limit;
+`tests/test_figures.py` pins the contract.
+
+**About the SVGs.** They are the same physical size as the raster files, text
+stays text (editable in Inkscape or Illustrator, searchable, and set in Arial
+on any machine that has it), and axes, lines and markers are vectors. The dense
+point clouds — the 12,500-trial output scatters, the 50,000-trial gain plots,
+the 2-D histograms — are embedded as single 300-dpi images inside the SVG
+rather than tens of thousands of vector markers, which is what keeps the
+whole set at about 3 MB instead of hundreds. Output is deterministic (no
+timestamp, fixed element ids), so regenerating an unchanged figure gives a
+byte-identical file. PLOS ONE does not accept SVG; the `.tif` is the
+submission copy.
+
+Titles are kept inside the figures by your decision (PLOS asks for them in the
+caption instead); the panel letters are the one addition the journal requires.
+
 ## 9.1 `figures/inputs/` — what the network is shown
 
 Drawn from the dataset, before any training. Worth checking first: most
@@ -1613,7 +1638,8 @@ distribution of gain-field slopes. Your flagship median shift gain: 0.013.
 Produced by `scripts/05_prior_sweep.py`, not by `04_figures.py`. These are not
 per-run figures: each one summarises all 27 networks.
 
-**`prior_sweep.png`** (and `.pdf`, 300 dpi) — the main figure, three panels.
+**`prior_sweep.png`** (with `.tif` for submission, `.svg` to edit and `.pdf` for
+LaTeX) — the main figure, three panels, 7.5 in wide.
 
 - **Panel A** — implied fusion weight against signed body-frame disparity, one
   curve per prior, colour on a sequential viridis ramp (light = low prior).
@@ -1643,12 +1669,18 @@ rather than informative (§8.3).
 # Part 10 — How to run things
 
 ```bash
-make test                                       # 70 property tests, ~40 s
+make test                                       # 81 property tests, ~45 s
 make calibrate CONFIG=configs/flagship.yaml     # the gate alone
 make all       CONFIG=configs/flagship.yaml     # full pipeline, 50k trials
 make quick     CONFIG=configs/flagship.yaml     # same, 8k trials / 60 epochs
 make sweep     SEEDS="0 1 2"                    # the cross-prior sweep, ~45 min
+make figures   RUN=flagship                     # redraw one run's figures
+python scripts/05_prior_sweep.py --replot       # redraw the sweep, no training
 ```
+
+Every figure command writes `.png`, `.tif` and `.svg` side by side (Part 9);
+the two redraw commands are what to run after a style change, since neither
+retrains anything.
 
 **`make all` does not include the sweep**, and the sweep does not depend on
 `make all` having been run — except for `pcommon1`, which supplies σ_out. The

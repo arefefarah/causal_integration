@@ -9,33 +9,48 @@ from matplotlib import pyplot as plt
 
 from cmsi.analysis.accuracy import accuracy
 from cmsi.analysis.causal import mean_by_bin
-from cmsi.viz.style import COLORS
+from cmsi.viz.style import COLORS, SIZE, label_panels
+
+
+def _grid(n, size, ncols=2):
+    """n panels in a `ncols`-wide grid at a PLOS-sized figure; unused axes are
+    hidden. Returns (fig, flat axes). Four outputs in one row would give each
+    panel 1.8 in of the 7.5 in width, too little for readable ticks."""
+    nrows = int(np.ceil(n / ncols))
+    fig, axes = plt.subplots(nrows, ncols, figsize=size)
+    axes = np.ravel(axes)
+    for ax in axes[n:]:
+        ax.set_visible(False)
+    return fig, axes
 
 
 def output_scatter(pred, target, names):
     """Network vs analytical, one panel per output, with R^2 and RMSE."""
     rows = accuracy(pred, target, names)
-    fig, axes = plt.subplots(1, len(names), figsize=(3.4 * len(names), 3.6))
-    axes = np.atleast_1d(axes)
-    for i, (ax, row) in enumerate(zip(axes, rows)):
+    fig, axes = _grid(len(names), SIZE["quad"])
+    for i, (ax, row) in enumerate(zip(axes, rows, strict=False)):
         y, yhat = target[:, i], pred[:, i]
-        ax.scatter(y, yhat, s=2, alpha=0.15, color=COLORS["network"])
+        # rasterized: the point cloud embeds as one 300-dpi image inside the
+        # SVG/PDF instead of ~12,000 vector markers; axes and text stay vector
+        ax.scatter(y, yhat, s=2, alpha=0.15, color=COLORS["network"], rasterized=True)
         lo, hi = np.percentile(y, [0.5, 99.5])
         ax.plot([lo, hi], [lo, hi], "--", lw=1, color=COLORS["analytical"])
-        ax.set(title=f"{row['output']}\nR2={row['r2']:.3f}  RMSE={row['rmse']:.2f}",
+        ax.set(title=f"{row['output']}   R$^2$ = {row['r2']:.3f}   RMSE = {row['rmse']:.2f}",
                xlabel="analytical", ylabel="network")
+    label_panels(axes[:len(names)])
     fig.tight_layout()
     return fig
 
 
 def error_histograms(pred, target, names):
-    fig, axes = plt.subplots(1, len(names), figsize=(3.4 * len(names), 3.2))
-    axes = np.atleast_1d(axes)
-    for i, (ax, name) in enumerate(zip(axes, names)):
+    fig, axes = _grid(len(names), SIZE["quad_short"])
+    for i, (ax, name) in enumerate(zip(axes, names, strict=False)):
         err = pred[:, i] - target[:, i]
         ax.hist(err, bins=60, color=COLORS["network"])
         ax.axvline(0, lw=1, color=COLORS["analytical"])
-        ax.set(title=f"{name}   bias={err.mean():.2f}", xlabel="network - analytical")
+        ax.set(title=f"{name}   bias = {err.mean():.2f}", xlabel="network - analytical",
+               ylabel="trials")
+    label_panels(axes[:len(names)])
     fig.tight_layout()
     return fig
 
@@ -43,7 +58,7 @@ def error_histograms(pred, target, names):
 def p_common_vs_disparity(disparity, p_common, grid):
     """The Kording-style curve: p(C=1) high near zero disparity, falling away."""
     centres, means, _ = mean_by_bin(disparity, p_common, grid)
-    fig, ax = plt.subplots(figsize=(5.5, 4))
+    fig, ax = plt.subplots(figsize=SIZE["single"])
     ax.plot(centres, means, "o-", color=COLORS["analytical"])
     ax.set(xlabel="body-frame disparity (deg)", ylabel="p(C=1)", ylim=(0, 1),
            title="analytical common-cause posterior")
@@ -64,7 +79,7 @@ def fusion_weight_curve(disparity, w_network, p_analytical, grid, w_prop=None):
     rests on few trials and swings wildly. That is a property of the estimator,
     not of the network.
     """
-    fig, ax = plt.subplots(figsize=(5.8, 4))
+    fig, ax = plt.subplots(figsize=SIZE["single"])
     c_opt, m_opt, _ = mean_by_bin(disparity, p_analytical, grid)
     ax.plot(c_opt, m_opt, "--o", color=COLORS["analytical"], label="analytical p(C=1)")
 
@@ -77,14 +92,14 @@ def fusion_weight_curve(disparity, w_network, p_analytical, grid, w_prop=None):
 
     ax.set(xlabel="body-frame disparity (deg)", ylabel="weight on fused estimate",
            ylim=(-0.1, 1.1), title="fusion -> segregation transition")
-    ax.legend(fontsize=9)
+    ax.legend()
     fig.tight_layout()
     return fig
 
 
 def fusion_weight_by_reliability(curves):
     """curves: output of analysis.by_reliability -> {level: (centres, means, n)}."""
-    fig, ax = plt.subplots(figsize=(5.5, 4))
+    fig, ax = plt.subplots(figsize=SIZE["single"])
     for level, (centres, means, _) in sorted(curves.items()):
         ax.plot(centres, means, "o-", label=f"sigma2_vis ~ {level:g}")
     ax.set(xlabel="body-frame disparity (deg)", ylabel="weight on fused estimate",
@@ -97,7 +112,7 @@ def fusion_weight_by_reliability(curves):
 def decoding_bars(scores, title="p(C=1) decodable from"):
     """scores: {layer_name: held-out r2} -- i.e. analysis.summarise output."""
     names = list(scores)
-    fig, ax = plt.subplots(figsize=(4 + 0.7 * len(names), 4))
+    fig, ax = plt.subplots(figsize=SIZE["single"])
     ax.bar(names, [scores[n] for n in names], color=COLORS["network"])
     ax.set(ylabel="held-out R2", ylim=(0, 1), title=title)
     fig.tight_layout()
@@ -114,7 +129,7 @@ def decoding_comparison(by_model, title="emergent vs imposed"):
     width = 0.8 / len(by_model)
     x = np.arange(len(layers))
 
-    fig, ax = plt.subplots(figsize=(6, 4))
+    fig, ax = plt.subplots(figsize=SIZE["single"])
     for i, (label, scores) in enumerate(by_model.items()):
         ax.bar(x + i * width, [scores.get(k, 0) for k in layers], width, label=label)
     ax.set_xticks(x + width * (len(by_model) - 1) / 2, layers)
@@ -128,8 +143,8 @@ def position_regression_scatter(pred_col, seg, fused, post, reg, output_name):
     """SS7.1 headline: (estimate - seg) against w_opt * Delta, with the fit."""
     x = post * (fused - seg)
     y = pred_col - seg
-    fig, ax = plt.subplots(figsize=(5.2, 4.6))
-    ax.scatter(x, y, s=2, alpha=0.15, color=COLORS["network"])
+    fig, ax = plt.subplots(figsize=SIZE["single_tall"])
+    ax.scatter(x, y, s=2, alpha=0.15, color=COLORS["network"], rasterized=True)
     lo, hi = np.percentile(x, [0.5, 99.5])
     ax.plot([lo, hi], [lo, hi], "--", lw=1, color=COLORS["analytical"],
             label="Bayes-optimal (slope 1)")
@@ -141,7 +156,7 @@ def position_regression_scatter(pred_col, seg, fused, post, reg, output_name):
     ax.set(xlabel="w_opt * (fused - seg)  (deg)",
            ylabel="network - seg  (deg)",
            title=f"position-domain regression: {output_name}")
-    ax.legend(fontsize=8)
+    ax.legend()
     fig.tight_layout()
     return fig
 
@@ -150,7 +165,7 @@ def variance_hump(sig, output_name):
     """SS7.3: network Var output vs posterior bin, with the analytical mixture
     variance, its between-component term, and the humpless fixed-weight line."""
     c = np.asarray(sig["centres"])
-    fig, ax = plt.subplots(figsize=(5.8, 4.2))
+    fig, ax = plt.subplots(figsize=SIZE["single"])
     ax.plot(c, sig["mixture"], "--o", color=COLORS["analytical"],
             label="analytical mixture variance")
     ax.plot(c, sig["net"], "o-", color=COLORS["network"], label="network output")
@@ -160,7 +175,7 @@ def variance_hump(sig, output_name):
             label="best fixed-weight (no hump)")
     ax.set(xlabel="analytical p(C=1|x)", ylabel="variance (deg^2)",
            title=f"uncertainty vs causal ambiguity: {output_name}")
-    ax.legend(fontsize=8)
+    ax.legend()
     fig.tight_layout()
     return fig
 
@@ -174,7 +189,7 @@ def model_comparison_curves(mc, output_name):
     the latter cancels within a bin because the disparity is signed.
     """
     c = np.asarray(mc["bin_centres"])
-    fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.2))
+    fig, axes = plt.subplots(1, 2, figsize=SIZE["pair"])
     axes[0].plot(c, mc["bin_weight_net"], "ko-", lw=2, label="network", zorder=5)
     for k in ("averaging", "integration", "segregation", "selection", "fixed"):
         axes[0].plot(c, mc["bin_weight"][k], "--", label=k)
@@ -182,21 +197,21 @@ def model_comparison_curves(mc, output_name):
                 ylabel="implied weight on the fused estimate",
                 ylim=(-0.15, 1.15),
                 title=f"per-decile weight: {output_name}")
-    axes[0].legend(fontsize=8)
+    axes[0].legend()
     for k in ("averaging", "integration", "segregation", "selection", "fixed"):
         axes[1].plot(c, mc["bin_rmse"][k], "o-", label=k)
     axes[1].set(xlabel="analytical p(C=1|x) (decile centres)",
                 ylabel="RMSE vs network (deg)",
-                title=f"which strategy explains the network "
-                      f"(best: {mc['best']})")
-    axes[1].legend(fontsize=8)
+                title=f"which strategy explains the network\n(best: {mc['best']})")
+    axes[1].legend()
+    label_panels(axes)
     fig.tight_layout()
     return fig
 
 
 def behavioral_bias(saved):
     """SS7.6: Kording Fig. 2e analog + conditioning on the inferred cause."""
-    fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.2))
+    fig, axes = plt.subplots(1, 2, figsize=SIZE["pair"])
     axes[0].plot(saved["bias_centres"], saved["bias_net"], "o-",
                  color=COLORS["network"], label="network")
     if "bias_opt" in saved:
@@ -206,7 +221,7 @@ def behavioral_bias(saved):
     axes[0].set(xlabel="body-frame disparity (deg)",
                 ylabel="hand-report pull toward vision (deg)",
                 title="bias vs disparity (Kording 2e analog)")
-    axes[0].legend(fontsize=8)
+    axes[0].legend()
     for label, style in (("common", "o-"), ("separate", "s-")):
         c = saved.get(f"cond_bias_{label}_centres")
         b = saved.get(f"cond_bias_{label}")
@@ -214,8 +229,9 @@ def behavioral_bias(saved):
             axes[1].plot(c, b, style, label=f"inferred {label} cause")
     axes[1].axhline(0, lw=0.5, color="gray")
     axes[1].set(xlabel="|disparity| (deg)", ylabel="bias (deg)",
-                title="conditioned on the network's causal judgment (3b-c)")
-    axes[1].legend(fontsize=8)
+                title="conditioned on the network's\ncausal judgment (3b-c)")
+    axes[1].legend()
+    label_panels(axes)
     fig.tight_layout()
     return fig
 
@@ -225,7 +241,7 @@ def congruency_panels(saved, balance_stats=None):
     idx = saved["congruency_index"]
     has_balance = "congruent_opposite_balance" in getattr(saved, "files", saved)
     fig, axes = plt.subplots(1, 2 if has_balance else 1,
-                             figsize=(10.5 if has_balance else 5.5, 4.2))
+                             figsize=SIZE["pair"] if has_balance else SIZE["single"])
     axes = np.atleast_1d(axes)
     axes[0].hist(idx, bins=30, color=COLORS["network"])
     axes[0].axvline(0.5, ls="--", lw=1, color=COLORS["analytical"])
@@ -235,30 +251,33 @@ def congruency_panels(saved, balance_stats=None):
     if has_balance:
         bal = saved["congruent_opposite_balance"]
         post = saved["post_c1"]
-        axes[1].scatter(bal, post, s=3, alpha=0.2, color=COLORS["network"])
+        axes[1].scatter(bal, post, s=3, alpha=0.2, color=COLORS["network"],
+                        rasterized=True)
         title = "balance predicts p(C=1|x)"
         if balance_stats:
             title += f"  (corr {balance_stats.get('corr', float('nan')):.2f})"
         axes[1].set(xlabel="congruent - opposite mean activity",
                     ylabel="analytical p(C=1|x)", title=title)
+        label_panels(axes)
     fig.tight_layout()
     return fig
 
 
 def rf_shift_hist(saved):
     """Continuity analysis: distribution of RF shift gains and gain fields."""
-    fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.0))
+    fig, axes = plt.subplots(1, 2, figsize=SIZE["pair"])
     g = saved["rf_shift_gain"]
     axes[0].hist(g[np.isfinite(g)], bins=30, color=COLORS["network"])
     axes[0].axvline(0, ls="--", lw=1, color=COLORS["analytical"], label="spatial code")
     axes[0].axvline(1, ls=":", lw=1, color=COLORS["analytical"], label="retinal code")
     axes[0].set(xlabel="RF shift gain (d preferred-spatial / d eye)",
                 ylabel="MSL units", title="reference frame of MSL units")
-    axes[0].legend(fontsize=8)
+    axes[0].legend()
     gf = saved["rf_gain_field"]
     axes[1].hist(gf[np.isfinite(gf)], bins=30, color=COLORS["network"])
     axes[1].set(xlabel="d peak response / d eye  (gain field slope)",
                 ylabel="MSL units", title="eye-position gain fields")
+    label_panels(axes)
     fig.tight_layout()
     return fig
 

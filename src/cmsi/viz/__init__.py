@@ -9,6 +9,19 @@ whole group at once.
 """
 
 from cmsi.viz import inputs, prior_sweep, results, training
-from cmsi.viz.style import COLORS, apply_style, save_figures
+from cmsi.viz.style import (
+    COLORS,
+    DPI,
+    FORMATS,
+    SIZE,
+    apply_style,
+    check_plos,
+    label_panels,
+    save_figures,
+    save_svg,
+    save_tiff,
+)
 
-__all__ = ["inputs", "training", "results", "prior_sweep", "apply_style", "save_figures", "COLORS"]
+__all__ = ["inputs", "training", "results", "prior_sweep", "apply_style",
+           "save_figures", "save_tiff", "save_svg", "check_plos", "label_panels",
+           "COLORS", "DPI", "FORMATS", "SIZE"]

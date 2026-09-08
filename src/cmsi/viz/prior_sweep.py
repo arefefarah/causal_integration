@@ -18,6 +18,8 @@ from matplotlib import pyplot as plt
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 
+from cmsi.viz.style import SIZE
+
 RAMP = "viridis"
 NET = "#2F6FD0"
 OPT = "#111418"
@@ -29,14 +31,16 @@ def _ramp(priors):
     return norm, cmap, {p: cmap(norm(p)) for p in priors}
 
 
-def figure(rows, curves, figsize=(11.5, 8.6)):
+def figure(rows, curves, figsize=SIZE["composite"]):
     """rows: list of per-prior stat dicts. curves: the npz mapping."""
     rows = sorted(rows, key=lambda r: r["p_common"])
     priors = [r["p_common"] for r in rows]
     norm, cmap, col = _ramp(priors)
 
-    fig = plt.figure(figsize=figsize)
-    gs = fig.add_gridspec(2, 2, hspace=0.30, wspace=0.26)
+    # constrained layout keeps the colourbar and every label INSIDE figsize, so
+    # the saved file is never wider than the 7.5 in PLOS allows
+    fig = plt.figure(figsize=figsize, layout="constrained")
+    gs = fig.add_gridspec(2, 2, hspace=0.08, wspace=0.08)
     axA = fig.add_subplot(gs[0, :])
     axB = fig.add_subplot(gs[1, 0])
     axC = fig.add_subplot(gs[1, 1])
@@ -111,7 +115,7 @@ def figure(rows, curves, figsize=(11.5, 8.6)):
     axB.set(xlabel="analytical transition midpoint (deg)",
             ylabel="network transition midpoint (deg)",
             xlim=(lo, hi), ylim=(lo, hi))
-    axB.set_title("B   Quantitative match, no free parameters",
+    axB.set_title("B   Quantitative match,\n      no free parameters",
                   loc="left", fontsize=11, fontweight="600")
     axB.legend(fontsize=8.5, frameon=False, loc="upper left")
 
@@ -136,7 +140,9 @@ def _panel_c(fig, axA, axB, axC, rows, priors, col):
                     edgecolor="white", linewidth=0.7)
     axC.set(xlabel="prior  $p_{\\mathrm{common}}$",
             ylabel="position-regression slope", ylim=(0, 1.18))
-    axC.set_title("C   Model averaging at every prior, slightly conservative",
+    # two lines: at half the page width a one-line title overruns the figure
+    # edge, and bbox_inches="tight" would then grow the file past 7.5 in
+    axC.set_title("C   Model averaging at every prior,\n      slightly conservative",
                   loc="left", fontsize=11, fontweight="600")
     axC.legend(fontsize=8.5, frameon=False, loc="lower right")
 
@@ -151,7 +157,7 @@ def hump_panel(rows, ax=None):
     priors = [r["p_common"] for r in rows]
     _, _, col = _ramp(priors)
     if ax is None:
-        _, ax = plt.subplots(figsize=(5.4, 4.0))
+        _, ax = plt.subplots(figsize=SIZE["single"])
     hn = [r["hump_net"] for r in rows]
     ho = [r["hump_opt"] for r in rows]
     ax.plot(priors, ho, "--o", ms=4, lw=1.2, color=OPT, mfc="white",

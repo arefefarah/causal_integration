@@ -3,12 +3,12 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
-from cmsi.viz.style import COLORS
+from cmsi.viz.style import COLORS, SIZE
 
 
 def loss_curves(history):
     """Train and validation loss, with the early-stopping point marked."""
-    fig, ax = plt.subplots(figsize=(6, 4))
+    fig, ax = plt.subplots(figsize=SIZE["single"])
     ax.plot(history["train"], label="train", color=COLORS["network"])
     ax.plot(history["val"], label="validation", color=COLORS["analytical"])
     ax.axvline(history["best_epoch"], ls="--", lw=1, color="grey",
@@ -28,7 +28,7 @@ def per_output_loss(history):
     per_output = np.asarray(history["val_per_output"])
     names = history["target_names"]
 
-    fig, ax = plt.subplots(figsize=(6, 4))
+    fig, ax = plt.subplots(figsize=SIZE["single"])
     for i, name in enumerate(names):
         ax.plot(per_output[:, i], label=name)
     ax.set(xlabel="epoch", ylabel="weighted MSE", yscale="log",

@@ -9,7 +9,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from cmsi.data.encoding import encode_groups, gaussian_code, push_pull_code
-from cmsi.viz.style import COLORS
+from cmsi.viz.style import COLORS, SIZE, label_panels
 
 
 def tuning_curves(encoders, enc, n_show=8):
@@ -19,13 +19,14 @@ def tuning_curves(encoders, enc, n_show=8):
     rf = gaussian_code(x, encoders["rf_centers"], enc["rf_width"], gain)
     pp = push_pull_code(x, encoders["prop_slope"], encoders["prop_intercept"], gain)
 
-    fig, axes = plt.subplots(1, 2, figsize=(11, 3.8))
+    fig, axes = plt.subplots(1, 2, figsize=SIZE["pair"])
     axes[0].plot(x, rf[:, ::max(1, rf.shape[1] // n_show)], color=COLORS["visual"], alpha=0.7)
     axes[0].set(title="visual: gaussian receptive fields",
                 xlabel="stimulus (deg)", ylabel="rate")
     axes[1].plot(x, pp[:, :n_show], color=COLORS["prop"], alpha=0.7)
     axes[1].set(title="proprioceptive: push-pull units",
                 xlabel="stimulus (deg)", ylabel="rate")
+    label_panels(axes)
     fig.tight_layout()
     return fig
 
@@ -37,11 +38,12 @@ def population_heatmap(d, enc, n=300, seed=0):
               if isinstance(v, np.ndarray) and v.ndim == 1 and len(v) == len(d["x_vis"])}
     groups = encode_groups(trials, d["encoders"], enc, np.random.default_rng(seed))
 
-    fig, axes = plt.subplots(1, 3, figsize=(13, 3.8))
-    for ax, (name, g) in zip(axes, groups.items()):
+    fig, axes = plt.subplots(1, 3, figsize=SIZE["triple"])
+    for ax, (name, g) in zip(axes, groups.items(), strict=False):
         ax.imshow(g, aspect="auto", origin="lower", cmap="viridis")
         ax.grid(False)
         ax.set(title=name, xlabel="unit", ylabel="trials sorted by x_vis")
+    label_panels(axes)
     fig.tight_layout()
     return fig
 
@@ -53,11 +55,12 @@ def reliability_gain(d, enc, seed=1):
              ("prop_hand", "sig2_prop", "prop"),
              ("prop_eye", "sig2_eye", "eye")]
 
-    fig, axes = plt.subplots(1, 3, figsize=(13, 3.8))
-    for ax, (group, sig, color) in zip(axes, pairs):
+    fig, axes = plt.subplots(1, 3, figsize=SIZE["triple"])
+    for ax, (group, sig, color) in zip(axes, pairs, strict=False):
         ax.scatter(1 / d[sig], groups[group].sum(1), s=3, alpha=0.15,
-                   color=COLORS[color])
+                   color=COLORS[color], rasterized=True)   # 50k points -> image
         ax.set(title=group, xlabel=f"1 / {sig}", ylabel="total activity")
+    label_panels(axes)
     fig.suptitle("gain scales with reliability")
     fig.tight_layout()
     return fig
@@ -65,15 +68,16 @@ def reliability_gain(d, enc, seed=1):
 
 def latent_distributions(d):
     """Sanity check on the generative model: disparity, p(C=1), reliabilities."""
-    fig, axes = plt.subplots(1, 3, figsize=(13, 3.6))
+    fig, axes = plt.subplots(1, 3, figsize=SIZE["triple"])
     axes[0].hist(d["disparity"], bins=60, color=COLORS["network"])
     axes[0].set(title="body-frame disparity", xlabel="deg")
     axes[1].hist(d["post_c1"], bins=60, color=COLORS["network"])
     axes[1].set(title="analytical p(C=1)", xlabel="probability")
     for sig, color in [("sig2_vis", "visual"), ("sig2_prop", "prop"), ("sig2_eye", "eye")]:
         axes[2].hist(d[sig], bins=40, alpha=0.5, label=sig, color=COLORS[color])
-    axes[2].set(title="per-trial noise variances", xlabel="deg^2")
-    axes[2].legend()
+    axes[2].set(title="per-trial noise variances", xlabel="deg$^2$")
+    axes[2].legend(frameon=True, framealpha=0.85)   # sits over the bars
+    label_panels(axes)
     fig.tight_layout()
     return fig
 

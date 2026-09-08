@@ -192,6 +192,33 @@ def _write(out, args, rows, curves, agg):
     np.savez_compressed(out / "curves.npz", **curves)
 
 
+def draw(out, agg, curves):
+    """The two figures, from aggregated rows + curve arrays. Separate from
+    main() so `--replot` can restyle without retraining 27 networks."""
+    from cmsi.viz import apply_style, save_figures
+    from cmsi.viz.prior_sweep import figure, hump_panel
+    apply_style()
+    figs = {"prior_sweep": figure(agg, curves),
+            "variance_hump_vs_prior": hump_panel(agg).figure}
+    # png to look at, tif for submission (PLOS: flattened RGB, LZW, 300 dpi),
+    # svg to edit, pdf as a vector copy for the LaTeX draft
+    save_figures(figs, out / "figures", formats=("png", "tif", "svg", "pdf"))
+    print(f"wrote {out/'figures'}/prior_sweep and variance_hump_vs_prior "
+          f"(.png, .tif, .svg, .pdf)")
+
+
+def replot():
+    """Redraw from results/prior_sweep/sweep.json + curves.npz. Accepts both
+    the current file layout (`aggregated`) and the single-seed one (`rows`)."""
+    out = RESULTS / "prior_sweep"
+    sweep = load_json(out / "sweep.json")
+    agg = sweep.get("aggregated") or aggregate(sweep["rows"])
+    curves = dict(np.load(out / "curves.npz"))
+    n_seeds = max((r.get("n_seeds", 1) for r in agg), default=1)
+    print(f"replotting {len(agg)} priors x {n_seeds} seed(s) from {out}")
+    draw(out, agg, curves)
+
+
 def main(args):
     cfg = load_config(args.config)
     out = RESULTS / "prior_sweep"
@@ -240,19 +267,7 @@ def main(args):
     _write(out, args, rows, curves, agg)
     print(f"wrote {out/'sweep.json'} and {out/'curves.npz'}")
 
-    from cmsi.viz import apply_style
-    from cmsi.viz.prior_sweep import figure, hump_panel
-    apply_style()
-    fig = figure(agg, curves)
-    for ext in ("png", "pdf"):
-        fig.savefig(out / "figures" / f"prior_sweep.{ext}", dpi=300,
-                    bbox_inches="tight")
-    ax = hump_panel(agg)
-    for ext in ("png", "pdf"):
-        ax.figure.savefig(out / "figures" / f"variance_hump_vs_prior.{ext}",
-                          dpi=300, bbox_inches="tight")
-    print(f"wrote {out/'figures'}/prior_sweep.png, variance_hump_vs_prior.png "
-          f"(+ .pdf)")
+    draw(out, agg, curves)
     if len(args.seeds) > 1:
         print(f"error bars are across-seed SEM over {len(args.seeds)} seeds")
     else:
@@ -274,7 +289,13 @@ if __name__ == "__main__":
                    help="deprecated alias for --seeds with a single value")
     p.add_argument("--control", default="pcommon1",
                    help="run whose residual_std supplies sigma_out")
+    p.add_argument("--replot", action="store_true",
+                   help="only redraw the figures from the saved sweep.json "
+                        "and curves.npz (no training)")
     a = p.parse_args()
+    if a.replot:
+        replot()
+        raise SystemExit(0)
     if a.seed is not None:
         a.seeds = [a.seed]
     if a.config is None:
