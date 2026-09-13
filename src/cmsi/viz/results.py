@@ -109,6 +109,77 @@ def fusion_weight_by_reliability(curves):
     return fig
 
 
+def reliability_within_disparity_panels(w_implied, w_optimal, abs_disparity, rwd,
+                                        max_points=400, seed=0):
+    """The Bayes-versus-disparity-heuristic test (SS7.2), one panel per retained bin.
+
+    `rwd` is metrics["reliability_within_disparity"] -- the bin edges, slopes
+    and standard errors stage 3 computed -- so the panels show exactly the
+    numbers in metrics.json. The per-trial arrays supply only the points.
+
+    Within a |disparity| quantile bin the disparity is nearly constant, so the
+    analytical posterior varies there only because the cue reliabilities vary.
+    A pure disparity heuristic therefore predicts a flat line (slope 0) and
+    Bayes predicts slope 1; both are drawn through the bin's mean point. Bins
+    stage 3 skipped, because the posterior is numerically pinned at zero for
+    every trial, are listed under the panels with their spread so the
+    exclusion stays visible.
+    """
+    rows = rwd.get("bins", [])
+    if not rows:
+        fig, ax = plt.subplots(figsize=SIZE["single"])
+        ax.text(0.5, 0.5, "no disparity bin retained\n(posterior does not vary at matched disparity)",
+                ha="center", va="center", transform=ax.transAxes)
+        ax.set_axis_off()
+        return fig
+
+    w_implied, w_optimal, abs_disparity = (np.asarray(a, float) for a in
+                                           (w_implied, w_optimal, abs_disparity))
+    ok = np.isfinite(w_implied) & np.isfinite(w_optimal) & np.isfinite(abs_disparity)
+    rng = np.random.default_rng(seed)
+
+    n = len(rows)
+    fig, axes = plt.subplots(1, n, figsize=(SIZE["triple"][0], 3.4), sharey=True,
+                             squeeze=False)
+    axes = axes[0]
+    for ax, r in zip(axes, rows):
+        m = ok & (abs_disparity >= r["bin_lo"]) & (abs_disparity < r["bin_hi"])
+        x, y = w_optimal[m], w_implied[m]
+        if len(x) > max_points:
+            keep = rng.choice(len(x), max_points, replace=False)
+            xs, ys = x[keep], y[keep]
+        else:
+            xs, ys = x, y
+        ax.scatter(xs, ys, s=6, color="0.6", alpha=0.5, linewidths=0, rasterized=True)
+
+        xm, ym = x.mean(), y.mean()
+        xx = np.array([x.min(), x.max()])
+        ax.plot(xx, [ym, ym], ":", color="0.35", lw=1, label="heuristic (slope 0)")
+        ax.plot(xx, ym + (xx - xm), "--", color=COLORS["analytical"], lw=1,
+                label="Bayes (slope 1)")
+        # the stored slope, drawn through the bin's mean point (an OLS line
+        # always passes through it), so the line and the label agree exactly
+        ax.plot(xx, ym + r["slope"] * (xx - xm), "-", color=COLORS["network"], lw=2,
+                label=f"fit: {r['slope']:.2f} $\\pm$ {r['slope_se']:.2f}")
+        ax.set(title=f"|d| {r['bin_lo']:.1f}\u2013{r['bin_hi']:.1f} deg  (n = {r['n']})",
+               xlabel="analytical p(C=1|x)")
+        ax.legend(loc="upper left", fontsize=7, frameon=False)
+
+    axes[0].set(ylabel="implied weight on fused estimate", ylim=(-0.6, 1.6))
+    label_panels(axes)
+
+    skipped = rwd.get("skipped", [])
+    if skipped:
+        parts = [f"{s['bin_lo']:.0f}\u2013{s['bin_hi']:.0f} deg ({s.get('w_opt_spread', float('nan')):.1e})"
+                 for s in skipped]
+        fig.text(0.5, 0.005, "skipped bins, posterior pinned at 0 (spread in parentheses): "
+                 + ", ".join(parts), ha="center", va="bottom", fontsize=7, color="0.3")
+    fig.suptitle("reliability is tracked at matched disparity: combined slope "
+                 f"{rwd['combined_slope']:.2f} $\\pm$ {rwd['combined_se']:.2f}")
+    fig.tight_layout(rect=(0, 0.05, 1, 1))
+    return fig
+
+
 def decoding_bars(scores, title="p(C=1) decodable from"):
     """scores: {layer_name: held-out r2} -- i.e. analysis.summarise output."""
     names = list(scores)
@@ -332,4 +403,12 @@ def all_figures(pred, d, names, analysis_cfg, w=None, curves=None,
             saved, metrics.get("balance_vs_post"))
     if saved is not None and "rf_shift_gain" in getattr(saved, "files", saved):
         figs["14_rf_shifts"] = rf_shift_hist(saved)
+    if (w is not None and "reliability_within_disparity" in metrics
+            and "sigma_w_vis" in getattr(saved, "files", saved)):
+        # same readability filter stage 3 applies before this test (03_analyze, 2d)
+        readable = np.where(saved["sigma_w_vis"] < analysis_cfg["sigma_w_criterion"],
+                            w, np.nan)
+        figs["15_reliability_within_disparity"] = reliability_within_disparity_panels(
+            readable, d["post_c1"], np.abs(d["disparity"]),
+            metrics["reliability_within_disparity"])
     return figs

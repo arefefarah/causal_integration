@@ -1540,9 +1540,9 @@ signature; it is what `balance_loss` exists to prevent.
 
 ## 9.3 `figures/model/` — network versus observer
 
-Fourteen figures. Figures 01–07 exist for every run; 08–14 are produced only for
+Fifteen figures. Figures 01–07 exist for every run; 08–15 are produced only for
 runs with a causal head and a prior strictly between 0 and 1 — which is why
-`pcommon1` and `pcommon0` have 7 figures and the other three have 14.
+`pcommon1` and `pcommon0` have 7 figures and the other three have 15.
 
 **`01_output_scatter.png`** — network against analytical, one panel per output,
 with the identity line and R²/RMSE in each title. The first thing to look at.
@@ -1632,6 +1632,20 @@ inconsistency noted in §7.9.
 **`14_rf_shifts.png`** — two histograms. Left: distribution of RF shift gain
 across MSL units, with 0 (spatial code) and +1 (retinal code) marked. Right:
 distribution of gain-field slopes. Your flagship median shift gain: 0.013.
+
+**`15_reliability_within_disparity.png`** — the Bayes-versus-disparity-heuristic
+test of §7.5, one panel per retained |disparity| quantile bin. Within a bin the
+disparity is nearly constant, so the analytical posterior varies only because
+the cue reliabilities vary; each panel scatters the readable implied weight
+(σ_w < 0.1, from `mu_vis`) against the posterior, with the dotted line the
+heuristic's prediction (slope 0), the dashed line the Bayesian prediction
+(slope 1), and the solid line the stored per-bin slope ± SE from
+`metrics.json`. The skipped bins, where the posterior is numerically pinned at
+zero, are listed under the panels with their spread. The combined slope is in
+the title. Your flagship: three retained bins, slopes 0.48 ± 0.08, 1.07 ± 0.20
+and 3.26 ± 1.50, combined 0.567 ± 0.073. Drawn by
+`viz.results.reliability_within_disparity_panels` from `analysis.npz` and the
+stored metrics, so it never recomputes the test.
 
 ## 9.4 `results/prior_sweep/figures/` — the cross-prior experiment
 
