@@ -196,7 +196,8 @@ def draw(out, agg, curves):
     """The two figures, from aggregated rows + curve arrays. Separate from
     main() so `--replot` can restyle without retraining 27 networks."""
     from cmsi.viz import apply_style, save_figures
-    from cmsi.viz.prior_sweep import figure, hump_panel
+    from cmsi.viz.manuscript import manuscript_dir
+    from cmsi.viz.prior_sweep import FOLDER, figure, hump_panel, manuscript_figure
     apply_style()
     figs = {"prior_sweep": figure(agg, curves),
             "variance_hump_vs_prior": hump_panel(agg).figure}
@@ -205,6 +206,11 @@ def draw(out, agg, curves):
     save_figures(figs, out / "figures", formats=("png", "tif", "svg", "pdf"))
     print(f"wrote {out/'figures'}/prior_sweep and variance_hump_vs_prior "
           f"(.png, .tif, .svg, .pdf)")
+    # and the manuscript version, on the standard panel, in its own folder
+    mdir = manuscript_dir()
+    save_figures({f"{FOLDER}/prior_sweep_ABC": manuscript_figure(agg, curves)},
+                 mdir, formats=("png", "tif", "svg", "pdf"))
+    print(f"wrote {mdir / FOLDER}/prior_sweep_ABC (.png, .tif, .svg, .pdf)")
 
 
 def replot():

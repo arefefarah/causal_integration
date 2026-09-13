@@ -9,6 +9,11 @@ fiddle with a panel. Figures go to:
     results/<run>/figures/inputs      what the network is shown
     results/<run>/figures/training    did it converge
     results/<run>/figures/model       network vs analytical observer
+    results/manuscript/<figure>/      the manuscript figures built from this
+                                      run, one folder per figure, on the
+                                      standard panel (viz/manuscript.py);
+                                      results/manuscript_<run>/ for a run
+                                      other than the flagship
 """
 
 import argparse
@@ -20,6 +25,7 @@ from cmsi import analysis
 from cmsi.data import subset
 from cmsi.utils import dataset_path, load_checkpoint, load_dataset, load_json, run_dir
 from cmsi.viz import apply_style, inputs, results, save_figures, training
+from cmsi.viz.manuscript import manuscript_dir
 
 
 def main(args):
@@ -30,7 +36,8 @@ def main(args):
     dataset_name = (out / "dataset.txt").read_text().strip() \
         if (out / "dataset.txt").exists() else "main"
     d_full, _ = load_dataset(dataset_path(dataset_name))
-    groups = ("inputs", "training", "model") if args.only is None else (args.only,)
+    groups = (("inputs", "training", "model", "manuscript") if args.only is None
+              else (args.only,))
     written = []
 
     if "inputs" in groups:
@@ -41,7 +48,7 @@ def main(args):
         figs = training.all_figures(history)
         written += save_figures(figs, out / "figures" / "training")
 
-    if "model" in groups:
+    if "model" in groups or "manuscript" in groups:
         analysis_file = out / "analysis.npz"
         if not analysis_file.exists():
             raise SystemExit("run 03_analyze.py first -- analysis.npz is missing")
@@ -58,22 +65,31 @@ def main(args):
                 cfg["analysis"]["disparity_grid"])
 
         metrics = load_json(out / "metrics.json") if (out / "metrics.json").exists() else {}
-        figs = results.all_figures(
-            saved["pred"], d, d_full["target_names"], cfg["analysis"],
-            w=w, w_prop=w_prop, curves=curves,
-            decoding=metrics.get("post_c1_decoding_r2"),
-            twin_decoding=metrics.get("twin_post_c1_decoding_r2"),
-            saved=saved, metrics=metrics)
-        written += save_figures(figs, out / "figures" / "model")
+        if "model" in groups:
+            figs = results.all_figures(
+                saved["pred"], d, d_full["target_names"], cfg["analysis"],
+                w=w, w_prop=w_prop, curves=curves,
+                decoding=metrics.get("post_c1_decoding_r2"),
+                twin_decoding=metrics.get("twin_post_c1_decoding_r2"),
+                saved=saved, metrics=metrics)
+            written += save_figures(figs, out / "figures" / "model")
+        if "manuscript" in groups:
+            figs = results.manuscript_panels(
+                saved["pred"], d, d_full["target_names"], cfg["analysis"],
+                w, w_prop, saved, metrics)
+            mdir = manuscript_dir(args.run)
+            written += save_figures(figs, mdir, formats=("png", "tif", "svg", "pdf"))
+            print(f"manuscript figures from run '{args.run}' -> {mdir}")
 
     for path in written:
-        print(f"  {path.relative_to(out.parent)}")
-    print(f"{len(written)} figures written to {out / 'figures'}")
+        print(f"  {path.relative_to(out.parent)}")   # both live under results/
+    print(f"{len(written)} figures written under {out.parent}")
 
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--run", default="baseline")
-    p.add_argument("--only", choices=["inputs", "training", "model"], default=None,
+    p.add_argument("--only", choices=["inputs", "training", "model", "manuscript"],
+                   default=None,
                    help="render just one group")
     main(p.parse_args())

@@ -61,6 +61,7 @@ SIZE = {
     "quad":     (WIDTH_FULL, 6.4),      # 2 x 2
     "quad_short": (WIDTH_FULL, 5.6),    # 2 x 2 of histograms
     "composite": (WIDTH_FULL, 6.0),     # the three-panel sweep figure
+    "third":    (WIDTH_FULL / 3, 2.5),  # one of three panels across a page
 }
 
 FONT_STACK = ["Arial", "Helvetica", "Liberation Sans", "DejaVu Sans"]
@@ -133,6 +134,34 @@ def label_panels(axes, letters="ABCDEFGH", dx=-30, dy=4):
                     annotation_clip=False)
 
 
+def exact_frame(fig, check=True):
+    """Save this figure at EXACTLY its figsize, with no tight cropping.
+
+    The default export crops to the drawn content, so two figures with the same
+    figsize come out different sizes whenever their labels differ. Panels that
+    must tile edge-to-edge -- the manuscript trio in `results.manuscript_panels`
+    -- are marked with this instead: the file is the figsize, to the point,
+    in every format, and the axes sit where `add_axes` put them.
+
+    check=False skips the PLOS size check for a file that is a component of a
+    figure rather than a figure (a 2.5-in panel is below the 2.63-in minimum on
+    its own; the assembled 7.5-in row is what gets submitted).
+    """
+    fig.cmsi_exact = True
+    fig.cmsi_check = check
+    return fig
+
+
+def _save_kw(fig):
+    """savefig kwargs: the full-figure Bbox for an exact frame, else nothing
+    (which leaves rcParams' bbox="tight" in charge)."""
+    if getattr(fig, "cmsi_exact", False):
+        from matplotlib.transforms import Bbox
+        w, h = fig.get_size_inches()
+        return {"bbox_inches": Bbox([[0, 0], [w, h]])}
+    return {}
+
+
 # ---- export ------------------------------------------------------------------ #
 def _to_flat_rgb(fig):
     """Render at DPI and return a flattened RGB PIL image (no alpha channel).
@@ -143,7 +172,7 @@ def _to_flat_rgb(fig):
     """
     from PIL import Image
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=DPI)
+    fig.savefig(buf, format="png", dpi=DPI, **_save_kw(fig))
     buf.seek(0)
     im = Image.open(buf).convert("RGBA")
     flat = Image.new("RGB", im.size, (255, 255, 255))
@@ -172,14 +201,21 @@ def save_svg(fig, path):
     """
     import re
     path = Path(path)
-    fig.savefig(path, format="svg", dpi=DPI, metadata={"Date": None})
+    fig.savefig(path, format="svg", dpi=DPI, metadata={"Date": None},
+                **_save_kw(fig))
     text = path.read_text(encoding="utf-8")
     resolved = "|".join(re.escape(f) for f in FONT_STACK)
     text = re.sub(rf"font-family: ?'({resolved})'(?=[;\"])",
                   f"font-family: {_FONT_STACK_CSS}", text)
     # browsers and Inkscape collapse runs of spaces in <text> unless told not
-    # to, which would turn the "A   title" panel headings into "A title"
+    # to, which would turn a "mu_vis   R2 0.99" title into "mu_vis R2 0.99".
+    # Chromium ignores xml:space on the ROOT (measured), so every <text> gets
+    # the attribute itself -- the form Inkscape writes -- plus the CSS form.
     text = text.replace("<svg ", '<svg xml:space="preserve" ', 1)
+    text = re.sub(r'<text\b(?![^>]*xml:space)', '<text xml:space="preserve"', text)
+    text = re.sub(r'(<text\b[^>]*?style=")', r'\1white-space: pre; ', text)
+    text = re.sub(r'(<text\b(?![^>]*style=)[^>]*?)(/?>)',
+                  r'\1 style="white-space: pre"\2', text)      # style-less ones
     path.write_text(text, encoding="utf-8")
     return path
 
@@ -259,6 +295,9 @@ def save_figures(figs, outdir, formats=FORMATS, close=True, check=True):
     outdir.mkdir(parents=True, exist_ok=True)
     paths = []
     for name, fig in figs.items():
+        # a key like "fig4_variance_hump/row_AB" puts every format of that
+        # figure in its own subfolder
+        (outdir / name).parent.mkdir(parents=True, exist_ok=True)
         for fmt in formats:
             path = outdir / f"{name}.{fmt}"
             if fmt in ("tif", "tiff"):
@@ -266,9 +305,10 @@ def save_figures(figs, outdir, formats=FORMATS, close=True, check=True):
             elif fmt == "svg":
                 save_svg(fig, path)
             else:
-                fig.savefig(path, dpi=DPI)
+                fig.savefig(path, dpi=DPI, **_save_kw(fig))
             paths.append(path)
-            if check and fmt in ("png", "tif", "tiff", "svg"):
+            if (check and getattr(fig, "cmsi_check", True)
+                    and fmt in ("png", "tif", "tiff", "svg")):
                 rep = check_plos(path)
                 for p in rep["problems"]:
                     warnings.warn(f"{path.name}: {p}", stacklevel=2)

@@ -1540,9 +1540,9 @@ signature; it is what `balance_loss` exists to prevent.
 
 ## 9.3 `figures/model/` — network versus observer
 
-Fifteen figures. Figures 01–07 exist for every run; 08–15 are produced only for
+Fourteen figures. Figures 01–07 exist for every run; 08–14 are produced only for
 runs with a causal head and a prior strictly between 0 and 1 — which is why
-`pcommon1` and `pcommon0` have 7 figures and the other three have 15.
+`pcommon1` and `pcommon0` have 7 figures and the other three have 14.
 
 **`01_output_scatter.png`** — network against analytical, one panel per output,
 with the identity line and R²/RMSE in each title. The first thing to look at.
@@ -1633,27 +1633,91 @@ inconsistency noted in §7.9.
 across MSL units, with 0 (spatial code) and +1 (retinal code) marked. Right:
 distribution of gain-field slopes. Your flagship median shift gain: 0.013.
 
-**`15_reliability_within_disparity.png`** — the Bayes-versus-disparity-heuristic
-test of §7.5, one panel per retained |disparity| quantile bin. Within a bin the
-disparity is nearly constant, so the analytical posterior varies only because
-the cue reliabilities vary; each panel scatters the readable implied weight
-(σ_w < 0.1, from `mu_vis`) against the posterior, with the dotted line the
-heuristic's prediction (slope 0), the dashed line the Bayesian prediction
-(slope 1), and the solid line the stored per-bin slope ± SE from
-`metrics.json`. The skipped bins, where the posterior is numerically pinned at
-zero, are listed under the panels with their spread. The combined slope is in
-the title. Your flagship: three retained bins, slopes 0.48 ± 0.08, 1.07 ± 0.20
-and 3.26 ± 1.50, combined 0.567 ± 0.073. Drawn by
-`viz.results.reliability_within_disparity_panels` from `analysis.npz` and the
-stored metrics, so it never recomputes the test.
+## 9.4 `results/manuscript/` — the standard panel, and every figure built on it
 
-## 9.4 `results/prior_sweep/figures/` — the cross-prior experiment
+**Where.** All manuscript figures live in one directory, `results/manuscript/`,
+one folder per figure, whichever run produced them (the flagship run for the
+per-run figures, the sweep for the cross-prior figure). Rendering a run other
+than the flagship writes to `results/manuscript_<run>/` instead, so a
+satellite can never overwrite the paper's figures. Each folder holds every
+format of its figure — `.png`, `.tif`, `.svg` and `.pdf` — saved at exactly
+the frame (`viz.exact_frame`) rather than cropped to content, which is what
+lets panels tile edge to edge.
+
+**The standard** (`cmsi/viz/manuscript.py`). A panel is a cell of fixed size
+whose plotting area sits inside fixed **absolute margins** — 0.56 in left,
+0.44 in bottom, 0.31 in top, 0.10 in right (`PANEL_MARGIN`) — with one font
+specification (`PANEL_FONT`: 8 pt ticks, 9 pt axis labels and titles, 8 pt
+legends; panel letters 12 pt bold). Three cell widths share one height and
+one set of margins:
+
+| cell | size (in) | axes (in) | used for |
+|---|---|---|---|
+| square (`CELL_SQUARE`) | 2.5 × 2.5 | 1.84 × 1.75 | every square panel — the default |
+| wide (`CELL_WIDE`) | 3.75 × 2.5 | 3.09 × 1.75 | rectangular panels, two to a row |
+| full (`CELL_FULL`) | 7.5 × 2.5 | 6.84 × 1.75 | one panel across the page |
+
+A figure is an arrangement of cells (`manuscript_grid` for uniform grids,
+`cell_axes` for mixed layouts), so its size follows from its layout: 1 × 3
+squares, 1 × 2 wides or one full = 7.5 × 2.5 in; 2 × 2 squares = 5.0 × 5.0 in;
+a full over two wides = 7.5 × 5.0 in. Because the margins are absolute, every
+axes in every figure starts at the same offset inside its cell and has the
+same height — figures align when stacked. Any two panels in any two figures
+have the same margins and fonts by construction. This is the standard for
+every panel from here on, unless a figure is explicitly given another size.
+
+| folder | contents | layout | size (in) | built from |
+|---|---|---|---|---|
+| `fig2_weight_regression_bias/` | `A_fusion_weight`, `B_position_regression`, `C_bias_vs_disparity`, `row_ABC` | 3 squares; 1 × 3 row | 2.5 × 2.5 each; 7.5 × 2.5 | `04_fusion_weight`, `08_position_regression`, left half of `12_behavioral_bias` |
+| `output_scatter_2x2/` | `output_scatter_2x2` | 2 × 2 squares, A B / C D | 5.0 × 5.0 | `01_output_scatter` |
+| `error_histograms_2x2/` | `error_histograms_2x2` | 2 × 2 squares, A B / C D | 5.0 × 5.0 | `02_error_histograms` |
+| `fig4_variance_hump/` | `row_AB` | 1 × 2 wides | 7.5 × 2.5 | `09_variance_hump_vis`, `10_variance_hump_prop` |
+| `prior_sweep/` | `prior_sweep_ABC` | a full over two wides | 7.5 × 5.0 | the cross-prior figure (§8.2, §9.5) |
+
+(Folders without a figure number are named by content until one is assigned;
+the names are single strings in `results.py` and `prior_sweep.py`.)
+
+Deliberate details, all measured rather than estimated:
+
+- the scatter titles read `mu_vis   R² 0.992   RMSE 1.79` with no `=` — with
+  them the title is 2.03 in wide and touches the 2.5-in cell edge; without,
+  1.82 in with 0.11 in to spare;
+- superscripts are Unicode glyphs everywhere (`R²`, `deg²`, `w(1−w)d²`),
+  never mathtext, which would set them at 6.3 pt in figures whose fonts are
+  otherwise exactly {8, 9, 12} pt. For the same reason the prior is labelled
+  "common-cause prior" rather than a subscripted *p*;
+- figure 4 carries one legend, in panel A, since both panels draw the same
+  four series; panel A's y axis has 40 % headroom so the legend sits above
+  the curves — at 30 % the nearest marker was 0.035 in from the legend box;
+- in the cross-prior figure the colourbar is carved from panel A's axes width
+  (0.62 in) so the cell's outer margins are untouched, and the y labels are
+  shortened to fit a 1.75-in axes ("implied fusion weight", "network
+  midpoint (deg)").
+
+The tests parse the SVGs and assert the cell size, identical axes rectangles
+across cells, the font-size set, and that no artist crosses its own cell's
+edge; legends are checked against the data they could cover.
+
+**Placing them.** Use each file at its native size — `width=0.333\textwidth`
+for a 2.5-in panel, `0.667\textwidth` for a 5-in grid, `\textwidth` for a
+7.5-in figure. Scaling changes the font size. A single 2.5-in panel is below
+PLOS's 2.63-in minimum on its own; it is a component, and the composed
+figures are the submission files.
+
+Regenerate with `python scripts/04_figures.py --run flagship --only manuscript`
+(everything from the flagship run) and `python scripts/05_prior_sweep.py
+--replot` (the cross-prior figure). `make figures RUN=flagship` includes the
+former.
+
+## 9.5 `results/prior_sweep/figures/` — the cross-prior experiment
 
 Produced by `scripts/05_prior_sweep.py`, not by `04_figures.py`. These are not
 per-run figures: each one summarises all 27 networks.
 
 **`prior_sweep.png`** (with `.tif` for submission, `.svg` to edit and `.pdf` for
-LaTeX) — the main figure, three panels, 7.5 in wide.
+LaTeX) — the main figure, three panels, 7.5 in wide. Its manuscript version,
+on the standard panel, is `results/manuscript/prior_sweep/prior_sweep_ABC`
+(§9.4).
 
 - **Panel A** — implied fusion weight against signed body-frame disparity, one
   curve per prior, colour on a sequential viridis ramp (light = low prior).

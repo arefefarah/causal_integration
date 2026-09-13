@@ -16,6 +16,7 @@ from cmsi.viz.style import (
     SIZE,
     apply_style,
     check_plos,
+    exact_frame,
     label_panels,
     save_figures,
     save_svg,
@@ -24,4 +25,5 @@ from cmsi.viz.style import (
 
 __all__ = ["inputs", "training", "results", "prior_sweep", "apply_style",
            "save_figures", "save_tiff", "save_svg", "check_plos", "label_panels",
+           "exact_frame",
            "COLORS", "DPI", "FORMATS", "SIZE"]
