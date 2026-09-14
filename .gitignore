@@ -46,3 +46,6 @@ checkpoints/
 .idea/
 .vscode/
 *.swp
+
+# Claude scratch output -- not part of the repo
+Claude outputs/
