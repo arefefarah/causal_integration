@@ -2,14 +2,13 @@
 
 **What this document is.** A walkthrough of the codebase, every config, every
 analysis, and every figure — with the calculation behind each one and the number
-your own runs actually produced.
+my own runs actually produced.
 
-**Provenance.** Every number below was read out of files in your repo:
+**Provenance.** Every number below was read out of files in repo:
 `results/<run>/metrics.json`, `results/calibration/<config>/metrics.json`, and
-`results/prior_sweep/sweep.json`, as they stood after your `make all` and
+`results/prior_sweep/sweep.json`, as they stood after `make all` and
 `make sweep SEEDS="0 1 2"` runs. Nothing here is estimated, remembered, or
-carried over from anywhere else. Where a result is absent or degenerate I say so
-rather than filling the gap.
+carried over from anywhere else.
 
 **Start here if you are writing the paper.** Part 12 grades every analysis in
 this document as a finding, a supporting result, a control, or something that
@@ -57,7 +56,7 @@ Four numbers per trial, all in **body/spatial coordinates**:
 | `mu_prop` | estimated position of the **hand**, and |
 | `var_prop` | its uncertainty |
 
-Asking for the visual source *in spatial coordinates* is deliberate: it forces
+We ask for the visual source *in spatial coordinates* deliberately to force
 the reference-frame transformation under **both** causal hypotheses. If the
 visual report were allowed to stay retinal, a network could take a shortcut on
 C = 2 trials and skip the transformation entirely.
