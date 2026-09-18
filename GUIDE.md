@@ -12,8 +12,8 @@ carried over from anywhere else.
 
 **Start here if you are writing the paper.** Part 12 grades every analysis in
 this document as a finding, a supporting result, a control, or something that
-should not be presented as a result at all. It also flags one reproducibility
-problem you need to fix first (§12.0).
+should not be presented as a result at all. §12.0 records which stored numbers
+are current and which tables in this document came from one-off runs.
 
 ---
 
@@ -77,18 +77,22 @@ which is why the read-out has exactly four units.
 
 # Part 2 — The pipeline
 
-Five stages. Each writes files, so any stage can be re-run alone.
+Six stages. Each writes files, so any stage can be re-run alone.
 
 ```
 stage 0   00_calibrate.py     checks the CONFIG is usable      -> results/calibration/<config>/
 stage 1   01_generate_data.py samples trials, encodes inputs   -> data/<name>.npz
 stage 2   02_train.py         trains the network               -> results/<run>/model.pt
 stage 3   03_analyze.py       computes every number            -> results/<run>/metrics.json + analysis.npz
-stage 4   04_figures.py       draws every figure               -> results/<run>/figures/
+stage 4   04_figures.py       draws every figure               -> results/<run>/figures/  (+ results/manuscript/)
+stage 5   05_prior_sweep.py   the cross-prior experiment       -> results/prior_sweep/
 ```
 
-`run_all.sh` (= `make all`) runs all five and also builds the always-fuse twin.
-`make quick` does the same with 8,000 trials and 60 epochs.
+`run_all.sh` (= `make all`) runs stages 0–4 and also builds the always-fuse
+twin. `make quick` does the same with 8,000 trials and 60 epochs. Stage 5 is a
+separate experiment (`make sweep`): it trains its own networks, one per (prior,
+seed), and depends on `make all` only through the `pcommon1` control that
+supplies σ_out (Part 10).
 
 **Stage 0 is a gate, not a report.** It exits non-zero on any FAIL and
 `run_all.sh` stops there, so a config whose targets are miscalibrated never
@@ -111,18 +115,30 @@ src/cmsi/
   analysis/
     calibration.py  everything stage 0 computes
     accuracy.py     read-out vs observer, per output
-    causal.py       the causal-inference analyses (the bulk of stage 3)
+    causal.py       the causal-inference analyses (the bulk of stage 3):
+                    per-trial, per-disparity-bin and per-posterior-bin implied
+                    weights, position regression, transition fit, variance
+                    signature, model comparison, strategy fit
     units.py        unit-level analyses of the hidden layers
     behavior.py     Körding-style behavioural curves
     decoding.py     what the hidden layers carry
     todo.py         two analyses not yet designed
+  experiments/
+    implied_weight.py  the implied-weight investigation (scripts/06_implied_weight.py)
   viz/
     inputs.py       what the network is shown
     training.py     did it converge
-    results.py      network vs observer
-    style.py        shared figure defaults
+    results.py      network vs observer (figures/model), and manuscript_panels()
+    prior_sweep.py  the cross-prior figures (stage 5)
+    manuscript.py   the standard panel: cell sizes, margins, fonts, lettering
+    style.py        PLOS figure defaults, save_figures, exact_frame
   utils/
     config.py  paths.py  seed.py  io.py
+
+scripts/   00_calibrate  01_generate_data  02_train  03_analyze  04_figures
+           05_prior_sweep  run_all.sh  (_bootstrap.py puts src/ on the path)
+tests/     property tests: generative maths, encoding, models, analyses,
+           the design guards, the figure contract, the stage boundaries
 ```
 
 ## 3.1 `data/generative.py` — the world, and the ideal observer
@@ -177,12 +193,6 @@ it is what the sufficient statistic actually is. Because `x_vis = s − e + nois
 and `x_eye = e + noise` both depend on `e`, the raw sum `x_vis + x_eye` is
 unbiased but not efficient.
 
-*(This is where the code and the design document disagree. The document
-specifies the plain sum. Numerical integration of the full posterior over
-(C, source, eye) shows the code's form is the exact ideal observer to ~1e−13,
-and the plain sum deviates from it by up to 0.076 in p(C=1|x). The code is
-right; the document is the thing to amend.)*
-
 **(b) The three conditional estimates.** Each includes the prior term:
 
 ```
@@ -215,10 +225,8 @@ log_bf  = log_c1 - log_c2
 post_c1 = logistic( log_bf + log(p_common) - log(1 - p_common) )
 ```
 
-`post_c1` is the trial-wise posterior **p(C=1|x)**. The config key `p_common` is
-the **prior**. They are different quantities and the code now names them
-differently — the dataset key used to be called `p_common` too, which is exactly
-the confusion to avoid.
+`post_c1` is the trial-wise posterior **p(C=1|x)** while the config key `p_common` is
+the **prior**. 
 
 **(d) Model averaging** (`model_average`) — never hard selection:
 
@@ -396,7 +404,7 @@ runs.
 
 ---
 
-# Part 5 — What you currently have in `results/`
+# Part 5 — Short report about `results/`
 
 | run | prior | dataset | test trials | best val loss @ epoch |
 |---|---|---|---|---|
@@ -632,7 +640,15 @@ flagship the residuals also contain any causal-inference misweighting.
 
 Stage 3 takes σ_out from `--control pcommon1` when given, and your flagship,
 pcommon07, pcommon028 and pcommon0 runs all record `sigma_out_source:
-"pcommon1"`, so they used the real control.
+"pcommon1"`, so they used the real control. Stage 3 now also writes the value
+itself, `sigma_out` (one entry per output), next to that key, and stage 4 reads
+it back for the figures that need it. This matters: a run's own `residual_std`
+is also stored, and on the flagship it is 1.80 rather than 0.63 for `mu_vis`,
+because it contains the causal misweighting as well as read-out noise. Feeding
+that number to the σ_w filter demands |Δ| > 18° instead of |Δ| > 6.3°, which
+keeps only confident-segregation trials and empties every other bin — the
+first version of figure 15 (§9.3) did exactly that. For an older `metrics.json`
+without the `sigma_out` key, stage 4 resolves it from `sigma_out_source`.
 
 **Your σ_out** (from `results/pcommon1/metrics.json`):
 
@@ -1118,18 +1134,31 @@ something. The question is whether ablating *these k* costs more than ablating
 subsets of the same size, ablates each, and reports where the real lesion falls
 in that null distribution as a z-score and a percentile.
 
-**Your flagship, both modes, 200 random draws** (intact RMSE 1.479):
+**Your flagship, mean-clamp mode, as stored in `results/flagship/metrics.json`**
+(intact RMSE 1.480; `lesion_n_random` defaults to 100 draws in stage 3):
+
+| ablation | k | RMSE | random null | z | percentile |
+|---|---|---|---|---|---|
+| **congruent** | 17 | **8.697** | 4.974 ± 0.533 | **+6.99** | **100%** |
+| **opposite** | 24 | **3.981** | 6.527 ± 0.643 | **−3.96** | **0%** |
+| mixed | 21 | 5.901 | 5.896 ± 0.723 | +0.01 | 53% |
+
+The stored block also carries `rmse_per_output` for each lesion (13.78 / 2.09 /
+10.35 / 1.15 for the congruent lesion, in the order mu_vis, var_vis, mu_prop,
+var_prop, against 1.48 intact), but not a per-output null.
+
+*The two tables below came from a one-off 200-draw comparison made when the
+ablation was corrected; they are not stored in `results/` and the z-scores
+differ from the stored ones by random-null sampling alone (the RMSEs agree to
+three decimals).* Zero-clamp mode, for the record:
 
 | ablation | k | mode | RMSE | random null | z | percentile |
 |---|---|---|---|---|---|---|
 | congruent | 17 | zero | 10.209 | 7.928 ± 2.100 | +1.09 | 85% |
 | opposite | 24 | zero | 7.546 | 8.876 ± 1.878 | −0.71 | 22% |
 | mixed | 21 | zero | 8.882 | 8.467 ± 2.089 | +0.20 | 70% |
-| **congruent** | 17 | **mean** | **8.696** | 4.986 ± 0.592 | **+6.27** | **100%** |
-| **opposite** | 24 | **mean** | **3.979** | 6.480 ± 0.687 | **−3.64** | **0%** |
-| mixed | 21 | mean | 5.902 | 5.845 ± 0.676 | +0.08 | 53% |
 
-Per output, mean-clamp mode, z against the random baseline:
+Per output, mean-clamp mode, z against the random baseline (same one-off run):
 
 | ablation | mu_vis | var_vis | mu_prop | var_prop |
 |---|---|---|---|---|
@@ -1140,17 +1169,18 @@ Per output, mean-clamp mode, z against the random baseline:
 **How to read it.** Under the corrected ablation the conclusion is specific and
 it is *not* the one the raw numbers first suggested:
 
-- **Congruent units are load-bearing, strongly and specifically** — z = +6.27
+- **Congruent units are load-bearing, strongly and specifically** — z = +6.99
   overall, and the effect is concentrated in the two *mean* channels (+7.77 on
   `mu_vis`, +3.11 on `mu_prop`), not the variance channels.
 - **Opposite units are not load-bearing for the read-out at all.** Removing them
-  costs *less* than removing 24 random units (z = −3.64, 0th percentile).
-- **Mixed units are exactly average** (z = +0.08) — unremarkable, which is what
+  costs *less* than removing 24 random units (z = −3.96, 0th percentile).
+- **Mixed units are exactly average** (z = +0.01) — unremarkable, which is what
   the label implies.
 
-The same analysis on the always-fuse control `pcommon1` (37 congruent, 6
-opposite) gives congruent z = +5.94 and opposite z = +0.31 — congruent units
-matter there too, and its handful of opposite units do not.
+The same analysis on the always-fuse control `pcommon1` (36 congruent, 6
+opposite, 22 mixed) gives congruent z = +5.70, opposite z = +0.04 and mixed
+z = −3.11 — congruent units matter there too, and its handful of opposite units
+do not.
 
 **What this does and does not say.** It says the position estimates are carried
 by congruent units, and that the network does not *need* opposite units to
@@ -1360,11 +1390,21 @@ Two consequences are visible in Panel A and are deliberate:
 
 - **Bins are coarse near zero disparity.** There the two hypotheses coincide,
   Σ(Δ²) collapses, and no amount of data identifies a weight. A fine grid there
-  produces a spike that is an artefact of the estimator. Bins are also dropped
-  when their slope SE exceeds 0.05.
-- **Gaps break the line rather than being bridged.** At high priors many
-  far-disparity bins hold too few trials to keep. Joining across them would draw
-  a transition that was never measured.
+  produces a spike that is an artefact of the estimator. The 18-bin grid
+  (`GRID` in `05_prior_sweep.py`) runs from −30° to +30° with its two innermost
+  edges at ±1.5°.
+- **Two guards, and which one matters.** A bin is dropped when its slope SE
+  exceeds `MAX_SE = 0.05` — that is the guard that protects against an
+  unidentifiable weight — or when it holds fewer than `MIN_COUNT = 25` trials.
+  The count floor used to be 80, which punched holes in curves that were
+  perfectly well measured: at `p_common = 0.9` the far-disparity bins hold
+  28–45 trials with SEs of 0.005–0.012. At 25 every bin at every prior is kept
+  and the SE guard never fires on this grid. Both can be overridden without
+  retraining: `05_prior_sweep.py --replot --min-count N --max-se X` re-bins the
+  stored per-trial arrays in `curves.npz`.
+- **When a bin is dropped, the line breaks rather than bridging the gap.**
+  Joining across a missing bin would draw a transition that was never
+  measured.
 
 ### Your results — the aggregated table
 
@@ -1539,9 +1579,12 @@ signature; it is what `balance_loss` exists to prevent.
 
 ## 9.3 `figures/model/` — network versus observer
 
-Fourteen figures. Figures 01–07 exist for every run; 08–14 are produced only for
+Sixteen figures. Figures 01–07 exist for every run; 08–16 are produced only for
 runs with a causal head and a prior strictly between 0 and 1 — which is why
-`pcommon1` and `pcommon0` have 7 figures and the other three have 14.
+`pcommon1` and `pcommon0` have 7 figures and the other three have 16. (A run
+folder rendered before the current version may still hold a
+`15_reliability_within_disparity` figure from a panel that has since been
+removed from stage 4; it is stale output, not something the code produces.)
 
 **`01_output_scatter.png`** — network against analytical, one panel per output,
 with the identity line and R²/RMSE in each title. The first thing to look at.
@@ -1631,6 +1674,24 @@ inconsistency noted in §7.9.
 **`14_rf_shifts.png`** — two histograms. Left: distribution of RF shift gain
 across MSL units, with 0 (spatial code) and +1 (retinal code) marked. Right:
 distribution of gain-field slopes. Your flagship median shift gain: 0.013.
+
+**`15_weight_vs_post_ratio.png`** and **`16_weight_vs_post_leastsq.png`** — the
+implied weight on the fused estimate against the analytical posterior in 10
+bins, computed two ways on the same trials (`analysis.implied_weight_by_posterior`),
+with the Bayes-optimal identity line dashed. Figure 15 is the per-trial ratio
+`(network − seg)/Δ`, filtered by σ_w and averaged within the bin; its
+right-hand axis shows the fraction of each bin's trials the filter kept, and a
+bin with fewer than five survivors is left blank. Figure 16 is the
+least-squares slope of §8.2, which uses every trial. Read them together: the
+filtered estimator keeps 99% of the trials at the segregated end and under 1%
+above a posterior of 0.7, where |Δ| is small, so it cannot see the fusion end
+at all; where both are measurable the filtered value sits below the
+least-squares one by the selection bias described in §7.2. Your flagship: 2909
+of 7500 trials survive the filter and two bins are unmeasurable; the
+least-squares curve tracks the posterior to about 0.75 and then falls to 0.50
+in the top bin, the same shortfall as §7.7. The right-hand axis of figure 15 is
+also the reason it was blank in its first rendering — that version was handed
+the flagship's own `residual_std` instead of the control's σ_out (§7.2).
 
 ## 9.4 `results/manuscript/` — the standard panel, and every figure built on it
 
@@ -1725,7 +1786,8 @@ on the standard panel, is `results/manuscript/prior_sweep/prior_sweep_ABC`
   orderly family — at a low prior the network abandons fusion within a few
   degrees; at a high prior it holds a near-complete weight past 10°.
   Error bars are `1.96 × SE` where `SE = σ_out / √(ΣΔ²)` within the bin.
-  Broken lines are dropped bins, not missing data — see §8.2.
+  A broken line marks a dropped bin, not missing data — see §8.2; with the
+  current guards no bin is dropped at any of the nine priors.
 - **Panel B** — network transition midpoint against analytical midpoint, one
   point per prior, with an identity line. No parameter relates the two axes.
   With three or more seeds the points carry across-seed SEM bars. If every
@@ -1741,19 +1803,40 @@ elevation, network against analytical, per prior. Interpret only over
 `p_common` ∈ [0.2, 0.7]; outside that band the statistic is trial-count limited
 rather than informative (§8.3).
 
+Both are redrawn by `05_prior_sweep.py --replot` from `sweep.json` and
+`curves.npz`, with no training; `--min-count` and `--max-se` re-bin Panel A
+from the stored per-trial arrays of the first seed (§8.2).
+
 ---
 
 # Part 10 — How to run things
 
 ```bash
-make test                                       # 81 property tests, ~45 s
+make test                                       # 94 property tests, ~45 s
 make calibrate CONFIG=configs/flagship.yaml     # the gate alone
 make all       CONFIG=configs/flagship.yaml     # full pipeline, 50k trials
 make quick     CONFIG=configs/flagship.yaml     # same, 8k trials / 60 epochs
 make sweep     SEEDS="0 1 2"                    # the cross-prior sweep, ~45 min
 make figures   RUN=flagship                     # redraw one run's figures
+python scripts/04_figures.py --run flagship --only manuscript
+                                                # just the standard-panel figures
 python scripts/05_prior_sweep.py --replot       # redraw the sweep, no training
+python scripts/05_prior_sweep.py --replot --min-count 25 --max-se 0.05
+                                                # re-bin Panel A from curves.npz
 ```
+
+`04_figures.py --only` takes `inputs`, `training`, `model` or `manuscript`;
+without it every group is rendered.
+
+**Side experiments** live outside the numbered stages. `scripts/06_implied_weight.py`
+(`src/cmsi/experiments/implied_weight.py`) investigates the implied weight,
+σ_out and σ_w on an existing run and across trained variants — other hidden
+sizes, other input encodings via `--set key=value` — each variant with its
+own p_common = 1 control. It writes only under
+`results/experiments/implied_weight/<name>/`, so nothing in `results/<run>/`
+moves until a variant is promoted into `configs/` and the pipeline re-run.
+The script's docstring lists the sub-commands (`figures`, `sigma`,
+`reliability`, `train`, `compare`) and the output layout.
 
 Every figure command writes `.png`, `.tif` and `.svg` side by side (Part 9);
 the two redraw commands are what to run after a style change, since neither
@@ -1779,7 +1862,9 @@ passes `--control pcommon1` only if `results/pcommon1/metrics.json` exists and
 contains `residual_std`; otherwise stage 3 warns and falls back to the run's own
 residuals. The fallback is conservative rather than wrong — the flagship's own
 residuals also contain any causal-inference misweighting, so σ_w comes out too
-large, never too small.
+large, never too small. Whichever it used, stage 3 records the value as
+`sigma_out` and its origin as `sigma_out_source` in `metrics.json`, and stage 4
+reads the value from there (§7.2).
 
 The sweep, stage by stage:
 
@@ -1847,7 +1932,7 @@ finding rather than a failure.
 
 **The lesion result answers necessity, not representation.** Mean-clamping plus
 a size-matched random baseline (§7.9) shows congruent units are load-bearing
-(z = +6.27) and opposite units are not (z = −3.64). That does not mean opposite
+(z = +6.99) and opposite units are not (z = −3.96). That does not mean opposite
 units carry nothing — their activity tracks the posterior at r = 0.50 on the
 same network. A redundant code can make every subpopulation dispensable.
 
@@ -1874,15 +1959,22 @@ Grades used below:
 | **C** | method verification or control | Methods, or a supplement. **Not** a finding |
 | **D** | not a finding — negative, non-replicating, or measurement-limited | Omit, or state explicitly as a limitation |
 
-## 12.0 Read this before citing any unit-level number
+## 12.0 Which stored numbers are current
 
-**Every `metrics.json` in `results/` predates the lesion fix.** The five run
-directories are dated 2026-08-24; `units.py` and `03_analyze.py` were corrected
-on 2026-08-26. The stored `lesion` blocks therefore contain the **old
-zero-ablation** numbers with no random baseline — the mean-clamp table in §7.9
-(z = +6.27, −3.64) cannot currently be reproduced from any file in `results/`.
+**Every `metrics.json` in `results/` postdates the lesion fix.** The five run
+directories were re-analysed on 2026-08-30 with the corrected `units.py`
+(mean-clamping, size-matched random baseline, 100 draws), and their `lesion`
+blocks carry `mode: "mean"` and `n_random`. The lesion numbers quoted in §7.9,
+Part 11 and B2 below are read from those files.
 
-Stage 3 does not retrain. Regenerating is cheap:
+Two tables in §7.9 are the exception and are marked as such there: the
+zero-clamp comparison and the per-output z-scores came from a one-off 200-draw
+run when the ablation was corrected, and are not stored anywhere in `results/`.
+Cite the stored overall z-scores; treat the per-output ones as illustrative
+unless stage 3 is extended to store a per-output null.
+
+If stage 3 is ever re-run, it does not retrain, so refreshing every number is
+cheap:
 
 ```bash
 for r in flagship pcommon07 pcommon028 pcommon0; do
@@ -1890,9 +1982,9 @@ for r in flagship pcommon07 pcommon028 pcommon0; do
 done
 ```
 
-Do this before the lesion result goes anywhere near a manuscript. Everything
-graded **A** below is unaffected — those come from the prior sweep and from
-analyses whose stored values are current.
+Note that the random null is seeded, so re-running reproduces the stored
+z-scores exactly; changing `lesion_n_random` in the config's `analysis` block
+does not.
 
 ## 12.1 Grade A — the findings
 
@@ -1951,9 +2043,9 @@ test. A2 and A1 rule out the same alternative on much more data.
 
 **B2. Congruent units are necessary for the position read-out; opposite units
 are not.** §7.9, with mean-clamping and a size-matched random baseline
-(congruent z = +6.27, opposite z = −3.64, mixed z = +0.08), and the effect
-concentrated in the two mean channels. **Subject to §12.0** — regenerate before
-citing.
+(congruent z = +6.99, opposite z = −3.96, mixed z = +0.01), and the effect
+concentrated in the two mean channels. The overall z-scores are stored; the
+per-output breakdown is not (§12.0).
 
 State the scope precisely: this is a claim about **necessity**, not about
 representation. Opposite units track the posterior at r = 0.50 on the same

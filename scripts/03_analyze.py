@@ -119,6 +119,10 @@ def analyse(run, twin=None, control=None):
                 metrics["sigma_out_source"] = control
                 print(f"\nsigma_out from control '{control}': "
                       + ", ".join(f"{s:.3f}" for s in sig_out))
+    # Record the value actually used, not only its source: downstream figures
+    # (04_figures.py) need the number, and on the flagship residual_std is
+    # ~3x larger than sigma_out because it also contains causal misweighting.
+    metrics["sigma_out"] = [float(s) for s in sig_out]
 
     # --- 2. causal-inference analyses (causal head only) ------------------
     if cfg["model"]["head"] == "causal" and 0.0 < p_prior < 1.0:

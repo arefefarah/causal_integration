@@ -42,8 +42,13 @@ changes what the lock resolves to.
 pyproject.toml           dependencies, tool config
 poetry.lock              exact pinned versions -- commit this
 Makefile                 shortcuts: make help
+GUIDE.md                 the complete guide: every analysis, every figure, and
+                         the number the stored runs actually produced
+CROSS_PRIOR_RESULT.md    write-up of the cross-prior sweep
 configs/flagship.yaml    the calibrated p_common = 0.5 network -- start here
-configs/pcommon{0,1}.yaml the two controls;  pcommon{03,07,028} the satellites
+configs/pcommon{0,1}.yaml the two controls;  pcommon{028,03,07} the satellites
+configs/default.yaml     every parameter, documented;  realistic, equal_n and
+                         matlab_match are earlier parameter sets, kept to compare
 src/cmsi/
   data/        generative.py   generative model + analytical Bayesian observer
                encoding.py     measurements -> population codes (network input)
@@ -52,23 +57,31 @@ src/cmsi/
                losses.py       the objective and why it is reweighted
                training.py     training loop with early stopping
   analysis/    accuracy.py     readout vs observer, per output
-               causal.py       implied weight, position regression, variance
-                               signature, five-way model comparison
+               causal.py       implied weight (per trial, per disparity bin,
+                               per posterior bin), position regression,
+                               transition fit, variance signature, five-way
+                               model comparison, strategy fit
                calibration.py  the pre-training gate (SS8 / SS4 / SS9.4)
                units.py        congruent/opposite units, balance, lesion, RF shift
                behavior.py     Kording-style bias curves
                decoding.py     what the hidden layers carry
                todo.py         placeholders for analyses not yet written
+  experiments/ implied_weight.py  the implied-weight investigation (06)
   viz/         inputs.py       what the network is shown
                training.py     did it converge
-               results.py      network vs observer
-               style.py        shared figure defaults
+               results.py      network vs observer, and the manuscript panels
+               prior_sweep.py  the cross-prior figures
+               manuscript.py   the standard panel every manuscript figure is on
+               style.py        PLOS figure defaults, save_figures, exact_frame
   utils/       config.py  paths.py  seed.py  io.py
 scripts/       00_calibrate  01_generate_data  02_train  03_analyze  04_figures
-               run_all.sh
-tests/         property tests on the maths and the stage boundaries
+               05_prior_sweep  run_all.sh
+               06_implied_weight   side experiment, writes to results/experiments/
+tests/         property tests on the maths, the stage boundaries and the
+               figure contract
 data/          generated datasets (.npz)      contents gitignored
-results/       one folder per run             contents gitignored
+results/       one folder per run, plus calibration/, manuscript/ and
+               prior_sweep/                   contents gitignored
 ```
 
 ## Run it
@@ -77,6 +90,8 @@ results/       one folder per run             contents gitignored
 make calibrate CONFIG=configs/flagship.yaml   # the gate -- run this first
 make all       CONFIG=configs/flagship.yaml   # the real thing (50k trials)
 make quick     CONFIG=configs/flagship.yaml   # ~2 min end to end
+make sweep     SEEDS="0 1 2"                  # nine priors x three seeds, ~45 min
+make figures   RUN=flagship                   # redraw one run's figures
 make help                                     # everything else
 ```
 
@@ -90,7 +105,23 @@ poetry run python scripts/02_train.py         --data flagship --run flagship
 poetry run python scripts/03_analyze.py       --run flagship --twin flagship_twin \
                                               --control pcommon1
 poetry run python scripts/04_figures.py       --run flagship --only model
+                                              # --only: inputs | training | model | manuscript
 ```
+
+The cross-prior sweep is a separate experiment with its own output folder:
+
+```bash
+poetry run python scripts/05_prior_sweep.py --priors 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 \
+                                            --seeds 0 1 2 --control pcommon1
+poetry run python scripts/05_prior_sweep.py --replot                 # redraw, no training
+poetry run python scripts/05_prior_sweep.py --replot --min-count 25 --max-se 0.05
+                                              # re-bin the stored per-trial curves
+```
+
+It trains one network per (prior, seed), changing only the Bernoulli constant,
+writes after every seed so an interrupted run leaves usable output, and keeps
+the per-trial arrays of the first seed in `curves.npz` so the weight curves can
+be re-binned without retraining.
 
 Stage 0 is a gate, not a report: it exits non-zero if the config fails a design
 criterion, so `run_all.sh` stops before spending a training run on a dataset
@@ -99,12 +130,37 @@ whose targets are miscalibrated. Run it on any config you edit.
 `--control pcommon1` hands stage 3 the p_common = 1 network's residual spread as
 `sigma_out`, which is what makes the per-trial `sigma_w = sigma_out / |Delta|`
 filter meaningful. Without it stage 3 falls back to the run's own residuals,
-which on the flagship also contain any causal-inference misweighting.
+which on the flagship also contain any causal-inference misweighting and are
+about three times larger. `metrics.json` records both the value used
+(`sigma_out`) and where it came from (`sigma_out_source`), and stage 4 reads the
+value back rather than the run's own `residual_std`.
+
+## Side experiments
+
+`scripts/06_implied_weight.py` is an investigation, not a pipeline stage. It
+writes everything under `results/experiments/implied_weight/<name>/` and never
+touches `results/<run>/`, so it is the place to try other network sizes or
+input encodings before changing the global config:
+
+```bash
+poetry run python scripts/06_implied_weight.py figures     --run flagship   # 05, 15, 16 for one run
+poetry run python scripts/06_implied_weight.py sigma       --run flagship   # sigma_out and per-trial sigma_w
+poetry run python scripts/06_implied_weight.py reliability --run flagship --levels 5
+poetry run python scripts/06_implied_weight.py train --hidden 16 32 64 128 256 --name units
+poetry run python scripts/06_implied_weight.py train --hidden 64 --set rf_width=4 --name rf4
+poetry run python scripts/06_implied_weight.py compare --name units
+```
+
+`train` trains every variant together with its own p_common = 1 control, so
+each gets a `sigma_out` measured at its own architecture, and then compares
+the implied weight, `sigma_out` and `sigma_w` across variants. The script's
+docstring documents the sub-commands and the output layout
+(`src/cmsi/experiments/implied_weight.py` holds the analysis and figures).
 
 ## Tests
 
 ```bash
-make test                    # 67 tests, ~40 seconds
+make test                    # 94 tests, ~45 seconds
 ```
 
 They are property tests, not regression tests: each states something that must
@@ -147,11 +203,26 @@ results/<run>/
   figures/
     inputs/          tuning curves, population heatmaps, gain, latent distributions
     training/        loss curves, per-output loss
-    model/           output scatter, errors, p(C=1|x) vs disparity, fusion
-                     weight, reliability dependence, decoding, emergent vs
-                     imposed, position regression, variance hump, five-way
-                     model comparison, behavioural bias, congruency, RF shifts
+    model/           01 output scatter, 02 errors, 03 p(C=1|x) vs disparity,
+                     04 fusion weight, 05 reliability dependence, 06 decoding,
+                     07 emergent vs imposed, 08 position regression,
+                     09/10 variance hump, 11 five-way model comparison,
+                     12 behavioural bias, 13 congruency, 14 RF shifts,
+                     15/16 implied weight vs posterior by the two estimators
+results/manuscript/<figure>/      the manuscript figures built from the flagship
+                                  run, one folder per figure, on the standard
+                                  panel; results/manuscript_<run>/ for any other run
+results/prior_sweep/
+  sweep.json         per-(prior, seed) rows and the per-prior aggregate
+  curves.npz         per-trial arrays of the first seed, for re-binning
+  figures/           prior_sweep (A weight curves, B midpoints, C slopes) and
+                     variance_hump_vs_prior
+  manuscript/        the same sweep figure on the standard panel
 ```
+
+Every figure is written as `.png`, `.tif` and `.svg` side by side, at its
+printed size and to the PLOS ONE specification (`viz/style.py`); manuscript and
+sweep figures also get a `.pdf`.
 
 Two stage boundaries earn their keep. Numbers are separated from figures, so you
 can re-plot without refitting decoders and diff `metrics.json` between runs. And
@@ -225,6 +296,23 @@ share one `w`; their agreement on well-conditioned trials is an internal
 coherence test. Per-trial R² on `w` looks bad even when the binned curve tracks
 the optimum closely — single-trial `w` is a noisy ratio, so read the slope and
 the curve, not R².
+
+**`binned_implied_weight` / `implied_weight_by_posterior`** — the weight
+*within a bin*, by least squares through the origin:
+`w_bin = Σ Δ·(estimate − seg) / Σ Δ²`, with `SE = sigma_out / √ΣΔ²`. This is
+the estimator behind every binned weight curve, including the prior sweep. The
+intuitive alternative — filter the per-trial ratio by `sigma_w` and average it
+within the bin — is biased low, because the filter keeps preferentially
+large-`|Δ|` trials and within a bin those are the lowest-weight ones.
+`implied_weight_by_posterior` computes both estimators side by side so the bias
+can be seen (figures 15 and 16); the filtered one also loses almost every trial
+above a posterior of 0.6, where `|Δ|` is small.
+
+**`transition_fit`** — a logistic in `|disparity|` fitted to a weight curve,
+returning the midpoint (where fusion gives way to segregation) and the
+sharpness. The fit is guarded: it returns NaN unless the sharpness is positive
+and the midpoint falls within a quarter-span of the observed disparity range,
+so a flat curve reports "no transition" rather than a fabricated midpoint.
 
 **`reliability_within_disparity`** — the Bayes-vs-heuristic test. At matched
 disparity the optimal weight still varies with the cue reliabilities; a pure

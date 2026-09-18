@@ -8,7 +8,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from cmsi.analysis.accuracy import accuracy
-from cmsi.analysis.causal import mean_by_bin
+from cmsi.analysis.causal import implied_weight_by_posterior, mean_by_bin
 from cmsi.viz.manuscript import (  # noqa: F401  (re-exported for callers and tests)
     CELL_FULL,
     CELL_SQUARE,
@@ -119,6 +119,60 @@ def fusion_weight_by_reliability(curves):
     ax.set(xlabel="body-frame disparity (deg)", ylabel="weight on fused estimate",
            ylim=(-0.1, 1.1), title="shift by different cue reliability")
     ax.legend()
+    fig.tight_layout()
+    return fig
+
+
+def implied_weight_vs_posterior(res, method="least_squares"):
+    """One estimator's implied weight against the analytical posterior.
+
+    `res` is the output of analysis.implied_weight_by_posterior, which holds
+    both estimators. `method` picks the one to draw, so calling this twice puts
+    the two on identical axes and they can be compared directly:
+
+        "least_squares"  w = sum(Delta*(est-seg))/sum(Delta^2), every trial
+        "ratio"          mean of the sigma_w-filtered per-trial ratio, a subset
+
+    A Bayes-optimal model-averaging observer puts every point on the identity
+    line. For the filtered estimator the fraction of trials the filter retains
+    is drawn on the right-hand axis, because that fraction is what explains
+    where the two estimators part company: a high posterior means the cues
+    agree, which means a small Delta, which is what the filter removes.
+    """
+    if method not in ("least_squares", "ratio"):
+        raise ValueError(f"method must be 'least_squares' or 'ratio', got {method!r}")
+    ls = method == "least_squares"
+    w = res["w_ls"] if ls else res["w_filt"]
+    se = res["se_ls"] if ls else res["se_filt"]
+    x, good = res["centres"], np.isfinite(w)
+
+    fig, ax = plt.subplots(figsize=SIZE["single"])
+    ax.plot([0, 1], [0, 1], "--", lw=1.1, color=COLORS["analytical"],
+            label="Bayes-optimal (w = posterior)")
+    ax.errorbar(x[good], w[good], yerr=1.96 * np.nan_to_num(se[good]),
+                fmt="o-", ms=4, lw=1.7, capsize=2.5, color=COLORS["network"],
+                label="network (implied weight)")
+
+    if ls:
+        note = f"all {int(res['n'].sum())} trials used"
+    else:
+        ax2 = ax.twinx()
+        ax2.plot(x, 100 * res["frac_kept"], ":", lw=1.2, color="0.45")
+        ax2.set_ylabel("trials kept by the filter (%)", color="0.35", fontsize=9)
+        ax2.tick_params(axis="y", colors="0.35", labelsize=8)
+        ax2.set_ylim(-4, 104)
+        lost = int(good.size - good.sum())
+        note = (f"{int(res['n_kept'].sum())} of {int(res['n'].sum())} trials kept"
+                + (f"; {lost} bins unmeasurable" if lost else ""))
+
+    ax.set(xlabel="analytical posterior p(C=1|x)",
+           ylabel="implied weight on the fused estimate",
+           xlim=(0, 1), ylim=(-0.05, 1.05),
+           title=("least squares, no division" if ls
+                  else "per-trial ratio, sigma_w filtered"))
+    ax.text(0.03, 0.95, note, transform=ax.transAxes, fontsize=8,
+            color="0.35", va="top")
+    ax.legend(loc="lower right", fontsize=8.5, frameon=False)
     fig.tight_layout()
     return fig
 
@@ -346,6 +400,22 @@ def all_figures(pred, d, names, analysis_cfg, w=None, curves=None,
             saved, metrics.get("balance_vs_post"))
     if saved is not None and "rf_shift_gain" in getattr(saved, "files", saved):
         figs["14_rf_shifts"] = rf_shift_hist(saved)
+    if ("sigma_out" in metrics and "mu_vis" in names
+            and "seg_vis_mu" in d and "fused_mu" in d):
+        # the same quantity by the two estimators, on identical axes.
+        # sigma_out is the read-out noise measured on the p_common=1 control
+        # (03_analyze.py --control); this run's own residual_std must NOT be
+        # used here, since on the flagship it also contains causal
+        # misweighting and is ~3x too large, which starves the sigma_w filter.
+        i = names.index("mu_vis")
+        wbp = implied_weight_by_posterior(
+            pred[:, i], d["seg_vis_mu"], d["fused_mu"], d["post_c1"],
+            metrics["sigma_out"][i],
+            sigma_w_criterion=analysis_cfg.get("sigma_w_criterion", 0.1),
+            min_separation=analysis_cfg.get("min_separation", 1.0))
+        figs["15_weight_vs_post_ratio"] = implied_weight_vs_posterior(wbp, "ratio")
+        figs["16_weight_vs_post_leastsq"] = implied_weight_vs_posterior(
+            wbp, "least_squares")
     return figs
 
 

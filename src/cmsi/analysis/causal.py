@@ -307,6 +307,77 @@ def reliability_within_disparity(w_implied, w_optimal, abs_disparity,
 # --------------------------------------------------------------------------- #
 # SS7.3 -- the mixture-variance signature of causal ambiguity
 # --------------------------------------------------------------------------- #
+def implied_weight_by_posterior(estimate, segregated, fused, post, sigma_out,
+                                n_bins=10, sigma_w_criterion=0.1,
+                                min_separation=1.0, min_count=25, min_kept=5):
+    """Implied weight per posterior bin, by BOTH estimators, side by side.
+
+    Bins trials into `n_bins` equal-width bins of the analytical posterior and
+    reports, for each bin, the same quantity measured two ways:
+
+      least squares   w = sum(Delta * (estimate - seg)) / sum(Delta^2)
+                      SE = sigma_out / sqrt(sum Delta^2)
+                      -- uses EVERY trial in the bin, weighting each by Delta^2
+
+      filtered ratio  w = mean of (estimate - seg)/Delta over the trials that
+                      pass |Delta| >= min_separation and
+                      sigma_out/|Delta| < sigma_w_criterion
+                      SE = sd/sqrt(n_kept)
+                      -- uses a SUBSET, selected on Delta
+
+    A Bayes-optimal model-averaging observer puts every point on the identity
+    line, so the two curves can be read against y = x.
+
+    The point of computing both is that they diverge in a predictable place. A
+    high posterior means the cues agree, which means a small Delta, which is
+    exactly what the sigma_w filter removes. The filtered estimator therefore
+    loses the fusion end of the curve: it flattens as the retained fraction
+    falls and stops entirely once no trial survives. The least-squares form
+    keeps every trial and simply weights it by how much it can say.
+
+    The reported bin position is the MEAN posterior of the trials in the bin,
+    not the nominal bin centre, so a point sits where its trials actually are.
+
+    Returns a dict of arrays, one entry per bin that holds at least
+    `min_count` trials: centres, w_ls, se_ls, n, w_filt, se_filt, n_kept,
+    frac_kept. Filtered entries are NaN in bins holding fewer than `min_kept`
+    usable trials.
+    """
+    estimate, segregated = np.asarray(estimate), np.asarray(segregated)
+    fused, post = np.asarray(fused), np.asarray(post)
+    delta, resid = fused - segregated, estimate - segregated
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratio = np.where(np.abs(delta) >= min_separation, resid / delta, np.nan)
+    readable = np.isfinite(ratio) & (sigma_out / np.abs(delta) < sigma_w_criterion)
+
+    edges = np.linspace(0.0, 1.0, n_bins + 1)
+    ok = np.isfinite(post) & np.isfinite(delta) & np.isfinite(resid)
+    out = {k: [] for k in ("centres", "w_ls", "se_ls", "n",
+                           "w_filt", "se_filt", "n_kept", "frac_kept")}
+    for b in range(n_bins):
+        hi = post <= edges[b + 1] if b == n_bins - 1 else post < edges[b + 1]
+        m = ok & (post >= edges[b]) & hi
+        den = float((delta[m] ** 2).sum())
+        if m.sum() < min_count or den <= 0:
+            continue
+        k = m & readable
+        if k.sum() >= min_kept:
+            w_f = float(np.mean(ratio[k]))
+            se_f = float(np.std(ratio[k], ddof=1) / np.sqrt(k.sum())) if k.sum() > 1 else np.nan
+        else:
+            w_f = se_f = np.nan
+        out["centres"].append(float(post[m].mean()))
+        out["w_ls"].append(float((delta[m] * resid[m]).sum() / den))
+        out["se_ls"].append(float(sigma_out / np.sqrt(den)))
+        out["n"].append(int(m.sum()))
+        out["w_filt"].append(w_f)
+        out["se_filt"].append(se_f)
+        out["n_kept"].append(int(k.sum()))
+        out["frac_kept"].append(float(k.sum() / m.sum()))
+    return {key: np.array(val) for key, val in out.items()}
+
+
 def variance_signature(var_net, post, fused_mu, fused_var, seg_mu, seg_var,
                        n_bins=10):
     """Network variance output binned by the analytical posterior (SS7.3).

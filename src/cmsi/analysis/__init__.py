@@ -17,6 +17,7 @@ from cmsi.analysis.causal import (
     compare,
     fusion_weight,
     implied_log_bf,
+    implied_weight_by_posterior,
     joint_fusion_weight,
     mean_by_bin,
     model_comparison,
@@ -41,7 +42,8 @@ from cmsi.analysis.units import (
 
 __all__ = [
     "accuracy", "errors", "generalization", "print_accuracy",
-    "fusion_weight", "implied_log_bf", "compare", "mean_by_bin",
+    "fusion_weight", "implied_log_bf",
+    "implied_weight_by_posterior", "compare", "mean_by_bin",
     "transition_fit", "by_reliability", "strategy_fit",
     "binned_implied_weight", "position_regression", "sigma_out", "sigma_w", "joint_fusion_weight",
     "weight_consistency", "reliability_within_disparity",
