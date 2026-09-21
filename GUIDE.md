@@ -124,7 +124,12 @@ src/cmsi/
     decoding.py     what the hidden layers carry
     todo.py         two analyses not yet designed
   experiments/
-    implied_weight.py  the implied-weight investigation (scripts/06_implied_weight.py)
+    implied_weight.py  the implied-weight analyses and figures (scripts/06_implied_weight.py)
+    design.py          readability of the weight at the level of the trials: screening a
+                       configuration before training, trained runs side by side (06 design / compare)
+    architecture.py    variants at other hidden sizes and their comparison (scripts/07_architecture.py)
+    fixed_variance.py  variants with every input's noise pinned to one value (scripts/08_fixed_variance.py)
+    sweep.py           variants over the values of any one config key (scripts/09_sweep.py)
   viz/
     inputs.py       what the network is shown
     training.py     did it converge
@@ -1812,7 +1817,7 @@ from the stored per-trial arrays of the first seed (§8.2).
 # Part 10 — How to run things
 
 ```bash
-make test                                       # 94 property tests, ~45 s
+make test                                       # 104 property tests, ~45 s
 make calibrate CONFIG=configs/flagship.yaml     # the gate alone
 make all       CONFIG=configs/flagship.yaml     # full pipeline, 50k trials
 make quick     CONFIG=configs/flagship.yaml     # same, 8k trials / 60 epochs
@@ -1830,13 +1835,44 @@ without it every group is rendered.
 
 **Side experiments** live outside the numbered stages. `scripts/06_implied_weight.py`
 (`src/cmsi/experiments/implied_weight.py`) investigates the implied weight,
-σ_out and σ_w on an existing run and across trained variants — other hidden
-sizes, other input encodings via `--set key=value` — each variant with its
-own p_common = 1 control. It writes only under
-`results/experiments/implied_weight/<name>/`, so nothing in `results/<run>/`
-moves until a variant is promoted into `configs/` and the pipeline re-run.
-The script's docstring lists the sub-commands (`figures`, `sigma`,
-`reliability`, `train`, `compare`) and the output layout.
+σ_out and σ_w on any pipeline run — `sigma`, `reliability`, `figures`, none of
+them filtered — writing only under `results/experiments/implied_weight/<name>/`.
+Its `train` sub-command takes a configuration (a yaml, or the flagship with
+`--set key=value` overrides) through stages 0–4 into `results/<name>/`, together
+with a p_common = 1 control of the same configuration in
+`results/<name>_pcommon1/`, and records the configs in `configs/experiments/`;
+the run then has everything a pipeline run has, and the analyses find its
+control by themselves. `scripts/07_architecture.py`
+(`src/cmsi/experiments/architecture.py`) trains the same task at other hidden
+sizes, each variant with its own control, and compares them under
+`results/experiments/architecture/<name>/`. `scripts/08_fixed_variance.py`
+(`src/cmsi/experiments/fixed_variance.py`) pins each input's measurement
+variance to a single value — a range `[v, v]`, which every stage accepts
+unchanged — trains a variant per (vis, prop, eye) triple with its own control,
+and compares them under `results/experiments/fixed_variance/<name>/`; with
+reliability constant the calibration gate's coverage check would fail by
+construction, so the gate is not run for these variants. `scripts/09_sweep.py`
+(`src/cmsi/experiments/sweep.py`) trains a variant per value of any one config
+key — a prior width, a noise range, the hidden size — each with its own datasets
+and control, and compares them under `results/experiments/sweep/<name>/`;
+`--balance` thins each variant's causal trials to a flat posterior histogram
+by an acceptance rule that depends on the measurements only, so the targets
+stay right. Two sub-commands of 06 need no training: `design` draws the trials
+of one or more configurations and reports what they allow the per-trial
+weight to show — the posterior histogram, |Δ|, the fraction of ratios that
+would fall outside [−1, 2] for any read-out error, and the decoding floor on
+that error (`src/cmsi/experiments/design.py`) — and `compare` puts several
+trained runs on one set of figures with the same quantities measured. The
+identity behind both is that on a network optimal up to an error *e* the
+per-trial ratio is `w = p + e/Δ`: the spikes in the ratio's distribution are
+set by the |Δ| distribution of the trials and the size of *e*, nothing else.
+The network's variance outputs carry the same weight without that blind spot:
+the mixture variance `w·var_fus + (1 − w)·var_seg + w(1 − w)Δ²` can be solved
+for w on every trial with a sensitivity that does not vanish at Δ = 0
+(`implied_weight.variance_weight`), and `weight_analysis` returns it beside the
+ratio, the least-squares read across both position outputs and the combination
+of all four, together with a coherence check between the position and the
+variance read (`sigma` figure 08).
 
 Every figure command writes `.png`, `.tif` and `.svg` side by side (Part 9);
 the two redraw commands are what to run after a style change, since neither
