@@ -141,29 +141,33 @@ def test_position_regression_detects_a_non_bayesian_weight():
     assert reg["slope"] < 0.7
 
 
-def test_joint_weight_pools_both_outputs():
+def test_hybrid_read_is_the_implied_weight_on_every_trial():
+    """The pipeline's weight: a model-averaging observer's outputs are read
+    back exactly, on every trial, with no filter -- including at zero
+    disparity, where a position ratio has nothing."""
     rng = np.random.default_rng(2)
-    fused = rng.normal(0, 5, 2000)
-    seg_v, seg_p = fused + rng.normal(0, 8, 2000), fused - rng.normal(0, 8, 2000)
-    w = rng.uniform(0, 1, 2000)
-    est_v = w * fused + (1 - w) * seg_v
-    est_p = w * fused + (1 - w) * seg_p
-    wj = analysis.joint_fusion_weight(est_v, seg_v, est_p, seg_p, fused)
-    ok = np.isfinite(wj)
-    assert np.allclose(wj[ok], w[ok], atol=1e-8)
-
-
-def test_sigma_w_flags_the_unreadable_trials():
-    sw = analysis.sigma_w(0.5, np.array([10.0, 0.0, 1.0]))
-    assert sw[0] == pytest.approx(0.05)
-    assert np.isinf(sw[1])
-    assert sw[2] == pytest.approx(0.5)
+    n = 3000
+    fused = rng.normal(0, 5, n)
+    seg = fused + rng.normal(0, 4, n)
+    seg[:200] = fused[:200]                      # zero disparity
+    fused_var = rng.uniform(2, 3, n)
+    seg_var = fused_var + rng.uniform(3, 6, n)
+    w = rng.uniform(0, 1, n)
+    delta = fused - seg
+    mu = w * fused + (1 - w) * seg
+    var = analysis.mixture_variance(w, fused_var, seg_var, delta)
+    w_hat, sigma, flags = analysis.hybrid_weight(var, fused_var, seg_var, delta, mu, seg,
+                                                 sig_out_mu=0.3, sig_out_var=0.02)
+    assert np.all(np.isfinite(w_hat)) and np.allclose(w_hat, w, atol=1e-6)
+    assert np.all(flags[:200] == 0)
+    assert set(np.unique(flags)) <= {0, 1}
+    assert np.all(np.isfinite(sigma))
 
 
 def test_weight_consistency_on_agreeing_readings():
     w = np.random.default_rng(3).uniform(0, 1, 500)
-    out = analysis.weight_consistency(w, w + 0.01, np.full(500, 0.01),
-                                      np.full(500, 0.01))
+    out = analysis.weight_consistency(w, w + 0.01)
+    assert out["n"] == 500
     assert out["corr"] > 0.99 and out["mean_abs_diff"] < 0.02
 
 

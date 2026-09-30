@@ -30,6 +30,14 @@ class Net(nn.Module):
         super().__init__()
         self.head = model_cfg["head"]
         self.var_cols = VAR_COLUMNS[self.head]
+        # Floor on the per-input std used for z-scoring. Units that never
+        # fire in the training trials (the outermost visual receptive fields)
+        # have std 0; with the historical floor of 1e-6 a single spike from
+        # such a unit at test time becomes an input of 1e6, which a sigmoid
+        # saturates harmlessly but a relu passes through linearly. Configs
+        # that use relu set std_floor: 1.0 (one spike); the default keeps
+        # every existing run bit-for-bit reproducible.
+        self.std_floor = float(model_cfg.get("std_floor", 1e-6))
         activation = ACTIVATIONS[model_cfg["activation"]]
 
         self.layers = nn.ModuleList()
@@ -46,7 +54,7 @@ class Net(nn.Module):
         """Store the z-scoring statistics of the training inputs."""
         x = torch.as_tensor(np.asarray(X_train), dtype=torch.float32)
         self.x_mean = x.mean(0)
-        self.x_std = x.std(0).clamp_min(1e-6)
+        self.x_std = x.std(0).clamp_min(self.std_floor)
 
     def forward(self, x, return_hidden=False):
         h = (x - self.x_mean) / self.x_std

@@ -3,6 +3,11 @@
 The network is never shown p(C=1). These functions ask what its behaviour
 implies about the weight it puts on the fused solution, and whether that weight
 matches the Bayes-optimal one.
+
+The weight is read per channel by the HYBRID read (hybrid_weight): the
+mixture-variance root where it is unique (Delta^2 <= c, which includes zero
+disparity) and the channel's own position ratio where the variance has two
+roots (Delta^2 > c). It exists on every trial and nothing is filtered.
 """
 
 import numpy as np
@@ -10,27 +15,8 @@ from sklearn.metrics import r2_score
 
 
 # --------------------------------------------------------------------------- #
-# implied weight and implied evidence
+# implied evidence and a generic comparison
 # --------------------------------------------------------------------------- #
-def fusion_weight(estimate, segregated, fused, min_separation=1.0):
-    """Solve  estimate = w*fused + (1-w)*segregated  for w.
-
-    Optimal model averaging predicts w == p(C=1|x), so comparing w to the
-    analytical p(C=1) tests whether the network averages optimally.
-
-    When the two references nearly coincide the ratio is meaningless -- the
-    denominator goes to zero and readout noise is amplified without bound, so a
-    handful of trials otherwise dominate every summary. Trials with
-    |fused - segregated| < min_separation (deg) return NaN. Raise it if the
-    curve is still noisy; lower it to keep more low-disparity trials.
-    """
-    denom = fused - segregated
-    w = np.full(np.shape(estimate), np.nan)
-    ok = np.abs(denom) > min_separation
-    w[ok] = (estimate[ok] - segregated[ok]) / denom[ok]
-    return w
-
-
 def implied_log_bf(p, p_common):
     """Invert p(C=1|x) back to a log Bayes factor: logit(p) - logit(prior)."""
     prior = np.clip(p_common, 1e-12, 1 - 1e-12)
@@ -41,12 +27,13 @@ def implied_log_bf(p, p_common):
 def compare(reference, estimate):
     """Slope / R^2 / RMSE of estimate against reference, ignoring NaNs.
 
-    Per-trial R^2 on the implied weight is often poor even when the binned curve
-    tracks the optimum closely -- single-trial w is a noisy ratio. Read the slope
-    and the curve together.
+    Read the slope and the binned curve together: per-trial R^2 also carries
+    the read-out noise of every single trial.
     """
     ok = np.isfinite(reference) & np.isfinite(estimate)
     a, b = np.asarray(reference)[ok], np.asarray(estimate)[ok]
+    if ok.sum() < 2:
+        return {"slope": np.nan, "r2": np.nan, "rmse": np.nan, "n": int(ok.sum())}
     return {"slope": float(np.polyfit(a, b, 1)[0]),
             "r2": float(r2_score(a, b)),
             "rmse": float(np.sqrt(np.mean((a - b) ** 2))),
@@ -74,6 +61,57 @@ def mean_by_bin(x, y, grid):
             means.append(y[m].mean())
             counts.append(int(m.sum()))
     return np.array(centres), np.array(means), np.array(counts)
+
+
+def binned_weight(x, w, grid, min_count=25, max_se=None):
+    """Mean and standard error of a per-trial weight per bin of `x` (nearest
+    grid centre) -> (centres, means, counts, standard_errors).
+
+    The weight-vs-disparity curve of the hybrid read: every trial enters, the
+    error bar is the sd of the trials in the bin over sqrt(n). Bins holding
+    fewer than `min_count` trials are dropped, and so are bins whose standard
+    error exceeds `max_se` when one is given, so that a sparse or noisy bin
+    reads as a gap rather than as a point.
+    """
+    x, w, grid = np.asarray(x, float), np.asarray(w, float), np.asarray(grid, float)
+    ok = np.isfinite(x) & np.isfinite(w)
+    idx = np.abs(x[:, None] - grid[None, :]).argmin(1)
+    centres, means, counts, ses = [], [], [], []
+    for b in range(len(grid)):
+        m = ok & (idx == b)
+        n = int(m.sum())
+        if n < max(min_count, 2):
+            continue
+        se = float(w[m].std(ddof=1) / np.sqrt(n))
+        if max_se is not None and (not np.isfinite(se) or se > max_se):
+            continue
+        centres.append(float(grid[b]))
+        means.append(float(w[m].mean()))
+        counts.append(n)
+        ses.append(se)
+    return np.array(centres), np.array(means), np.array(counts), np.array(ses)
+
+
+def weight_by_posterior(w, post, n_bins=10, min_count=25):
+    """A per-trial weight per equal-width bin of the analytical posterior:
+    the bin's mean posterior, the mean weight, its standard error and the
+    count, for the bins holding at least `min_count` trials. A Bayes-optimal
+    model-averaging observer puts every point on the identity line."""
+    w, post = np.asarray(w, float), np.asarray(post, float)
+    ok = np.isfinite(w) & np.isfinite(post)
+    edges = np.linspace(0.0, 1.0, n_bins + 1)
+    out = {k: [] for k in ("centres", "w", "se", "n")}
+    for b in range(n_bins):
+        hi = post <= edges[b + 1] if b == n_bins - 1 else post < edges[b + 1]
+        m = ok & (post >= edges[b]) & hi
+        n = int(m.sum())
+        if n < max(min_count, 2):
+            continue
+        out["centres"].append(float(post[m].mean()))
+        out["w"].append(float(w[m].mean()))
+        out["se"].append(float(w[m].std(ddof=1) / np.sqrt(n)))
+        out["n"].append(n)
+    return {k: np.array(v) for k, v in out.items()}
 
 
 def transition_fit(abs_disparity, weight):
@@ -197,54 +235,141 @@ def sigma_out(pred, target):
     return resid.std(axis=0)
 
 
-def sigma_w(sig_out, delta):
-    """Per-trial uncertainty of the implied weight: sigma_w ~ sigma_out / |Delta|.
+def mixture_variance(w, fused_var, seg_var, delta):
+    """The model-averaged variance for a weight w (Eq. 10, law of total
+    variance): w fused_var + (1 - w) seg_var + w (1 - w) Delta^2."""
+    w = np.asarray(w, float)
+    return w * fused_var + (1 - w) * seg_var + w * (1 - w) * np.asarray(delta, float) ** 2
 
-    Filter scatter plots by a stated criterion (design suggests sigma_w < 0.1);
-    small |Delta| makes w unreadable -- expected and meaningful, not a failure.
+
+def variance_weight(v_hat, fused_var, seg_var, delta):
+    """The weight implied by a VARIANCE output, on every trial (SS7.1/7.3).
+
+    The variance target of a model-averaging observer is the mixture
+    variance v(w) = w fused_var + (1 - w) seg_var + w (1 - w) Delta^2, so a
+    variance output v_hat can be solved for the weight the network used -- a
+    quadratic in w,
+
+        Delta^2 w^2 - (Delta^2 - c) w - (seg_var - v_hat) = 0,
+        c = seg_var - fused_var > 0  (the variance fusion saves).
+
+    v(w) is a parabola in w opening downward, with v(0) = seg_var, v(1) =
+    fused_var and its peak at w* = 1/2 - c / (2 Delta^2). Its sensitivity
+    |dv/dw| = |Delta^2 (1 - 2w) - c| does NOT vanish at Delta = 0: there it
+    equals c, so this read stays sharp exactly where a position ratio
+    (sensitivity |Delta|) is blind.
+
+    Roots: with Delta^2 <= c the peak lies at or left of w = 0, v(w) is
+    monotone on [0, 1] and the root is unique -- the one whose Delta -> 0
+    limit is (seg_var - v_hat)/c (flag 0). With Delta^2 > c the peak lies
+    inside (0, 1/2), v(w) rises before it falls and two roots can lie in
+    [0, 1]; the variance output alone cannot tell them apart, so the larger
+    root is returned with flag 1 and the caller decides -- the hybrid read
+    (hybrid_weight) uses the channel's position ratio on those trials
+    instead. When v_hat exceeds the largest mixture variance any w can
+    produce, the location of that maximum is returned (flag 2).
+
+    Returns (w, sensitivity |dv/dw| at w, flags).
     """
-    delta = np.abs(np.asarray(delta, float))
-    out = np.full(delta.shape, np.inf)
-    ok = delta > 0
-    out[ok] = sig_out / delta[ok]
-    return out
+    v_hat, delta = np.asarray(v_hat, float), np.asarray(delta, float)
+    fused_var, seg_var = np.asarray(fused_var, float), np.asarray(seg_var, float)
+    c = seg_var - fused_var
+    a = delta ** 2
+    b = a - c
+    disc = b ** 2 + 4 * a * (seg_var - v_hat)
+    w = np.full(v_hat.shape, np.nan)
+    flags = np.zeros(v_hat.shape, int)
+    linear = a <= 1e-9 * np.maximum(c, 1e-12)
+    w[linear] = (seg_var[linear] - v_hat[linear]) / c[linear]
+    ok = ~linear & (disc >= 0)
+    w[ok] = (b[ok] + np.sqrt(disc[ok])) / (2 * a[ok])
+    flags[ok] = np.where(a[ok] > c[ok], 1, 0)
+    above = ~linear & (disc < 0)
+    w[above] = b[above] / (2 * a[above])
+    flags[above] = 2
+    sensitivity = np.abs(b - 2 * a * w)
+    return w, sensitivity, flags
 
 
-def joint_fusion_weight(est_vis, seg_vis, est_prop, seg_prop, fused):
-    """One w per trial from BOTH outputs jointly (SS7.1).
+def hybrid_weight(v_hat, fused_var, seg_var, delta, mu_hat, seg_mu, sig_out_mu=None,
+                  sig_out_var=None):
+    """The HYBRID per-trial weight of one channel: the variance root where it
+    is unique, the position ratio where it is not (SS7.1/7.3).
 
-    Each trial gives two equations est_k = w*fused + (1-w)*seg_k with a common
-    w; the least-squares solution pools them with their natural leverage:
-        w = sum_k Delta_k (est_k - seg_k) / sum_k Delta_k^2 .
+    One channel's two outputs read the same weight in two regimes of the
+    mixture-variance parabola v(w) (see variance_weight):
+
+      Delta^2 <= c  the parabola is monotone on [0, 1], the variance output
+                    gives ONE root -- taken as is (flag 0; the peak position
+                    if v_hat exceeds the largest mixture variance, flag 2).
+                    This includes Delta -> 0, where the ratio is blind.
+      Delta^2 >  c  two roots; instead of choosing between them, the
+                    weight is read from the channel's POSITION output,
+                    w = (mu_hat - seg_mu) / Delta, which is well conditioned
+                    exactly here (|Delta| > sqrt(c)); flag 1.
+
+    `mu_hat` and `seg_mu` are the channel's position output and segregated
+    mean (the same channel as v_hat, fused_var and seg_var). With the two
+    readout noises given, `sigma` is the nominal per-trial sd of the read:
+    sig_out_var / |dv/dw| on the root trials, sig_out_mu / |Delta| on the
+    ratio trials (else NaN). Nothing is filtered or clipped.
+
+    Returns (w, sigma, flags) with flags 0 = variance root, 1 = position
+    ratio, 2 = variance peak (no real root, Delta^2 <= c).
     """
-    dv = np.asarray(fused) - np.asarray(seg_vis)
-    dp = np.asarray(fused) - np.asarray(seg_prop)
-    num = dv * (np.asarray(est_vis) - np.asarray(seg_vis)) \
-        + dp * (np.asarray(est_prop) - np.asarray(seg_prop))
-    den = dv ** 2 + dp ** 2
-    w = np.full(den.shape, np.nan)
-    ok = den > 0
-    w[ok] = num[ok] / den[ok]
-    return w
+    delta = np.asarray(delta, float)
+    w_var, sens, flags_var = variance_weight(v_hat, fused_var, seg_var, delta)
+    c = np.asarray(seg_var, float) - np.asarray(fused_var, float)
+    ratio_regime = delta ** 2 > c
+    w = w_var.copy()
+    flags = flags_var.copy()
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratio = (np.asarray(mu_hat, float) - np.asarray(seg_mu, float)) / delta
+    w[ratio_regime] = ratio[ratio_regime]
+    flags[ratio_regime] = 1
+    sigma = np.full(w.shape, np.nan)
+    if sig_out_var is not None:
+        root = ~ratio_regime
+        sigma[root] = sig_out_var / np.maximum(sens[root], 1e-12)
+    if sig_out_mu is not None:
+        sigma[ratio_regime] = sig_out_mu / np.abs(delta[ratio_regime])
+    return w, sigma, flags
 
 
-def weight_consistency(w_vis, w_prop, sw_vis, sw_prop, criterion=0.1):
-    """Hand-vs-visual agreement of the implied weight on well-conditioned trials.
+def variance_regression(var_out, fused_var, seg_var, delta, post):
+    """The headline statistic in the VARIANCE domain (the analogue of
+    position_regression, no division): the network's variance reduction
+    relative to segregation, var_out - seg_var, regressed on the optimal
+    mixture's, v(p) - seg_var. Bayes-optimal model averaging predicts slope
+    1, intercept 0. Every trial enters with its natural leverage, which is
+    largest where the between-component term p(1-p)Delta^2 is largest."""
+    v_opt = mixture_variance(post, fused_var, seg_var, delta)
+    return position_regression(var_out, seg_var, v_opt, np.ones_like(np.asarray(post, float)))
 
-    Internal-coherence test of model averaging (SS7.1): both outputs are
-    mixtures with the SAME w, so on trials where both are readable
-    (sigma_w < criterion on both) the two readings must agree.
+
+def weight_regression(w, post):
+    """A per-trial weight regressed on the analytical posterior: slope 1,
+    intercept 0 for an optimal observer. Meant for a read that exists on
+    every trial (the variance read); NaNs are left out."""
+    w, post = np.asarray(w, float), np.asarray(post, float)
+    ok = np.isfinite(w) & np.isfinite(post)
+    return position_regression(w[ok], np.zeros(ok.sum()), post[ok], np.ones(ok.sum()))
+
+
+def weight_consistency(w_vis, w_prop):
+    """Hand-vs-visual agreement of the implied weight, trial by trial.
+
+    Internal-coherence test of model averaging (SS7.1): both channels are
+    mixtures with the SAME w, so the two hybrid reads must agree. Every trial
+    with both reads finite enters; nothing is filtered.
     """
-    ok = (np.asarray(sw_vis) < criterion) & (np.asarray(sw_prop) < criterion) \
-        & np.isfinite(w_vis) & np.isfinite(w_prop)
+    ok = np.isfinite(w_vis) & np.isfinite(w_prop)
     if ok.sum() < 10:
-        return {"n": int(ok.sum()), "corr": np.nan, "mean_abs_diff": np.nan,
-                "criterion": criterion}
+        return {"n": int(ok.sum()), "corr": np.nan, "mean_abs_diff": np.nan}
     a, b = np.asarray(w_vis)[ok], np.asarray(w_prop)[ok]
     return {"n": int(ok.sum()),
             "corr": float(np.corrcoef(a, b)[0, 1]),
-            "mean_abs_diff": float(np.mean(np.abs(a - b))),
-            "criterion": criterion}
+            "mean_abs_diff": float(np.mean(np.abs(a - b)))}
 
 
 # --------------------------------------------------------------------------- #
@@ -307,77 +432,6 @@ def reliability_within_disparity(w_implied, w_optimal, abs_disparity,
 # --------------------------------------------------------------------------- #
 # SS7.3 -- the mixture-variance signature of causal ambiguity
 # --------------------------------------------------------------------------- #
-def implied_weight_by_posterior(estimate, segregated, fused, post, sigma_out,
-                                n_bins=10, sigma_w_criterion=0.1,
-                                min_separation=1.0, min_count=25, min_kept=5):
-    """Implied weight per posterior bin, by BOTH estimators, side by side.
-
-    Bins trials into `n_bins` equal-width bins of the analytical posterior and
-    reports, for each bin, the same quantity measured two ways:
-
-      least squares   w = sum(Delta * (estimate - seg)) / sum(Delta^2)
-                      SE = sigma_out / sqrt(sum Delta^2)
-                      -- uses EVERY trial in the bin, weighting each by Delta^2
-
-      filtered ratio  w = mean of (estimate - seg)/Delta over the trials that
-                      pass |Delta| >= min_separation and
-                      sigma_out/|Delta| < sigma_w_criterion
-                      SE = sd/sqrt(n_kept)
-                      -- uses a SUBSET, selected on Delta
-
-    A Bayes-optimal model-averaging observer puts every point on the identity
-    line, so the two curves can be read against y = x.
-
-    The point of computing both is that they diverge in a predictable place. A
-    high posterior means the cues agree, which means a small Delta, which is
-    exactly what the sigma_w filter removes. The filtered estimator therefore
-    loses the fusion end of the curve: it flattens as the retained fraction
-    falls and stops entirely once no trial survives. The least-squares form
-    keeps every trial and simply weights it by how much it can say.
-
-    The reported bin position is the MEAN posterior of the trials in the bin,
-    not the nominal bin centre, so a point sits where its trials actually are.
-
-    Returns a dict of arrays, one entry per bin that holds at least
-    `min_count` trials: centres, w_ls, se_ls, n, w_filt, se_filt, n_kept,
-    frac_kept. Filtered entries are NaN in bins holding fewer than `min_kept`
-    usable trials.
-    """
-    estimate, segregated = np.asarray(estimate), np.asarray(segregated)
-    fused, post = np.asarray(fused), np.asarray(post)
-    delta, resid = fused - segregated, estimate - segregated
-
-    with np.errstate(divide="ignore", invalid="ignore"):
-        ratio = np.where(np.abs(delta) >= min_separation, resid / delta, np.nan)
-    readable = np.isfinite(ratio) & (sigma_out / np.abs(delta) < sigma_w_criterion)
-
-    edges = np.linspace(0.0, 1.0, n_bins + 1)
-    ok = np.isfinite(post) & np.isfinite(delta) & np.isfinite(resid)
-    out = {k: [] for k in ("centres", "w_ls", "se_ls", "n",
-                           "w_filt", "se_filt", "n_kept", "frac_kept")}
-    for b in range(n_bins):
-        hi = post <= edges[b + 1] if b == n_bins - 1 else post < edges[b + 1]
-        m = ok & (post >= edges[b]) & hi
-        den = float((delta[m] ** 2).sum())
-        if m.sum() < min_count or den <= 0:
-            continue
-        k = m & readable
-        if k.sum() >= min_kept:
-            w_f = float(np.mean(ratio[k]))
-            se_f = float(np.std(ratio[k], ddof=1) / np.sqrt(k.sum())) if k.sum() > 1 else np.nan
-        else:
-            w_f = se_f = np.nan
-        out["centres"].append(float(post[m].mean()))
-        out["w_ls"].append(float((delta[m] * resid[m]).sum() / den))
-        out["se_ls"].append(float(sigma_out / np.sqrt(den)))
-        out["n"].append(int(m.sum()))
-        out["w_filt"].append(w_f)
-        out["se_filt"].append(se_f)
-        out["n_kept"].append(int(k.sum()))
-        out["frac_kept"].append(float(k.sum() / m.sum()))
-    return {key: np.array(val) for key, val in out.items()}
-
-
 def variance_signature(var_net, post, fused_mu, fused_var, seg_mu, seg_var,
                        n_bins=10):
     """Network variance output binned by the analytical posterior (SS7.3).
@@ -512,59 +566,3 @@ def model_comparison(estimate, post, fused, segregated, n_bins=10, seed=0):
                 break
     out["best"] = best
     return out
-
-
-def binned_implied_weight(estimate, segregated, fused, x, grid,
-                          min_count=25, sigma_out=None, max_se=0.1):
-    """Implied weight per bin of `x`, as a least-squares slope (no division).
-
-    Within each bin, regress (estimate - seg) on Delta = fused - seg through
-    the origin:  w_bin = sum(Delta * (estimate - seg)) / sum(Delta^2),
-    whose standard error is  sigma_out / sqrt(sum(Delta^2)).
-
-    This is the unbiased way to draw a weight-vs-disparity curve. The per-trial
-    ratio (estimate - seg)/Delta needs a sigma_w filter to stay finite, and that
-    filter keeps preferentially high-|Delta| trials -- which within a disparity
-    bin are the ones with the most separated hypotheses, and therefore the
-    lowest weights. Binning the filtered ratio pulls the curve systematically
-    below the analytical posterior even for a perfectly Bayesian network. The
-    least-squares form uses every trial and has no such selection.
-
-    Bins are dropped when they hold fewer than `min_count` trials, or (given
-    `sigma_out`) when the slope's standard error exceeds `max_se`. The second
-    guard is the bin-level analogue of the per-trial sigma_w criterion: near
-    zero disparity the two hypotheses coincide, sum(Delta^2) collapses, and the
-    weight is simply not identifiable there however many trials the bin holds.
-    Without it the curve spikes at the origin -- an artefact of the estimator,
-    not a property of the network.
-
-    Returns (centres, weights, counts, standard_errors).
-    """
-    estimate, segregated = np.asarray(estimate), np.asarray(segregated)
-    fused, x = np.asarray(fused), np.asarray(x)
-    grid = np.asarray(grid, float)
-    delta = fused - segregated
-    resid = estimate - segregated
-    ok = np.isfinite(delta) & np.isfinite(resid) & np.isfinite(x)
-    idx = np.abs(x[:, None] - grid[None, :]).argmin(1)
-
-    centres, weights, counts, ses = [], [], [], []
-    for b in range(len(grid)):
-        m = ok & (idx == b)
-        den = float((delta[m] ** 2).sum())
-        if m.sum() < min_count or den <= 0:
-            continue
-        w = float((delta[m] * resid[m]).sum() / den)
-        if sigma_out is None:
-            se = float(np.sqrt(((resid[m] - w * delta[m]) ** 2).sum()
-                               / max(int(m.sum()) - 1, 1) / den))
-        else:
-            se = float(sigma_out / np.sqrt(den))
-        if not np.isfinite(se) or se > max_se:
-            continue
-        centres.append(float(grid[b]))
-        weights.append(w)
-        counts.append(int(m.sum()))
-        ses.append(se)
-    return (np.array(centres), np.array(weights),
-            np.array(counts), np.array(ses))

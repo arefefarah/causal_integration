@@ -70,7 +70,5 @@ training:
 analysis:
   disparity_grid: [-40, -30, -20, -15, -10, -5, -2, 0, 2, 5, 10, 15, 20, 30, 40]
   reliability_levels: [1.5, 3.5, 6.0]   # must lie inside sigma2_vis_range
-  min_separation: 1.0          # deg; below this the implied fusion weight is unstable
-  sigma_w_criterion: 0.1       # SS7.1: keep trials whose implied w is readable
   ridge_alpha: 1.0
   decoder_test_size: 0.25

@@ -72,6 +72,8 @@ COLORS = {
     "visual": "#d62728",
     "prop": "#2ca02c",
     "eye": "#9467bd",
+    "variance": "#ff7f0e",   # the weight read from a variance output
+    "hybrid": "#8c2d9e",     # variance root where unique, position ratio where not
 }
 
 

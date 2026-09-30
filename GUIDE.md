@@ -115,21 +115,18 @@ src/cmsi/
   analysis/
     calibration.py  everything stage 0 computes
     accuracy.py     read-out vs observer, per output
-    causal.py       the causal-inference analyses (the bulk of stage 3):
-                    per-trial, per-disparity-bin and per-posterior-bin implied
-                    weights, position regression, transition fit, variance
+    causal.py       the causal-inference analyses (the bulk of stage 3): the
+                    implied weight (the hybrid read of each channel) and its
+                    binnings by disparity and by posterior, the position- and
+                    variance-domain regressions, transition fit, variance
                     signature, model comparison, strategy fit
     units.py        unit-level analyses of the hidden layers
     behavior.py     Körding-style behavioural curves
     decoding.py     what the hidden layers carry
     todo.py         two analyses not yet designed
   experiments/
-    implied_weight.py  the implied-weight analyses and figures (scripts/06_implied_weight.py)
-    design.py          readability of the weight at the level of the trials: screening a
-                       configuration before training, trained runs side by side (06 design / compare)
-    architecture.py    variants at other hidden sizes and their comparison (scripts/07_architecture.py)
-    fixed_variance.py  variants with every input's noise pinned to one value (scripts/08_fixed_variance.py)
-    sweep.py           variants over the values of any one config key (scripts/09_sweep.py)
+    implied_weight.py  the weight figures of a run, the weight per reliability level,
+                       and `train` (scripts/06_implied_weight.py)
   viz/
     inputs.py       what the network is shown
     training.py     did it converge
@@ -380,11 +377,12 @@ training:
 analysis:
   disparity_grid: [-40,-30,-20,-15,-10,-5,-2,0,2,5,10,15,20,30,40]
   reliability_levels: [1.5, 3.5, 6.0]
-  min_separation: 1.0
-  sigma_w_criterion: 0.1
   ridge_alpha: 1.0
   decoder_test_size: 0.25
 ```
+
+(`min_separation` and `sigma_w_criterion`, the guards of the per-trial ratio,
+were removed from every config on 2026-09-29 with the ratio itself; §7.2.)
 
 ### Why these numbers and not the previous ones
 
@@ -632,28 +630,21 @@ a smooth function of the reliabilities alone, whereas at an intermediate prior i
 carries the mixture term, which is a sharply non-linear function of the
 disparity.
 
-## 7.2 σ_out and the σ_w filter
+## 7.2 σ_out, and how the implied weight is read
 
 ```
-residual_std = std(network - analytical), per output
-sigma_w      = sigma_out / |Delta|,       per trial
+residual_std = std(network - analytical), per output        (sigma_out on a control)
 ```
 
-`sigma_out` is meaningful only when measured on the **p_common = 1 control**,
-where the target is single-valued so residuals are pure read-out noise. On the
-flagship the residuals also contain any causal-inference misweighting.
-
-Stage 3 takes σ_out from `--control pcommon1` when given, and your flagship,
-pcommon07, pcommon028 and pcommon0 runs all record `sigma_out_source:
-"pcommon1"`, so they used the real control. Stage 3 now also writes the value
-itself, `sigma_out` (one entry per output), next to that key, and stage 4 reads
-it back for the figures that need it. This matters: a run's own `residual_std`
-is also stored, and on the flagship it is 1.80 rather than 0.63 for `mu_vis`,
-because it contains the causal misweighting as well as read-out noise. Feeding
-that number to the σ_w filter demands |Δ| > 18° instead of |Δ| > 6.3°, which
-keeps only confident-segregation trials and empties every other bin — the
-first version of figure 15 (§9.3) did exactly that. For an older `metrics.json`
-without the `sigma_out` key, stage 4 resolves it from `sigma_out_source`.
+`sigma_out` is the read-out noise per output. It is meaningful only when
+measured on the **p_common = 1 control**, where the target is single-valued so
+residuals are pure read-out noise; on the flagship the residuals also contain
+any causal-inference misweighting. Stage 3 takes it from `--control pcommon1`
+when given — your flagship, pcommon07, pcommon028 and pcommon0 runs all record
+`sigma_out_source: "pcommon1"` — and writes the value itself, `sigma_out` (one
+entry per output), next to that key. A run's own `residual_std` is also stored,
+and on the flagship it is 1.80 rather than 0.63 for `mu_vis`, because it
+contains the causal misweighting as well as read-out noise.
 
 **Your σ_out** (from `results/pcommon1/metrics.json`):
 
@@ -664,20 +655,64 @@ mu_vis 0.6275    var_vis 0.0551    mu_prop 0.6281    var_prop 0.0552  (deg, deg^
 The two mean channels agreeing to three decimals is a good sign — under C = 1
 they are the same quantity, and the network treats them as such.
 
-**What σ_w is for.** A trial where the two hypotheses nearly coincide cannot
-reveal the weight: dividing by a near-zero Δ turns read-out noise into an
-enormous apparent error. σ_w quantifies that per trial, and the default
-criterion (`sigma_w_criterion: 0.1`) keeps only trials where the weight is
-readable to better than 0.1.
+**The implied weight: the hybrid read** (`analysis.hybrid_weight`). The
+network never outputs a weight; on every trial it is recovered from the two
+outputs of one channel. A model-averaging observer's variance is the mixture
+variance
 
-**Where the σ_w filter must not be used.** Filtering is fine for *reporting a
-per-trial weight*. It is **biased** for *estimating a weight within a bin*,
-because the filter keeps preferentially large-|Δ| trials and those are
-systematically the lowest-weight ones — so a binned average of filtered ratios
-sits below the analytical posterior even for a perfectly Bayesian network. Any
-binned weight curve should instead use the division-free least-squares form in
-`analysis.binned_implied_weight` (§8.2), which uses every trial. §7.3 is the
-same idea applied to the whole dataset at once.
+```
+v(w) = w * var_fus + (1 - w) * var_seg + w (1 - w) * Delta^2        (Eq. 10)
+```
+
+a parabola in `w` opening downward, with `v(0) = var_seg`, `v(1) = var_fus`
+and its peak at `w* = 1/2 - c / (2 Delta^2)`, where `c = var_seg - var_fus` is
+the variance fusion saves (about 8 deg² on the flagship's median trial, 2.4 on
+exp2_128_mean's). Two regimes follow from where that peak sits:
+
+- **`Delta^2 <= c`** (small disparity, including zero): the peak is at or left
+  of `w = 0`, the parabola only falls on [0, 1], and the channel's variance
+  output has exactly one root — that root is the weight. This is where a
+  position ratio `(network - seg)/Delta` is blind (it divides by ~0), and the
+  variance read is at its sharpest: its sensitivity `|dv/dw| = |Delta^2 (1 - 2w)
+  - c|` equals `c` at `Delta = 0`.
+- **`Delta^2 > c`** (large disparity): the parabola rises before it falls, the
+  variance output would have two roots, and the weight is instead the
+  channel's own position ratio, which is well conditioned exactly here
+  (`|Delta| > sqrt(c)`, 2.8 deg on the flagship).
+
+Every trial gets a weight; nothing is filtered or clipped. Stage 3 stores the
+visual and the proprioceptive read in `analysis.npz` as `fusion_weight` and
+`fusion_weight_prop`, with a flag per trial saying which output it came from
+(`hybrid_flags_vis/prop`: 0 variance root, 1 position ratio, 2 the parabola's
+peak, returned when the variance output exceeds any mixture variance) and the
+nominal per-trial sd (`sigma_w_vis/prop`: `sigma_out(var) / |dv/dw|` on root
+trials, `sigma_out(mu) / |Delta|` on ratio trials). `metrics.json` carries
+`hybrid_read` (the shares of trials per source, the fraction outside [-1, 2],
+the sd against the posterior overall and for each part), `weight_regression_
+vis/prop` (the weight regressed on the posterior) and `implied_weight_vs_post
+[_prop]` (slope, R², RMSE, every trial). Every analysis that needs a weight —
+the consistency test (§7.4), the reliability test (§7.5), the transition fit
+(§7.11), the behavioural conditioning (§7.10), figures 04, 05, 15 and 16, the
+prior sweep — reads this one.
+
+**Your results** (visual channel; the proprioceptive one in `metrics.json`):
+
+| run | prior | trials from the ratio | outside [-1, 2] | sd vs posterior (root / ratio trials) | corr | slope on the posterior [CI] |
+|---|---|---|---|---|---|---|
+| pcommon028 | 0.28 | 74 % | 0.1 % | 0.211 (0.188 / 0.215) | 0.79 | 0.840 [0.826, 0.855] |
+| flagship | 0.5 | 61 % | 0.2 % | 0.252 (0.140 / 0.304) | 0.82 | 0.900 [0.886, 0.915] |
+| pcommon07 | 0.7 | 49 % | 0.3 % | 0.263 (0.117 / 0.355) | 0.79 | 0.918 [0.902, 0.934] |
+| exp2_128_mean | 0.5 | 58 % | 0.0 % | 0.119 (0.038 / 0.154) | 0.95 | 0.980 [0.972, 0.988] |
+
+**How to read it.** The share of trials read from the ratio is set by the
+prior: a higher prior means more common-cause trials, smaller disparities and
+more trials with `Delta^2 <= c`. The root trials are the precise part of the
+read (sd 0.04-0.19 against the posterior), the ratio trials the noisier part
+(their error is `sigma_out / |Delta|`, largest just above `sqrt(c)`), and the
+sd against the posterior mixes both with the network's own deviation from
+optimality. The slope on the posterior says the same as the position
+regression (§7.3): the flagship-family networks pull toward the fused solution
+a little less than the ideal observer, exp2_128_mean does so almost exactly.
 
 ## 7.3 The position-domain regression — the headline
 
@@ -715,38 +750,32 @@ guard has been verified, both controls are clean, and the deviation appears at
 three different priors. It says the network's implicit causal inference is
 close to Bayesian but systematically a little conservative.
 
-## 7.4 The joint weight and hand-vs-visual consistency
+## 7.4 Hand-vs-visual consistency
 
-Each trial gives two equations with one common `w`:
-
-```
-w = [ Dv*(est_vis - seg_vis) + Dp*(est_prop - seg_prop) ] / ( Dv^2 + Dp^2 )
-```
-
-`weight_consistency` then compares the weight read off the visual output with
-the one read off the hand output, on trials where **both** are readable
-(σ_w < 0.1 on both).
+Both channels are mixtures with the **same** `w`, so the visual and the
+proprioceptive read of the weight must agree. `weight_consistency` compares
+the two hybrid reads on every trial: the correlation and the mean absolute
+difference.
 
 **Your results.**
 
-| run | n usable | correlation | mean abs difference |
+| run | n | correlation | mean abs difference |
 |---|---|---|---|
-| flagship | 1732 | 0.124 | 0.141 |
-| pcommon07 | 1042 | 0.108 | 0.181 |
-| pcommon028 | 2476 | 0.101 | 0.119 |
+| pcommon028 | 7500 | 0.453 | 0.249 |
+| flagship | 7500 | 0.466 | 0.280 |
+| pcommon07 | 7500 | 0.346 | 0.323 |
+| exp2_128_mean | 7500 | 0.905 | 0.080 |
 
-**How to read it — and this is the one number in the whole set that is easy to
-misread.** The correlation looks poor. It is not measuring what it appears to.
-The σ_w filter keeps high-|Δ| trials, and those are overwhelmingly
-confident-segregation trials where the true weight is near zero for all of them.
-With almost no variance in the underlying quantity, a correlation has nothing to
-correlate — it is dominated by noise even if both readings are accurate.
-
-**The mean absolute difference is the informative statistic**, and 0.12–0.18 on
-a quantity bounded in [0, 1] is reasonable agreement. If you want a stronger
-version of this test, restrict it to trials with intermediate posterior *and*
-large Δ, where the weight actually varies; that subset is small, which is itself
-the reason this test is weaker than the position regression.
+**How to read it.** The mean absolute difference is the informative statistic,
+and it is dominated by the proprioceptive channel: the disparity is split
+between the channels and the hand output's `Delta_prop` is the smaller one
+(median 1.9 deg against 3.9 deg for vision on the flagship), so on its ratio
+trials `sigma_out / |Delta|` is large — the flagship's prop read has sd 0.47
+against the posterior where its visual read has 0.25. That is a property of
+which cue carries the disparity, not a failure of coherence: on
+exp2_128_mean, where both channels are read precisely, the two agree to 0.08
+on average with a correlation of 0.9. The visual channel's read is the one
+to report; the proprioceptive one is the check.
 
 ## 7.5 Bayes versus a disparity heuristic
 
@@ -766,45 +795,43 @@ Bins where `post_c1` barely varies are **dropped**, not merely downweighted, and
 listed under `skipped`. With almost no variation in the predictor the slope is
 0/0-ish and comes back in the tens with an equally large standard error.
 
-**Your results.**
+**Your results** (the visual hybrid read, every trial).
 
 | run | prior | combined slope | 95% CI | bins kept | bins skipped |
 |---|---|---|---|---|---|
-| pcommon028 | 0.28 | **0.906 ± 0.093** | [0.724, 1.088] | 2 | 6 |
-| flagship | 0.5 | **0.567 ± 0.073** | [0.424, 0.710] | 3 | 5 |
-| pcommon07 | 0.7 | **0.712 ± 0.072** | [0.572, 0.853] | 3 | 5 |
+| pcommon028 | 0.28 | **0.503 ± 0.033** | [0.438, 0.568] | 5 | 3 |
+| flagship | 0.5 | **0.614 ± 0.037** | [0.541, 0.687] | 6 | 2 |
+| pcommon07 | 0.7 | **0.925 ± 0.034** | [0.858, 0.992] | 7 | 1 |
+| exp2_128_mean | 0.5 | **0.917 ± 0.015** | [0.888, 0.946] | 7 | 1 |
 
 The flagship's per-bin detail:
 
 | \|disparity\| bin | n | spread of post_c1 | slope ± SE |
 |---|---|---|---|
-| 6.9 – 12.2 | 364 | 0.931 | +0.477 ± 0.079 |
-| 12.2 – 16.4 | 363 | 0.456 | +1.071 ± 0.195 |
-| 16.4 – 20.3 | 364 | 0.070 | +3.258 ± 1.503 |
+| 0.0 – 1.1 | 938 | 0.196 | +0.757 ± 0.088 |
+| 1.1 – 2.4 | 937 | 0.208 | +0.591 ± 0.102 |
+| 2.4 – 3.9 | 938 | 0.234 | +0.512 ± 0.136 |
+| 3.9 – 6.0 | 937 | 0.465 | −0.562 ± 0.171 |
+| 6.0 – 10.2 | 937 | 0.899 | +0.300 ± 0.066 |
+| 10.2 – 19.6 | 938 | 0.958 | +1.160 ± 0.073 |
 
-and the five skipped bins, with the spread that got them dropped:
-
-```
-|d| 20.3-25.4   spread 2.5e-03
-|d| 25.4-30.9   spread 3.6e-05
-|d| 30.9-38.5   spread 4.3e-08
-|d| 38.5-49.2   spread 1.5e-12
-|d| 49.2-102.3  spread 2.9e-19
-```
+and the two skipped bins (|d| 19.6–30.7 and 30.7–102, spread of `post_c1`
+below 0.05): past about 20 deg the posterior is numerically pinned at zero for
+every trial regardless of reliability, so there is nothing left to test.
 
 **How to read it.** Every run is far from 0, so the disparity-heuristic
-explanation is ruled out — the network *is* using reliability. Two of the three
-are also below 1, consistent with the position-regression slope: reliability is
-tracked, but under-tracked.
-
-The skipped bins show why this test can only ever use the near-in bins: past
-about 20 deg of disparity the posterior is numerically pinned at zero for every
-trial regardless of reliability, so there is nothing left to test. That is a
-property of the world, not a limitation of the code.
-
-The third kept bin (spread 0.070, slope 3.26 ± 1.50) is barely above the
-exclusion threshold and contributes almost nothing to the inverse-variance
-weighted combination — the first two bins carry the result.
+explanation is ruled out — the network *is* using reliability — and the near-
+optimal exp2_128_mean network sits at 0.92 with a tight interval. Because the
+hybrid read exists on every trial, the test now covers the whole disparity
+range rather than the three far bins the filtered ratio left it (the first
+version of this table kept 2–3 bins per run), and the per-bin slopes show
+where the flagship-family networks under-track reliability: at small disparity
+they track it at 0.5–0.75, and in the 4–6 deg bin — the transition region —
+the flagship's slope is negative. That bin is where the read is noisiest (the
+ratio trials just above `sqrt(c)`) and where the network's own transition is
+steepest, so it is the place to look, not a number to average away; the
+combined slope is inverse-variance weighted, so it is carried by the bins
+with the most reliability-driven variation (the last two).
 
 ## 7.6 The variance signature of causal ambiguity
 
@@ -1245,9 +1272,9 @@ becomes evidence for two separate causes.
 
 ### Conditioned on the inferred cause (Fig. 3b–c analog)
 
-Splits trials by the network's *own* causal judgment (joint implied weight >
-0.5, falling back to the analytical posterior where the weight is unreadable)
-and plots bias against |disparity| separately for each branch.
+Splits trials by the network's *own* causal judgment (the visual hybrid read
+of the weight > 0.5, which exists on every trial) and plots bias against
+|disparity| separately for each branch.
 
 Conditioning on "inferred two causes" selects trials whose noise happened to
 exaggerate the disparity, which can produce a counter-intuitive **negative**
@@ -1284,20 +1311,24 @@ within a quarter-span of the observed disparity range. A NaN midpoint means "no
 transition was measurable", which is information; a large finite one would be a
 silent lie.
 
-**Your results:**
+**Your results** (fitted to the visual hybrid read on every trial):
 
 | run | prior | network midpoint | analytical midpoint | network sharpness | analytical sharpness |
 |---|---|---|---|---|---|
-| pcommon028 | 0.28 | 5.90 deg | 5.29 deg | 0.392 | 0.301 |
-| flagship | 0.5 | 7.72 deg | 8.04 deg | 0.357 | 0.350 |
-| pcommon07 | 0.7 | 10.13 deg | 9.93 deg | 0.397 | 0.414 |
+| pcommon028 | 0.28 | 4.22 deg | 5.29 deg | 0.241 | 0.301 |
+| flagship | 0.5 | 7.62 deg | 8.04 deg | 0.284 | 0.350 |
+| pcommon07 | 0.7 | 10.05 deg | 9.93 deg | 0.303 | 0.414 |
+| exp2_128_mean | 0.5 | 5.07 deg | 5.08 deg | 0.441 | 0.452 |
 
 **How to read it.** This is the cleanest cross-prior result in your data. The
-midpoint moves monotonically with the prior — 5.90 → 7.72 → 10.13 deg as the
+midpoint moves monotonically with the prior — 4.22 → 7.62 → 10.05 deg as the
 prior goes 0.28 → 0.5 → 0.7 — and tracks the analytical prediction (5.29 →
-8.04 → 9.93) closely at every point. A network that believes one cause is more
-likely tolerates more disparity before segregating, by very close to the amount
-Bayes says it should.
+8.04 → 9.93) at every point; on exp2_128_mean the two coincide to 0.01 deg. A
+network that believes one cause is more likely tolerates more disparity
+before segregating, by close to the amount Bayes says it should. (The earlier
+version of this table, fitted to the σ_w-filtered ratio, read 5.90 / 7.72 /
+10.13; the hybrid read has every trial, including the small-disparity ones
+the filter removed, which is why the low-prior midpoint moved most.)
 
 ---
 
@@ -1318,10 +1349,11 @@ Bernoulli constant, any systematic movement is attributable to the prior.
 
 | quantity | p = 0.28 | p = 0.5 | p = 0.7 | moves with prior? |
 |---|---|---|---|---|
-| transition midpoint (network) | 5.90 | 7.72 | 10.13 | **yes, monotone** |
+| transition midpoint (network, §7.11) | 4.22 | 7.62 | 10.05 | **yes, monotone** |
 | transition midpoint (analytical) | 5.29 | 8.04 | 9.93 | yes |
 | position regression slope, visual | 0.797 | 0.856 | 0.927 | **yes, monotone** |
-| reliability slope (§7.2) | 0.906 | 0.567 | 0.712 | no clear pattern |
+| weight on the posterior, slope (§7.2) | 0.840 | 0.900 | 0.918 | yes, monotone |
+| reliability slope (§7.5) | 0.503 | 0.614 | 0.925 | rises with the prior |
 | variance hump, var_vis (network) | 1.15 | 3.40 | 4.58 | **yes, monotone** |
 | variance hump, var_vis (analytical) | 1.89 | 4.55 | 7.07 | yes |
 | MSL posterior decoding R² | 0.927 | 0.958 | 0.948 | flat (all high) |
@@ -1330,11 +1362,15 @@ Bernoulli constant, any systematic movement is attributable to the prior.
 
 **What this supports.** Three independent measures — the transition midpoint,
 the position-regression slope, and the variance hump — move monotonically with
-the prior and in the direction Bayes predicts.
+the prior and in the direction Bayes predicts; the weight's slope on the
+posterior says the same as the position regression from the other output.
 
 **What it does not support.** The congruent/opposite balance result does not
-replicate at 0.7. Neither it nor the reliability slope should be presented as
-established on this evidence.
+replicate at 0.7. The reliability slope now rises with the prior (with the
+hybrid read it uses every trial; the filtered version showed no pattern), but
+three points and one seed each are not enough to call that a dependence;
+neither it nor the balance result should be presented as established on this
+evidence.
 
 Three points and one seed each is, however, a weak design for a claim about a
 continuous dependence. That is what §8.2 exists to fix.
@@ -1350,6 +1386,13 @@ Between any two priors **only the Bernoulli constant differs**: same encoders,
 same σ ranges, same architecture, same training protocol. Because the latent
 streams are drawn before `C` selects between them, two datasets at different
 priors are bit-identical on every trial whose causal structure did not flip.
+
+*The stored sweep (`results/prior_sweep/`) was run before the weight was read
+by the hybrid (§7.2): its midpoints, reliability slopes and Panel A curves
+come from the σ_w-filtered ratio and the least-squares per-bin weight of
+that time, and `curves.npz` holds no per-trial hybrid weights, so `--replot`
+redraws it as it is. The numbers below are those stored ones; a rerun of
+`05_prior_sweep.py` produces the hybrid-based version.*
 
 ### What the sweep is a test of
 
@@ -1374,39 +1417,28 @@ Its force comes from what the alternatives predict:
 
 Only the last survives.
 
-### How the per-bin weight is recovered, and why the obvious method is wrong
+### How the per-bin weight is recovered
 
-Within each disparity bin, regress `(network − seg)` on `Δ = fused − seg`
-through the origin:
-
-```
-w_bin = Σ(Δ · (network − seg)) / Σ(Δ²)          SE = σ_out / √(Σ Δ²)
-```
-
-The intuitive alternative — take the per-trial ratio `(network − seg)/Δ`, filter
-it by σ_w, and average within the bin — is **biased low**. The σ_w filter keeps
-preferentially large-|Δ| trials, and within a disparity bin those are the trials
-whose hypotheses are most separated, which are also the lowest-weight trials.
-The filtered average therefore sits below the analytical posterior *even for a
-perfectly Bayesian network*. The least-squares form uses every trial and has no
-such selection. (`analysis.binned_implied_weight`.)
+Each network's implied weight is read on every test trial by the hybrid read
+of the visual channel (§7.2: the mixture-variance root where `Delta^2 <= c`,
+the position ratio where `Delta^2 > c`), and the curve of Panel A is the mean
+of that weight per disparity bin with the standard error of the bin mean
+(`analysis.binned_weight`). No trial is filtered, so the curve carries
+through zero disparity, where the ratio-based estimators of earlier versions
+had nothing to say.
 
 Two consequences are visible in Panel A and are deliberate:
 
-- **Bins are coarse near zero disparity.** There the two hypotheses coincide,
-  Σ(Δ²) collapses, and no amount of data identifies a weight. A fine grid there
-  produces a spike that is an artefact of the estimator. The 18-bin grid
-  (`GRID` in `05_prior_sweep.py`) runs from −30° to +30° with its two innermost
-  edges at ±1.5°.
-- **Two guards, and which one matters.** A bin is dropped when its slope SE
-  exceeds `MAX_SE = 0.05` — that is the guard that protects against an
-  unidentifiable weight — or when it holds fewer than `MIN_COUNT = 25` trials.
-  The count floor used to be 80, which punched holes in curves that were
-  perfectly well measured: at `p_common = 0.9` the far-disparity bins hold
-  28–45 trials with SEs of 0.005–0.012. At 25 every bin at every prior is kept
-  and the SE guard never fires on this grid. Both can be overridden without
-  retraining: `05_prior_sweep.py --replot --min-count N --max-se X` re-bins the
-  stored per-trial arrays in `curves.npz`.
+- **The grid is the manuscript's.** The 18-bin grid (`GRID` in
+  `05_prior_sweep.py`) runs from −30° to +30° with its two innermost edges at
+  ±1.5°; it was chosen when the innermost bins could not identify a weight,
+  and is kept so the stored sweep and a new one draw on the same bins.
+- **Two guards.** A bin is dropped when it holds fewer than `MIN_COUNT = 25`
+  trials (a floor on how few trials a mean may rest on; at `p_common = 0.9`
+  the far-disparity bins hold 28–45 trials) or when the standard error of its
+  mean exceeds `MAX_SE = 0.05`. Both can be overridden without retraining:
+  `05_prior_sweep.py --replot --min-count N --max-se X` re-bins the stored
+  per-trial weights (`t_w_vis` in `curves.npz`).
 - **When a bin is dropped, the line breaks rather than bridging the gap.**
   Joining across a missing bin would draw a transition that was never
   measured.
@@ -1603,16 +1635,17 @@ high near zero disparity, falling away on both sides. This is a property of the
 *generative model*, not of the network — it is the reference the next figure is
 read against.
 
-**`04_fusion_weight.png`** — the classical view. Per trial, solve
-`estimate = w·fused + (1−w)·seg` for `w` (dropping trials where
-|fused − seg| < `min_separation`), then bin by disparity. Plots the analytical
-posterior (dashed) against the weight implied by `mu_vis` and by `mu_prop`.
-
-Both output columns encode the same weight, so the two curves are two readings
-of one quantity. Near zero disparity neither is readable — the estimator returns
-NaN there — so the centre of the curve rests on few trials and swings. That is a
-property of the estimator, not of the network, and is precisely why the
-position-domain regression (figure 08) is the headline instead of this one.
+**`04_fusion_weight.png`** — the classical view: the implied weight against
+disparity, per channel, with the analytical posterior dashed. The weight is
+the hybrid read (§7.2) — the mixture-variance root of the channel's variance
+output where `Δ² ≤ c`, the channel's own position ratio where `Δ² > c` — so it
+exists on every trial and the curve carries through zero disparity, where the
+two hypotheses coincide and a ratio has nothing. Both channels encode the same
+weight, so the two curves are two readings of one quantity; the visual one is
+the more precise (§7.4). On exp2_128_mean the curve sits on the analytical one
+at every bin; on the flagship it reads 0.85–0.90 at the centre against 0.90
+optimal and drifts by a few hundredths in the outer bins, where few trials and
+the ratio's heavy tails meet.
 
 **`05_fusion_weight_by_reliability.png`** — the same implied-weight curve
 computed separately at each of the config's `reliability_levels` (nearest-match
@@ -1634,6 +1667,21 @@ legend. Your flagship: slope 0.856 [0.830, 0.881], intercept −0.007.
 The vertical spine of points at x = 0 is the ill-conditioned zone — trials where
 the two hypotheses agree. They are visible, and correctly carry almost no
 leverage on the fit.
+
+**`08v_variance_regression.png`** — the headline in the variance domain, and
+the weight on the posterior. A: `var_vis output − var_seg` against
+`v_opt − var_seg`, the optimal mixture's variance reduction, with the fit
+(`analysis.variance_regression`; slope 1 = Bayes-optimal, no per-trial
+division). B: the implied weight of the visual channel against the analytical
+posterior on every trial, its points coloured by where each weight came from —
+the `var_vis` root on Δ² ≤ c trials, the `mu_vis` ratio on Δ² > c trials —
+with its fit (`analysis.weight_regression`); the legend gives each source's
+share of the trials. `metrics.json` carries `variance_regression_vis/prop`,
+`weight_regression_vis/prop`, `implied_weight_vs_post[_prop]` and
+`hybrid_read`. Your flagship: variance-domain slope 0.871 [0.863, 0.879],
+weight on the posterior 0.900 [0.886, 0.915]; exp2_128_mean: 0.970 and 0.980.
+The two domains agree with the position regression on the verdict, measured
+on different outputs of the network.
 
 **`09_variance_hump_vis.png`** and **`10_variance_hump_prop.png`** — four lines
 against the analytical posterior in 10 bins: network Var output, analytical
@@ -1680,23 +1728,28 @@ inconsistency noted in §7.9.
 across MSL units, with 0 (spatial code) and +1 (retinal code) marked. Right:
 distribution of gain-field slopes. Your flagship median shift gain: 0.013.
 
-**`15_weight_vs_post_ratio.png`** and **`16_weight_vs_post_leastsq.png`** — the
-implied weight on the fused estimate against the analytical posterior in 10
-bins, computed two ways on the same trials (`analysis.implied_weight_by_posterior`),
-with the Bayes-optimal identity line dashed. Figure 15 is the per-trial ratio
-`(network − seg)/Δ`, filtered by σ_w and averaged within the bin; its
-right-hand axis shows the fraction of each bin's trials the filter kept, and a
-bin with fewer than five survivors is left blank. Figure 16 is the
-least-squares slope of §8.2, which uses every trial. Read them together: the
-filtered estimator keeps 99% of the trials at the segregated end and under 1%
-above a posterior of 0.7, where |Δ| is small, so it cannot see the fusion end
-at all; where both are measurable the filtered value sits below the
-least-squares one by the selection bias described in §7.2. Your flagship: 2909
-of 7500 trials survive the filter and two bins are unmeasurable; the
-least-squares curve tracks the posterior to about 0.75 and then falls to 0.50
-in the top bin, the same shortfall as §7.7. The right-hand axis of figure 15 is
-also the reason it was blank in its first rendering — that version was handed
-the flagship's own `residual_std` instead of the control's σ_out (§7.2).
+**`15_weight_vs_posterior.png`** — the implied weight against the analytical
+posterior in 10 equal-width posterior bins, every trial
+(`analysis.weight_by_posterior`), with the Bayes-optimal identity line dashed
+and 1.96 standard errors of the bin mean as error bars; a point sits at the
+mean posterior of its trials, not at the nominal bin centre. A Bayes-optimal
+model-averaging observer puts every point on the identity line. Your flagship
+tracks the posterior to about 0.6 and sits at 0.80 in the 0.85 bin and 0.81
+in the top bin (0.94), the same shortfall as §7.3; exp2_128_mean reads 0.84 and
+0.90 there. (Earlier versions drew this figure twice, once by the σ_w-filtered
+ratio and once by the least-squares per-bin weight, to show the filter's
+selection bias; both estimators are gone.)
+
+**`16_weight_distribution.png`** — the implied weight on every trial, one
+panel per channel, as a histogram against the analytical posterior's own
+distribution drawn as an outline. Nothing is filtered; the axis is clipped to
+[−1, 2] with the overflow piled into the edge bins, and the panel prints the
+fraction of trials outside, the share read from the position ratio, and the
+median and IQR. A Bayes-optimal network would reproduce the outline: on
+exp2_128_mean the visual read does, with 0 % outside; the ratio trials widen
+the peaks a little because on them the read *is* the ratio, and the
+proprioceptive panel is wider than the visual one on the flagship family for
+the reason given in §7.4.
 
 ## 9.4 `results/manuscript/` — the standard panel, and every figure built on it
 
@@ -1786,7 +1839,8 @@ on the standard panel, is `results/manuscript/prior_sweep/prior_sweep_ABC`
 
 - **Panel A** — implied fusion weight against signed body-frame disparity, one
   curve per prior, colour on a sequential viridis ramp (light = low prior).
-  Solid with error bars: the network, from `binned_implied_weight` (§8.2).
+  Solid with error bars: the network, the mean of the implied weight per bin
+  (`analysis.binned_weight`, §8.2).
   Dashed: the analytical posterior for the same prior. The curves fan out in an
   orderly family — at a low prior the network abandons fusion within a few
   degrees; at a high prior it holds a near-complete weight past 10°.
@@ -1817,7 +1871,7 @@ from the stored per-trial arrays of the first seed (§8.2).
 # Part 10 — How to run things
 
 ```bash
-make test                                       # 104 property tests, ~45 s
+make test                                       # 97 property tests, ~45 s
 make calibrate CONFIG=configs/flagship.yaml     # the gate alone
 make all       CONFIG=configs/flagship.yaml     # full pipeline, 50k trials
 make quick     CONFIG=configs/flagship.yaml     # same, 8k trials / 60 epochs
@@ -1834,45 +1888,22 @@ python scripts/05_prior_sweep.py --replot --min-count 25 --max-se 0.05
 without it every group is rendered.
 
 **Side experiments** live outside the numbered stages. `scripts/06_implied_weight.py`
-(`src/cmsi/experiments/implied_weight.py`) investigates the implied weight,
-σ_out and σ_w on any pipeline run — `sigma`, `reliability`, `figures`, none of
-them filtered — writing only under `results/experiments/implied_weight/<name>/`.
-Its `train` sub-command takes a configuration (a yaml, or the flagship with
+(`src/cmsi/experiments/implied_weight.py`) applies the implied-weight read
+(§7.2) to any pipeline run, writing only under
+`results/experiments/implied_weight/<name>/`: `figures` draws the pipeline's
+weight figures (04, 05, 08v, 15, 16) for one run and prints its numbers, and
+`reliability` draws the weight against disparity at many reliability levels of
+each input, per channel, with the transition midpoint against the level. Its
+`train` sub-command takes a configuration (a yaml, or the flagship with
 `--set key=value` overrides) through stages 0–4 into `results/<name>/`, together
 with a p_common = 1 control of the same configuration in
 `results/<name>_pcommon1/`, and records the configs in `configs/experiments/`;
 the run then has everything a pipeline run has, and the analyses find its
-control by themselves. `scripts/07_architecture.py`
-(`src/cmsi/experiments/architecture.py`) trains the same task at other hidden
-sizes, each variant with its own control, and compares them under
-`results/experiments/architecture/<name>/`. `scripts/08_fixed_variance.py`
-(`src/cmsi/experiments/fixed_variance.py`) pins each input's measurement
-variance to a single value — a range `[v, v]`, which every stage accepts
-unchanged — trains a variant per (vis, prop, eye) triple with its own control,
-and compares them under `results/experiments/fixed_variance/<name>/`; with
-reliability constant the calibration gate's coverage check would fail by
-construction, so the gate is not run for these variants. `scripts/09_sweep.py`
-(`src/cmsi/experiments/sweep.py`) trains a variant per value of any one config
-key — a prior width, a noise range, the hidden size — each with its own datasets
-and control, and compares them under `results/experiments/sweep/<name>/`;
-`--balance` thins each variant's causal trials to a flat posterior histogram
-by an acceptance rule that depends on the measurements only, so the targets
-stay right. Two sub-commands of 06 need no training: `design` draws the trials
-of one or more configurations and reports what they allow the per-trial
-weight to show — the posterior histogram, |Δ|, the fraction of ratios that
-would fall outside [−1, 2] for any read-out error, and the decoding floor on
-that error (`src/cmsi/experiments/design.py`) — and `compare` puts several
-trained runs on one set of figures with the same quantities measured. The
-identity behind both is that on a network optimal up to an error *e* the
-per-trial ratio is `w = p + e/Δ`: the spikes in the ratio's distribution are
-set by the |Δ| distribution of the trials and the size of *e*, nothing else.
-The network's variance outputs carry the same weight without that blind spot:
-the mixture variance `w·var_fus + (1 − w)·var_seg + w(1 − w)Δ²` can be solved
-for w on every trial with a sensitivity that does not vanish at Δ = 0
-(`implied_weight.variance_weight`), and `weight_analysis` returns it beside the
-ratio, the least-squares read across both position outputs and the combination
-of all four, together with a coherence check between the position and the
-variance read (`sigma` figure 08).
+control by themselves. The configuration sweeps that led to the current read
+(`07_architecture`, `08_fixed_variance`, `09_sweep`, and the `sigma`,
+`compare` and `design` sub-commands of 06) were retired on 2026-09-29; their
+results stay under `results/experiments/`, and `IMPLIED_WEIGHT_RESULT.md`
+has the story.
 
 Every figure command writes `.png`, `.tif` and `.svg` side by side (Part 9);
 the two redraw commands are what to run after a style change, since neither
@@ -1897,10 +1928,10 @@ control, so that control must be trained *and analysed* first. `run_all.sh`
 passes `--control pcommon1` only if `results/pcommon1/metrics.json` exists and
 contains `residual_std`; otherwise stage 3 warns and falls back to the run's own
 residuals. The fallback is conservative rather than wrong — the flagship's own
-residuals also contain any causal-inference misweighting, so σ_w comes out too
-large, never too small. Whichever it used, stage 3 records the value as
-`sigma_out` and its origin as `sigma_out_source` in `metrics.json`, and stage 4
-reads the value from there (§7.2).
+residuals also contain any causal-inference misweighting, so the weight's
+nominal sd comes out too large, never too small. Whichever it used, stage 3
+records the value as `sigma_out` and its origin as `sigma_out_source` in
+`metrics.json` (§7.2).
 
 The sweep, stage by stage:
 
@@ -2009,12 +2040,19 @@ run when the ablation was corrected, and are not stored anywhere in `results/`.
 Cite the stored overall z-scores; treat the per-output ones as illustrative
 unless stage 3 is extended to store a per-output null.
 
-If stage 3 is ever re-run, it does not retrain, so refreshing every number is
-cheap:
+**The weight-based blocks predate the hybrid read.** The implied weight has
+been read by the hybrid of each channel (§7.2) since 2026-09-29, and the
+tables of §7.2, §7.4, §7.5 and §7.11 were refreshed with it from the stored
+`analysis.npz` files; the stored `metrics.json` blocks (`implied_weight_vs_
+post`, `weight_consistency`, `reliability_within_disparity`, `transition`) and
+the model figures 04, 05, 08v, 15 and 16 still come from the earlier
+estimators until stage 3 and 4 are re-run. Stage 3 does not retrain, so
+refreshing every number is cheap:
 
 ```bash
 for r in flagship pcommon07 pcommon028 pcommon0; do
   python scripts/03_analyze.py --run $r --twin ${r}_twin --control pcommon1
+  python scripts/04_figures.py --run $r --only model
 done
 ```
 
@@ -2122,7 +2160,7 @@ exactly this list. But writing them up as discoveries reads as padding.
 | `pcommon0` / `pcommon1` decoding R² ≈ 0 | §7.8 | **expected** — the posterior is constant, so there is no variance to explain |
 | Poisson validity, range containment, anti-confound AUCs | Part 6 | the encoders behave as specified and no confound is available |
 | the `transition_fit` range guard | §7.11 | a failed fit returns NaN instead of a fabricated midpoint |
-| least-squares binned weight vs the filtered ratio | §7.2, §8.2 | the estimator is unbiased; the obvious alternative is not |
+| the hybrid read of the weight | §7.2 | one weight per trial with no filter: the variance root where a ratio is blind, the ratio where the variance is ambiguous |
 
 The last two are worth a Methods sentence each. They are the kind of detail that
 pre-empts a reviewer question rather than inviting one.

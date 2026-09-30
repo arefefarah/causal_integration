@@ -65,3 +65,21 @@ def test_training_reduces_the_loss_and_respects_the_split(dataset, cfg):
     assert history["best_epoch"] >= 0
     assert set(splits) == {"train", "val", "test"}
     assert len(np.intersect1d(splits["train"], splits["test"])) == 0
+
+
+def test_standardizer_floor_is_configurable(cfg):
+    """A unit that never fires has std 0; the default floor (1e-6) keeps old
+    runs reproducible, and std_floor: 1.0 makes a stray spike from such a unit
+    a z-score of 1 instead of 1e6 (what relu networks need)."""
+    X = np.random.default_rng(0).normal(0, 3, (200, 8))
+    X[:, 0] = 0.0                                      # silent unit
+    default = Net(8, cfg["model"])
+    default.fit_standardizer(X)
+    assert default.x_std[0].item() == pytest.approx(1e-6)
+    floored = Net(8, {**cfg["model"], "std_floor": 1.0})
+    floored.fit_standardizer(X)
+    assert floored.x_std[0].item() == pytest.approx(1.0)
+    assert np.allclose(floored.x_std[1:].numpy(), default.x_std[1:].numpy())
+    x = torch.zeros(1, 8)
+    x[0, 0] = 1.0                                      # one spike at test time
+    assert abs(((x - floored.x_mean) / floored.x_std)[0, 0].item()) == pytest.approx(1.0)

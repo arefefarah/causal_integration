@@ -55,6 +55,8 @@ def main(args):
         saved = np.load(analysis_file)
         d = subset(d_full, splits["test"])
 
+        # the implied weight of each channel on every trial (the hybrid read,
+        # analysis.hybrid_weight), as stage 3 stored it
         w = saved["fusion_weight"] if "fusion_weight" in saved.files else None
         w_prop = saved["fusion_weight_prop"] if "fusion_weight_prop" in saved.files else None
         curves = None
@@ -65,16 +67,6 @@ def main(args):
                 cfg["analysis"]["disparity_grid"])
 
         metrics = load_json(out / "metrics.json") if (out / "metrics.json").exists() else {}
-        if "sigma_out" not in metrics and "residual_std" in metrics:
-            # metrics.json predates the sigma_out key: resolve it from the
-            # named control, exactly as 03_analyze.py did, so that figures
-            # never fall back to the flagship's own (inflated) residuals.
-            control = metrics.get("sigma_out_source", "self")
-            cpath = run_dir(control, create=False) / "metrics.json"
-            if control != "self" and cpath.exists():
-                metrics["sigma_out"] = load_json(cpath)["residual_std"]
-            else:
-                metrics["sigma_out"] = metrics["residual_std"]
         if "model" in groups:
             figs = results.all_figures(
                 saved["pred"], d, d_full["target_names"], cfg["analysis"],

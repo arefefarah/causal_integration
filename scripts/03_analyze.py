@@ -3,12 +3,15 @@
     python scripts/03_analyze.py --run baseline
     python scripts/03_analyze.py --run baseline --twin twin      # emergent vs imposed
     python scripts/03_analyze.py --run flagship --control pcommon1
-                                 # sigma_out for the sigma_w filter (SS7.1)
+                                 # sigma_out, the read-out noise (SS7.1)
 
 Everything is computed on the test split stored in the checkpoint. Writes:
 
     results/<run>/metrics.json     every number, for the write-up
-    results/<run>/analysis.npz     the per-trial arrays stage 4 plots
+    results/<run>/analysis.npz     the per-trial arrays stage 4 plots,
+                                   including the implied weight of each
+                                   channel on every trial (the hybrid read:
+                                   analysis.hybrid_weight)
 
 Control-run behaviour (SS9.1/SS9.2): when the run's own config has
 p_common == 1 the residual std per output is saved as sigma_out and the target
@@ -84,11 +87,13 @@ def analyse(run, twin=None, control=None):
         print(f"\np_common=0 control: visual-bias slope of the hand output = "
               f"{slope:+.4f} (must be ~0; residual bias = pipeline leak)")
 
-    # sigma_out for the sigma_w filter: from the control run if given (SS7.1).
-    # Never fatal -- a missing, stale, or mis-specified control degrades to this
-    # run's own residuals with a loud warning, because on the flagship those
-    # residuals also contain any causal-inference misweighting and so give a
-    # conservative (too large) sigma_w rather than a wrong answer.
+    # sigma_out, the read-out noise per output, from the control run if given
+    # (SS7.1): it sets the nominal per-trial uncertainty of the implied
+    # weight. Never fatal -- a missing, stale, or mis-specified control
+    # degrades to this run's own residuals with a loud warning, because on
+    # the flagship those residuals also contain any causal-inference
+    # misweighting and so give a conservative (too large) sigma rather than
+    # a wrong answer.
     sig_out = resid_std
     metrics["sigma_out_source"] = "self"
     if control is not None:
@@ -119,37 +124,63 @@ def analyse(run, twin=None, control=None):
                 metrics["sigma_out_source"] = control
                 print(f"\nsigma_out from control '{control}': "
                       + ", ".join(f"{s:.3f}" for s in sig_out))
-    # Record the value actually used, not only its source: downstream figures
-    # (04_figures.py) need the number, and on the flagship residual_std is
-    # ~3x larger than sigma_out because it also contains causal misweighting.
+    # Record the value actually used, not only its source: on the flagship
+    # residual_std is ~3x larger than sigma_out because it also contains
+    # causal misweighting.
     metrics["sigma_out"] = [float(s) for s in sig_out]
 
     # --- 2. causal-inference analyses (causal head only) ------------------
     if cfg["model"]["head"] == "causal" and 0.0 < p_prior < 1.0:
         i_vis, i_prop = names.index("mu_vis"), names.index("mu_prop")
+        i_vv, i_vp = names.index("var_vis"), names.index("var_prop")
         dv = d["fused_mu"] - d["seg_vis_mu"]
         dp = d["fused_mu"] - d["seg_prop_mu"]
+        post = d["post_c1"]
 
-        # 2a. per-trial implied weight, sigma_w-filtered (SS7.1)
-        sw_vis = analysis.sigma_w(sig_out[i_vis], dv)
-        sw_prop = analysis.sigma_w(sig_out[i_prop], dp)
-        crit = acfg.get("sigma_w_criterion", 0.1)
-        w = analysis.fusion_weight(pred[:, i_vis], d["seg_vis_mu"], d["fused_mu"],
-                                   acfg["min_separation"])
-        w_prop = analysis.fusion_weight(pred[:, i_prop], d["seg_prop_mu"],
-                                        d["fused_mu"], acfg["min_separation"])
-        w_f = np.where(sw_vis < crit, w, np.nan)
-        w_prop_f = np.where(sw_prop < crit, w_prop, np.nan)
+        # 2a. the implied weight, per channel, on every trial: the HYBRID
+        # read -- the mixture-variance root of the channel's variance output
+        # where that root is unique (Delta^2 <= c, including zero disparity)
+        # and the channel's own position ratio where the variance has two
+        # roots (Delta^2 > c, where the ratio is well conditioned). No filter.
+        w, sw_vis, fl_vis = analysis.hybrid_weight(
+            pred[:, i_vv], d["fused_var"], d["seg_vis_var"], dv, pred[:, i_vis],
+            d["seg_vis_mu"], sig_out[i_vis], sig_out[i_vv])
+        w_prop, sw_prop, fl_prop = analysis.hybrid_weight(
+            pred[:, i_vp], d["fused_var"], d["seg_prop_var"], dp, pred[:, i_prop],
+            d["seg_prop_mu"], sig_out[i_prop], sig_out[i_vp])
         arrays.update(fusion_weight=w, fusion_weight_prop=w_prop,
-                      sigma_w_vis=sw_vis, sigma_w_prop=sw_prop)
-        metrics["implied_weight_vs_post"] = analysis.compare(d["post_c1"], w_f)
-        metrics["implied_weight_vs_post_prop"] = analysis.compare(d["post_c1"], w_prop_f)
+                      sigma_w_vis=sw_vis, sigma_w_prop=sw_prop,
+                      hybrid_flags_vis=fl_vis, hybrid_flags_prop=fl_prop)
+        metrics["implied_weight_vs_post"] = analysis.compare(post, w)
+        metrics["implied_weight_vs_post_prop"] = analysis.compare(post, w_prop)
+        metrics["weight_regression_vis"] = analysis.weight_regression(w, post)
+        metrics["weight_regression_prop"] = analysis.weight_regression(w_prop, post)
+        metrics["hybrid_read"] = {
+            key: {"frac_variance_root": float(np.mean(f == 0)),
+                  "frac_position_ratio": float(np.mean(f == 1)),
+                  "frac_variance_peak": float(np.mean(f == 2)),
+                  "outside": float(np.mean(np.isfinite(wh) & ((wh < -1) | (wh > 2)))),
+                  "sd_vs_posterior": float(np.nanstd(wh - post)),
+                  "sd_vs_posterior_root": float(np.nanstd((wh - post)[f != 1])),
+                  "sd_vs_posterior_ratio": float(np.nanstd((wh - post)[f == 1]))}
+            for key, wh, f in (("vis", w, fl_vis), ("prop", w_prop, fl_prop))}
+        print("\nimplied weight (hybrid read: variance root where Delta^2 <= c, position "
+              "ratio where Delta^2 > c), every trial, on the posterior")
+        for key, wr in (("vis", metrics["weight_regression_vis"]),
+                        ("prop", metrics["weight_regression_prop"])):
+            h = metrics["hybrid_read"][key]
+            print(f"  {key:4s}: slope {wr['slope']:.3f} "
+                  f"[{wr['slope_ci95'][0]:.3f}, {wr['slope_ci95'][1]:.3f}]"
+                  f"   intercept {wr['intercept']:+.3f}   "
+                  f"{100 * h['frac_position_ratio']:.0f}% of trials from the position ratio, "
+                  f"{100 * h['outside']:.1f}% outside [-1, 2], "
+                  f"sd vs posterior {h['sd_vs_posterior']:.3f}")
 
         # 2b. HEADLINE: position-domain regression, per output (SS7.1)
         metrics["position_regression_vis"] = analysis.position_regression(
-            pred[:, i_vis], d["seg_vis_mu"], d["fused_mu"], d["post_c1"])
+            pred[:, i_vis], d["seg_vis_mu"], d["fused_mu"], post)
         metrics["position_regression_prop"] = analysis.position_regression(
-            pred[:, i_prop], d["seg_prop_mu"], d["fused_mu"], d["post_c1"])
+            pred[:, i_prop], d["seg_prop_mu"], d["fused_mu"], post)
         pr_v, pr_p = metrics["position_regression_vis"], metrics["position_regression_prop"]
         print("\nposition-domain regression (Bayes-optimal: slope 1, intercept 0)")
         print(f"  mu_vis : slope {pr_v['slope']:.3f} "
@@ -159,24 +190,31 @@ def analyse(run, twin=None, control=None):
               f"[{pr_p['slope_ci95'][0]:.3f}, {pr_p['slope_ci95'][1]:.3f}]"
               f"   intercept {pr_p['intercept']:+.3f}")
 
-        # 2c. joint two-output weight + hand-vs-visual consistency (SS7.1)
-        w_joint = analysis.joint_fusion_weight(
-            pred[:, i_vis], d["seg_vis_mu"], pred[:, i_prop], d["seg_prop_mu"],
-            d["fused_mu"])
-        arrays["fusion_weight_joint"] = w_joint
-        metrics["implied_weight_joint_vs_post"] = analysis.compare(
-            d["post_c1"], np.where(np.minimum(sw_vis, sw_prop) < crit, w_joint, np.nan))
-        metrics["weight_consistency"] = analysis.weight_consistency(
-            w, w_prop, sw_vis, sw_prop, criterion=crit)
+        # 2c. the same headline in the VARIANCE domain (Eq. 10, no division):
+        # var_out - var_seg on v_opt - var_seg, per output
+        metrics["variance_regression_vis"] = analysis.variance_regression(
+            pred[:, i_vv], d["fused_var"], d["seg_vis_var"], dv, post)
+        metrics["variance_regression_prop"] = analysis.variance_regression(
+            pred[:, i_vp], d["fused_var"], d["seg_prop_var"], dp, post)
+        vr_v, vr_p = metrics["variance_regression_vis"], metrics["variance_regression_prop"]
+        print("variance-domain regression (Bayes-optimal: slope 1, intercept 0)")
+        print(f"  var_vis : slope {vr_v['slope']:.3f} "
+              f"[{vr_v['slope_ci95'][0]:.3f}, {vr_v['slope_ci95'][1]:.3f}]"
+              f"   intercept {vr_v['intercept']:+.3f}")
+        print(f"  var_prop: slope {vr_p['slope']:.3f} "
+              f"[{vr_p['slope_ci95'][0]:.3f}, {vr_p['slope_ci95'][1]:.3f}]"
+              f"   intercept {vr_p['intercept']:+.3f}")
+
+        # 2c'. hand-vs-visual consistency of the weight (SS7.1): one w mixes
+        # both channels, so the two hybrid reads must agree, trial by trial
+        metrics["weight_consistency"] = analysis.weight_consistency(w, w_prop)
         wc = metrics["weight_consistency"]
-        print(f"hand-vs-visual w consistency (sigma_w < {crit}): "
-              f"corr {wc['corr']:.3f}, mean|diff| {wc['mean_abs_diff']:.3f}, "
-              f"n {wc['n']}")
+        print(f"hand-vs-visual w consistency (every trial): corr {wc['corr']:.3f}, "
+              f"mean|diff| {wc['mean_abs_diff']:.3f}, n {wc['n']}")
 
         # 2d. Bayes vs disparity heuristic (SS7.2)
         metrics["reliability_within_disparity"] = analysis.reliability_within_disparity(
-            np.where(sw_vis < crit, w, np.nan), d["post_c1"],
-            np.abs(d["disparity"]))
+            w, post, np.abs(d["disparity"]))
         rwd = metrics["reliability_within_disparity"]
         print(f"within-disparity-bin slope of w_implied on w_opt: "
               f"{rwd['combined_slope']:.3f} +- {rwd['combined_se']:.3f} "
@@ -186,15 +224,13 @@ def analyse(run, twin=None, control=None):
         metrics["variance_signature_vis"] = {
             k: (v.tolist() if isinstance(v, np.ndarray) else v)
             for k, v in analysis.variance_signature(
-                pred[:, names.index("var_vis")], d["post_c1"],
-                d["fused_mu"], d["fused_var"], d["seg_vis_mu"], d["seg_vis_var"]
-            ).items()}
+                pred[:, i_vv], post, d["fused_mu"], d["fused_var"], d["seg_vis_mu"],
+                d["seg_vis_var"]).items()}
         metrics["variance_signature_prop"] = {
             k: (v.tolist() if isinstance(v, np.ndarray) else v)
             for k, v in analysis.variance_signature(
-                pred[:, names.index("var_prop")], d["post_c1"],
-                d["fused_mu"], d["fused_var"], d["seg_prop_mu"], d["seg_prop_var"]
-            ).items()}
+                pred[:, i_vp], post, d["fused_mu"], d["fused_var"], d["seg_prop_mu"],
+                d["seg_prop_var"]).items()}
         hv = metrics["variance_signature_vis"].get("hump_net")
         ha = metrics["variance_signature_vis"].get("hump_analytical")
         if hv is not None:
@@ -203,18 +239,17 @@ def analyse(run, twin=None, control=None):
 
         # 2f. binned five-way model comparison (SS7.4)
         metrics["model_comparison_vis"] = analysis.model_comparison(
-            pred[:, i_vis], d["post_c1"], d["fused_mu"], d["seg_vis_mu"])
+            pred[:, i_vis], post, d["fused_mu"], d["seg_vis_mu"])
         metrics["model_comparison_prop"] = analysis.model_comparison(
-            pred[:, i_prop], d["post_c1"], d["fused_mu"], d["seg_prop_mu"])
+            pred[:, i_prop], post, d["fused_mu"], d["seg_prop_mu"])
         mc = metrics["model_comparison_vis"]
         print("model comparison (overall RMSE):",
               {k: round(v, 3) for k, v in mc["overall"].items()},
               "-> best:", mc["best"])
 
-        # 2g. transition curves (kept from before)
-        midpoint, sharpness = analysis.transition_fit(np.abs(d["disparity"]), w_f)
-        opt_mid, opt_sharp = analysis.transition_fit(np.abs(d["disparity"]),
-                                                     d["post_c1"])
+        # 2g. transition curves: where fusion gives way to segregation
+        midpoint, sharpness = analysis.transition_fit(np.abs(d["disparity"]), w)
+        opt_mid, opt_sharp = analysis.transition_fit(np.abs(d["disparity"]), post)
         metrics["transition"] = {
             "network": {"midpoint_deg": midpoint, "sharpness": sharpness},
             "analytical": {"midpoint_deg": opt_mid, "sharpness": opt_sharp},
@@ -224,13 +259,15 @@ def analyse(run, twin=None, control=None):
         grid = acfg["disparity_grid"]
         bias = analysis.bias_vs_disparity(
             pred[:, i_prop], d["seg_prop_mu"], d["disparity"], grid,
-            prediction=d["post_c1"] * dp)
+            prediction=post * dp)
         arrays["bias_centres"] = bias["centres"]
         arrays["bias_net"] = bias["bias_net"]
         if "bias_opt" in bias:
             arrays["bias_centres_opt"] = bias["centres_opt"]
             arrays["bias_opt"] = bias["bias_opt"]
-        inferred_common = np.where(np.isfinite(w_joint), w_joint, d["post_c1"]) > 0.5
+        # the cause the network inferred on each trial: its own weight (the
+        # visual hybrid read), the posterior where that is not finite
+        inferred_common = np.where(np.isfinite(w), w, post) > 0.5
         cb = analysis.conditioned_bias(
             pred[:, i_prop], d["seg_prop_mu"], d["disparity"],
             inferred_common, grid)
@@ -241,7 +278,7 @@ def analyse(run, twin=None, control=None):
 
         # 2i. decision strategy (kept for continuity)
         metrics["strategy"] = analysis.strategy_fit(
-            pred[:, i_vis], d["post_c1"], d["fused_mu"], d["seg_vis_mu"])
+            pred[:, i_vis], post, d["fused_mu"], d["seg_vis_mu"])
 
     # --- 3. what do the hidden layers carry? ------------------------------
     acts = hidden_activations(model, d["X"])
@@ -327,6 +364,6 @@ if __name__ == "__main__":
                    help="run name of an always-fuse twin, for the emergence test")
     p.add_argument("--control", default=None,
                    help="run name of a p_common=1 control; its residual_std "
-                        "becomes sigma_out for the sigma_w filter (SS7.1)")
+                        "becomes sigma_out, the read-out noise (SS7.1)")
     args = p.parse_args()
     analyse(args.run, args.twin, args.control)

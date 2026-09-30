@@ -40,19 +40,15 @@ from cmsi.utils.paths import RESULTS
 GRID = np.array([-30, -24, -19, -15, -12, -9, -6, -3.5, -1.5,
                  1.5, 3.5, 6, 9, 12, 15, 19, 24, 30], float)
 
-# Guards on the per-bin weight, in analysis.binned_implied_weight terms.
+# Guards on the per-bin weight (analysis.binned_weight: the mean of the
+# per-trial implied weight in the bin, with its standard error).
 #
-# MAX_SE is the one that matters: it drops a bin whose slope is not
-# identifiable, which happens when the two hypotheses coincide and sum(Delta^2)
-# collapses. On this grid it never fires, because the innermost bins sit at
-# +-1.5 deg rather than at zero.
-#
-# MIN_COUNT is only a floor on how few trials a slope may be fitted to. It is
-# deliberately low. A sparse bin is not the same as an ill-conditioned one: at
-# a high prior the far-disparity bins hold few trials, but those trials have
-# large |Delta|, so sum(Delta^2) is large and the slope is pinned down (SE
-# 0.005-0.012 at p_common = 0.9 with 28-45 trials). Dropping them on count
-# alone punched holes in curves that were perfectly well measured.
+# MIN_COUNT is a floor on how few trials a bin mean may rest on. It is
+# deliberately low: at a high prior the far-disparity bins hold few trials,
+# and dropping them on count alone punched holes in curves that were
+# perfectly well measured. MAX_SE drops a bin whose mean is too uncertain to
+# draw; the implied weight is read on every trial (the hybrid read has no
+# blind spot at zero disparity), so on this grid it rarely fires.
 MIN_COUNT = 25
 MAX_SE = 0.05
 
@@ -89,11 +85,13 @@ def one_prior(cfg, p, sig_out, n_trials, epochs, seed):
     so = np.asarray(sig_out) if sig_out is not None \
         else analysis.sigma_out(pred, target)
 
-    sw_v = analysis.sigma_w(so[iv], dv)
-    w_vis = analysis.fusion_weight(pred[:, iv], d["seg_vis_mu"], d["fused_mu"], 1.0)
-    w_f = np.where(sw_v < 0.1, w_vis, np.nan)
+    # the implied weight on every trial: the hybrid read of the visual
+    # channel (analysis.hybrid_weight), nothing filtered
+    ivv = names.index("var_vis")
+    w_vis, _, _ = analysis.hybrid_weight(pred[:, ivv], d["fused_var"], d["seg_vis_var"], dv,
+                                         pred[:, iv], d["seg_vis_mu"], so[iv], so[ivv])
 
-    net_mid, net_k = analysis.transition_fit(np.abs(d["disparity"]), w_f)
+    net_mid, net_k = analysis.transition_fit(np.abs(d["disparity"]), w_vis)
     opt_mid, opt_k = analysis.transition_fit(np.abs(d["disparity"]), d["post_c1"])
 
     reg_v = analysis.position_regression(pred[:, iv], d["seg_vis_mu"],
@@ -103,18 +101,17 @@ def one_prior(cfg, p, sig_out, n_trials, epochs, seed):
     vs = analysis.variance_signature(
         pred[:, names.index("var_vis")], d["post_c1"], d["fused_mu"],
         d["fused_var"], d["seg_vis_mu"], d["seg_vis_var"])
-    rel = analysis.reliability_within_disparity(w_f, d["post_c1"],
+    rel = analysis.reliability_within_disparity(w_vis, d["post_c1"],
                                                 np.abs(d["disparity"]))
     mc = analysis.model_comparison(pred[:, iv], d["post_c1"], d["fused_mu"],
                                    d["seg_vis_mu"])
     acts = hidden_activations(model, d["X"])
     dec = analysis.summarise(analysis.decode_by_layer(acts, d["post_c1"]))
 
-    # curves for the figure: per-bin LEAST-SQUARES implied weight (unbiased;
-    # see analysis.binned_implied_weight for why the filtered ratio is not).
-    c_net, m_net, n_net, se_net = analysis.binned_implied_weight(
-        pred[:, iv], d["seg_vis_mu"], d["fused_mu"], d["disparity"], GRID,
-        min_count=MIN_COUNT, sigma_out=so[iv], max_se=MAX_SE)
+    # curves for the figure: the per-bin mean of the implied weight, with
+    # its standard error
+    c_net, m_net, n_net, se_net = analysis.binned_weight(
+        d["disparity"], w_vis, GRID, min_count=MIN_COUNT, max_se=MAX_SE)
     c_opt, m_opt, _ = analysis.mean_by_bin(d["disparity"], d["post_c1"], GRID)
     keep = np.ones(len(c_net), bool)
     stats = {
@@ -143,8 +140,7 @@ def one_prior(cfg, p, sig_out, n_trials, epochs, seed):
               "centres_opt": c_opt, "w_opt": m_opt,
               # per-trial arrays, so the figure can be redrawn without retraining
               "t_disparity": d["disparity"], "t_post": d["post_c1"],
-              "t_fused": d["fused_mu"], "t_seg_vis": d["seg_vis_mu"],
-              "t_pred_vis": pred[:, iv]}
+              "t_w_vis": w_vis}
     return stats, curves
 
 
@@ -208,28 +204,28 @@ def _write(out, args, rows, curves, agg):
     np.savez_compressed(out / "curves.npz", **curves)
 
 
-def rebin(curves, sigma_out, min_count=MIN_COUNT, max_se=MAX_SE):
+def rebin(curves, min_count=MIN_COUNT, max_se=MAX_SE):
     """Recompute every stored weight-vs-disparity curve at new guard settings.
 
-    `one_prior` saves the per-trial arrays (t_disparity, t_pred_vis, t_seg_vis,
-    t_fused) next to the binned curve precisely so the binning can be redone
-    later. This walks the stored curves, recomputes w_net and se_net from those
-    arrays, and writes them back on the full grid -- which is what lets
-    `--replot --min-count N` change how sparse a bin may be without touching
-    the 27 trained networks.
+    `one_prior` saves the per-trial implied weight (t_w_vis) and disparity
+    (t_disparity) next to the binned curve precisely so the binning can be
+    redone later. This walks the stored curves, recomputes w_net and se_net
+    from those arrays, and writes them back on the full grid -- which is
+    what lets `--replot --min-count N` change how sparse a bin may be
+    without touching the trained networks.
 
-    Curves with no per-trial arrays are left exactly as they were.
+    Curves without per-trial weights (a sweep written before the hybrid
+    read) are left exactly as they were, and said so.
     """
     keys = sorted({k.rsplit("_t_disparity", 1)[0]
                    for k in curves if k.endswith("_t_disparity")})
     for pre in keys:
-        need = (f"{pre}_t_pred_vis", f"{pre}_t_seg_vis", f"{pre}_t_fused")
-        if not all(k in curves for k in need):
+        if f"{pre}_t_w_vis" not in curves:
+            print(f"  {pre}: no per-trial implied weight stored; curve left as saved")
             continue
-        c_net, m_net, _, se_net = analysis.binned_implied_weight(
-            curves[f"{pre}_t_pred_vis"], curves[f"{pre}_t_seg_vis"],
-            curves[f"{pre}_t_fused"], curves[f"{pre}_t_disparity"], GRID,
-            min_count=min_count, sigma_out=sigma_out, max_se=max_se)
+        c_net, m_net, _, se_net = analysis.binned_weight(
+            curves[f"{pre}_t_disparity"], curves[f"{pre}_t_w_vis"], GRID,
+            min_count=min_count, max_se=max_se)
         curves[f"{pre}_w_net"] = _on_grid(GRID, c_net, m_net)
         curves[f"{pre}_se_net"] = _on_grid(GRID, c_net, se_net)
     return curves
@@ -266,13 +262,10 @@ def replot(min_count=None, max_se=None):
     n_seeds = max((r.get("n_seeds", 1) for r in agg), default=1)
     print(f"replotting {len(agg)} priors x {n_seeds} seed(s) from {out}")
     if min_count is not None or max_se is not None:
-        control = sweep.get("sigma_out_source", "pcommon1")
-        so = load_json(run_dir(control, create=False) / "metrics.json")["residual_std"][0]
         mc = MIN_COUNT if min_count is None else min_count
         ms = MAX_SE if max_se is None else max_se
-        curves = rebin(curves, so, min_count=mc, max_se=ms)
-        print(f"re-binned from the stored per-trial arrays: "
-              f"min_count={mc}, max_se={ms}, sigma_out={so:.4f} ({control})")
+        curves = rebin(curves, min_count=mc, max_se=ms)
+        print(f"re-binned from the stored per-trial weights: min_count={mc}, max_se={ms}")
     draw(out, agg, curves)
 
 

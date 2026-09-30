@@ -1,0 +1,108 @@
+# OPTIMAL_SWEEP -- the configuration the readability sweeps of 2026-09-20/21
+# converged on (IMPLIED_WEIGHT_RESULT.md, Parts I and II; the sweep code itself
+# was retired on 2026-09-29, its results stay under results/experiments/sweep/).
+# Every setting below that differs from configs/flagship.yaml was chosen
+# because a sweep showed it lowers the network's own error relative to the
+# sensory noise. What the combination gave in the cloud runs (one seed, 100k
+# trials, cpu), visual channel:
+#
+#   sigma_out 0.18 deg (control)   own residual sd 0.19 (= 1.07 x sigma_out)
+#   position-regression slope 0.999 / 0.985 (mu_vis / mu_prop)
+#   variance read vs posterior: sd 0.032 over all trials
+#
+# Levers, each measured alone on the exp2_128_mean base (Part II, section 8):
+#   sigma0_sq 425 -> 100, eye_sigma_sq 325 -> 81   the input domain relative to
+#                         the noise: the lever for optimality (slope 0.86 -> 0.99)
+#   narrow noise ranges   the reliability-dependent weighting is easy to learn
+#                         (slope +0.03 vs wide ranges), at the cost of nearly
+#                         constant reliability -- see the note on figure 05 below
+#   activation relu       own sd = sigma_out (1.01 x), slope 1.00; needs std_floor
+#   hidden 256 x 256      sigma_out 0.345 -> 0.301
+#   gain_K 180 -> 720     sigma_out 0.345 -> 0.208 (the spike-count noise limits
+#                         the control; it does not limit the causal network's error)
+#   lr 1e-3 -> 3e-4, 600 epochs, patience 40   own sd 0.47 -> 0.39
+#   n_trials 50k -> 100k  own sd 0.47 -> 0.38
+#
+# Trade-off to know: with sigma0_sq = 100 the causal task is ambiguous -- 49 %
+# of trials sit at intermediate posterior (the calibration gate's SS8.1 window
+# is 15-40 %, it will WARN) and the posterior at zero disparity is capped near
+# 0.78. The same recipe on the wide flagship ranges with sigma0_sq = 169 gives
+# slope 0.96 with reliability that varies; swap the generative block for
+#     sigma0_sq: 169,  eye_sigma_sq: 81,
+#     sigma2_vis_range: [1.2, 6.6], sigma2_prop_range: [1.8, 9.6],
+#     sigma2_eye_range: [3.3, 13.2],  reliability_levels: [1.5, 3.5, 6.0]
+# to get that one.
+#
+# Run it through the pipeline with its own p_common = 1 control:
+#     python scripts/06_implied_weight.py train --config configs/optimal_sweep.yaml \
+#                                                --name optimal_sweep
+# Three seeds before anything goes in the manuscript (--seed 1, --seed 2).
+#
+# Units: positions in degrees, variances in deg^2.
+
+seed: 0
+
+# --------------------------------------------------------------------------- #
+# GENERATIVE MODEL -- the exp2_128_mean generative model (Part I, section 2)
+# --------------------------------------------------------------------------- #
+generative:
+  p_common: 0.5
+
+  mu0: 0.0
+  sigma0_sq: 100               # hand sd 10 deg (flagship: 425, sd 20.6)
+
+  eye_mu: 0.0
+  eye_sigma_sq: 81             # eye sd 9 deg (flagship: 325, sd 18)
+
+  # narrow, low-noise ranges (sd in brackets); reliability is nearly constant
+  sigma2_vis_range:  [1, 1.2]      # sd 1.0-1.1 deg
+  sigma2_prop_range: [4, 4.5]      # sd 2.0-2.1 deg
+  sigma2_eye_range:  [3.7, 4.2]    # sd 1.9-2.0 deg
+
+# --------------------------------------------------------------------------- #
+# ENCODING -- flagship's, with four times the gain
+# --------------------------------------------------------------------------- #
+encoding:
+  n_vis: 76
+  n_prop: 76
+  n_eye: 76
+  visual_field: [-85.0, 85.0]
+  rf_width: 6.0
+  gain_K: 720.0                # flagship 180; sigma_out 0.345 -> 0.208 at 128 units
+  slope_range: [-1.0, 1.0]
+  intercept_range: [0.0, 10.0]
+  poisson_noise: true
+
+# --------------------------------------------------------------------------- #
+# MODEL
+# --------------------------------------------------------------------------- #
+model:
+  hidden: [256, 256]           # layer 0 = SIL, layer 1 = MSL
+  activation: relu             # own sd = sigma_out; sigmoid 1.37 x, tanh 0.92 x but noisier
+  head: causal
+  std_floor: 1.0               # REQUIRED with relu: units that never fire would otherwise
+                               # turn a stray spike into an input of 1e6 (see default.yaml)
+
+# --------------------------------------------------------------------------- #
+# TRAINING
+# --------------------------------------------------------------------------- #
+training:
+  n_trials: 100000             # flagship 50000
+  split: [0.7, 0.15, 0.15]
+  optimizer: adam
+  lr: 0.0003                   # flagship 0.001
+  epochs: 600                  # flagship 300; early stopping decides (best ~ epoch 230)
+  batch_size: 256
+  patience: 40                 # flagship 20
+  standardize_inputs: true
+  balance_loss: true
+
+# --------------------------------------------------------------------------- #
+# ANALYSIS
+# --------------------------------------------------------------------------- #
+analysis:
+  disparity_grid: [-40, -30, -20, -15, -10, -5, -2, 0, 2, 5, 10, 15, 20, 30, 40]
+  reliability_levels: [1.0, 1.1, 1.2]   # must lie inside sigma2_vis_range; with this
+                                        # range figure 05's levels differ by little
+  ridge_alpha: 1.0
+  decoder_test_size: 0.25

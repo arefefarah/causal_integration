@@ -8,7 +8,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from cmsi.analysis.accuracy import accuracy
-from cmsi.analysis.causal import implied_weight_by_posterior, mean_by_bin
+from cmsi.analysis.causal import mean_by_bin, mixture_variance, weight_by_posterior
 from cmsi.viz.manuscript import (  # noqa: F401  (re-exported for callers and tests)
     CELL_FULL,
     CELL_SQUARE,
@@ -81,32 +81,33 @@ def p_common_vs_disparity(disparity, p_common, grid):
 
 
 def fusion_weight_curve(disparity, w_network, p_analytical, grid, w_prop=None):
-    """The key panel: implied network weight against the optimal weight p(C=1).
+    """The key panel: the implied weight against the optimal weight p(C=1).
 
-    Both output columns encode the same weight, so `w_network` (from mu_vis) and
-    `w_prop` (from mu_prop) are two readings of one quantity. Their denominators
-    are proportional to Pp and Pv respectively, so the one derived from the LESS
-    reliable cue is the better conditioned of the two.
-
-    Near zero disparity the two hypotheses coincide and no reading is possible
-    from either -- fusion_weight returns NaN there, so the centre of the curve
-    rests on few trials and swings wildly. That is a property of the estimator,
-    not of the network.
+    `w_network` and `w_prop` are the hybrid reads of the visual and the
+    proprioceptive channel (analysis.hybrid_weight): the mixture-variance
+    root of the channel's variance output where that root is unique
+    (Delta^2 <= c, including zero disparity) and the channel's own position
+    ratio where the variance has two roots. Both exist on every trial, so
+    the curve carries through zero disparity, where the two hypotheses
+    coincide. The two channels encode the same weight, so the two curves
+    are two readings of one quantity.
     """
     fig, ax = plt.subplots(figsize=SIZE["single"])
     c_opt, m_opt, _ = mean_by_bin(disparity, p_analytical, grid)
     ax.plot(c_opt, m_opt, "--o", color=COLORS["analytical"], label="analytical p(C=1)")
 
     c_net, m_net, _ = mean_by_bin(disparity, w_network, grid)
-    ax.plot(c_net, m_net, "o-", color=COLORS["network"], label="implied, from mu_vis")
+    ax.plot(c_net, m_net, "o-", color=COLORS["network"],
+            label="implied, vis (var_vis root / mu_vis ratio)")
 
     if w_prop is not None:
         c_p, m_p, _ = mean_by_bin(disparity, w_prop, grid)
-        ax.plot(c_p, m_p, "s-", color=COLORS["prop"], label="implied, from mu_prop")
+        ax.plot(c_p, m_p, "s-", color=COLORS["prop"],
+                label="implied, prop (var_prop root / mu_prop ratio)")
 
     ax.set(xlabel="body-frame disparity (deg)", ylabel="weight on fused estimate",
            ylim=(-0.1, 1.1), title="fusion -> segregation transition")
-    ax.legend()
+    ax.legend(fontsize=8, frameon=False)
     fig.tight_layout()
     return fig
 
@@ -123,55 +124,24 @@ def fusion_weight_by_reliability(curves):
     return fig
 
 
-def implied_weight_vs_posterior(res, method="least_squares"):
-    """One estimator's implied weight against the analytical posterior.
+def weight_vs_posterior(res, output_name="vis"):
+    """The implied weight against the analytical posterior, in posterior
+    bins, every trial (analysis.weight_by_posterior on the hybrid read).
 
-    `res` is the output of analysis.implied_weight_by_posterior, which holds
-    both estimators. `method` picks the one to draw, so calling this twice puts
-    the two on identical axes and they can be compared directly:
-
-        "least_squares"  w = sum(Delta*(est-seg))/sum(Delta^2), every trial
-        "ratio"          mean of the sigma_w-filtered per-trial ratio, a subset
-
-    A Bayes-optimal model-averaging observer puts every point on the identity
-    line. For the filtered estimator the fraction of trials the filter retains
-    is drawn on the right-hand axis, because that fraction is what explains
-    where the two estimators part company: a high posterior means the cues
-    agree, which means a small Delta, which is what the filter removes.
+    A Bayes-optimal model-averaging observer puts every point on the
+    identity line. The error bars are 1.96 standard errors of the bin mean.
     """
-    if method not in ("least_squares", "ratio"):
-        raise ValueError(f"method must be 'least_squares' or 'ratio', got {method!r}")
-    ls = method == "least_squares"
-    w = res["w_ls"] if ls else res["w_filt"]
-    se = res["se_ls"] if ls else res["se_filt"]
-    x, good = res["centres"], np.isfinite(w)
-
+    x, w, se = res["centres"], res["w"], res["se"]
     fig, ax = plt.subplots(figsize=SIZE["single"])
     ax.plot([0, 1], [0, 1], "--", lw=1.1, color=COLORS["analytical"],
             label="Bayes-optimal (w = posterior)")
-    ax.errorbar(x[good], w[good], yerr=1.96 * np.nan_to_num(se[good]),
-                fmt="o-", ms=4, lw=1.7, capsize=2.5, color=COLORS["network"],
-                label="network (implied weight)")
-
-    if ls:
-        note = f"all {int(res['n'].sum())} trials used"
-    else:
-        ax2 = ax.twinx()
-        ax2.plot(x, 100 * res["frac_kept"], ":", lw=1.2, color="0.45")
-        ax2.set_ylabel("trials kept by the filter (%)", color="0.35", fontsize=9)
-        ax2.tick_params(axis="y", colors="0.35", labelsize=8)
-        ax2.set_ylim(-4, 104)
-        lost = int(good.size - good.sum())
-        note = (f"{int(res['n_kept'].sum())} of {int(res['n'].sum())} trials kept"
-                + (f"; {lost} bins unmeasurable" if lost else ""))
-
+    ax.errorbar(x, w, yerr=1.96 * np.nan_to_num(se), fmt="o-", ms=4, lw=1.7, capsize=2.5,
+                color=COLORS["network"], label=f"network (implied weight, {output_name})")
     ax.set(xlabel="analytical posterior p(C=1|x)",
            ylabel="implied weight on the fused estimate",
-           xlim=(0, 1), ylim=(-0.05, 1.05),
-           title=("least squares, no division" if ls
-                  else "per-trial ratio, sigma_w filtered"))
-    ax.text(0.03, 0.95, note, transform=ax.transAxes, fontsize=8,
-            color="0.35", va="top")
+           xlim=(0, 1), ylim=(-0.05, 1.05), title="implied weight by posterior, every trial")
+    ax.text(0.03, 0.95, f"all {int(res['n'].sum())} trials, {len(x)} bins",
+            transform=ax.transAxes, fontsize=8, color="0.35", va="top")
     ax.legend(loc="lower right", fontsize=8.5, frameon=False)
     fig.tight_layout()
     return fig
@@ -203,6 +173,142 @@ def decoding_comparison(by_model, title="emergent vs imposed"):
     ax.set_xticks(x + width * (len(by_model) - 1) / 2, layers)
     ax.set(ylabel="held-out R2 for p(C=1)", ylim=(0, 1), title=title)
     ax.legend()
+    fig.tight_layout()
+    return fig
+
+
+def variance_regression_scatter(var_out, fused_var, seg_var, delta, post, reg, output_name,
+                                ax=None, title=None):
+    """SS7.1 headline in the VARIANCE domain: (var_out - var_seg) against
+    (v_opt - var_seg), the optimal mixture's variance reduction, with the
+    fit (analysis.variance_regression). Slope 1 = Bayes-optimal; no per-trial
+    division anywhere, every trial enters with its natural leverage."""
+    own = ax is None
+    if own:
+        fig, ax = plt.subplots(figsize=SIZE["single_tall"])
+    x = mixture_variance(post, fused_var, seg_var, delta) - seg_var
+    y = var_out - seg_var
+    ax.scatter(x, y, s=2, alpha=0.15, color=COLORS["network"], rasterized=True)
+    lo, hi = np.percentile(x, [0.5, 99.5])
+    ax.plot([lo, hi], [lo, hi], "--", lw=1, color=COLORS["analytical"],
+            label="Bayes-optimal (slope 1)")
+    ax.plot([lo, hi], [reg["slope"] * lo + reg["intercept"],
+                       reg["slope"] * hi + reg["intercept"]],
+            lw=1.5, color=COLORS["network"],
+            label=f"fit: slope {reg['slope']:.2f} "
+                  f"[{reg['slope_ci95'][0]:.2f}, {reg['slope_ci95'][1]:.2f}]")
+    ax.set(xlabel="v_opt - var_seg  (deg^2)", ylabel=f"{output_name} output - var_seg  (deg^2)",
+           title=f"variance-domain regression: {output_name}" if title is None else title)
+    ax.legend(fontsize=7.5, frameon=False, loc="upper left")
+    if own:
+        fig.tight_layout()
+        return fig
+    return ax
+
+
+def weight_regression_scatter(w, post, reg, flags=None, output_name="vis", ax=None,
+                              n_show=6000, seed=0):
+    """The implied weight (the hybrid read of one channel) against the
+    analytical posterior, every trial, with its fit (analysis.weight_regression).
+
+    `flags`, when given, are the hybrid's per-trial flags; the points are
+    then coloured by the output each weight came from, and the legend gives
+    each source's share of the trials. Trials are subsampled for drawing
+    only (n_show)."""
+    own = ax is None
+    if own:
+        fig, ax = plt.subplots(figsize=SIZE["single_tall"])
+    rng = np.random.default_rng(seed)
+    ok = np.flatnonzero(np.isfinite(w))
+    pick = rng.choice(ok, min(n_show, ok.size), replace=False)
+    if flags is None:
+        ax.scatter(post[pick], w[pick], s=2, alpha=0.15, color=COLORS["hybrid"],
+                   rasterized=True)
+    else:
+        flags = np.asarray(flags)
+        for value, (lab, col) in HYBRID_SOURCES.items():
+            sel = pick[flags[pick] == value]
+            share = np.mean(flags[ok] == value)
+            ax.scatter(post[sel], w[sel], s=2, alpha=0.2, color=col, rasterized=True,
+                       label=f"{lab}: {100 * share:.0f}%")
+    ax.plot([0, 1], [0, 1], "--", lw=1, color=COLORS["analytical"], label="Bayes-optimal (slope 1)")
+    ax.plot([0, 1], [reg["intercept"], reg["slope"] + reg["intercept"]], lw=1.5,
+            color=COLORS["hybrid"],
+            label=f"fit: slope {reg['slope']:.2f} "
+                  f"[{reg['slope_ci95'][0]:.2f}, {reg['slope_ci95'][1]:.2f}], "
+                  f"intercept {reg['intercept']:+.2f}")
+    ax.set(xlabel="analytical posterior p(C=1|x)",
+           ylabel=f"implied weight, {output_name} (var root / mu ratio)",
+           xlim=(0, 1), ylim=(-0.25, 1.25),
+           title=f"implied weight on the posterior, {output_name}")
+    ax.legend(fontsize=6.5, frameon=False, loc="upper left")
+    if own:
+        fig.tight_layout()
+        return fig
+    return ax
+
+
+HYBRID_SOURCES = {0: ("variance root (Delta^2 <= c)", COLORS["hybrid"]),
+                  1: ("position ratio (Delta^2 > c)", COLORS["visual"]),
+                  2: ("variance peak (no root)", "0.5")}
+
+
+def variance_regression_figure(var_out, fused_var, seg_var, delta, post, reg_var,
+                               w, reg_w, output_name="var_vis", flags=None):
+    """08_position_regression's counterpart: A the headline regression in the
+    VARIANCE domain, B the implied weight (the hybrid read of the same
+    channel) against the posterior on every trial, its points coloured by
+    the output each trial's weight came from, with its fit."""
+    channel = output_name.split("_")[-1] if "_" in output_name else output_name
+    fig, axes = plt.subplots(1, 2, figsize=SIZE["pair"])
+    variance_regression_scatter(var_out, fused_var, seg_var, delta, post, reg_var,
+                                output_name, ax=axes[0])
+    weight_regression_scatter(w, post, reg_w, flags=flags, output_name=channel, ax=axes[1])
+    label_panels(axes)
+    fig.tight_layout()
+    return fig
+
+
+def hybrid_weight_distribution(w_hybrid_vis, w_hybrid_prop, post, flags_vis=None,
+                               flags_prop=None, lim=(-1.0, 2.0)):
+    """The implied weight on every trial (the hybrid read), one panel per
+    channel, against the analytical posterior's own distribution.
+
+    Nothing is filtered. The read is the variance root where Delta^2 <= c
+    and the channel's position ratio where Delta^2 > c, so it can leave
+    [0, 1] on the ratio trials; the axis is clipped to `lim` with the
+    overflow piled into the edge bins, and the fraction outside is printed.
+    With the flags, the share of trials read from the ratio is printed too."""
+    fig, axes = plt.subplots(1, 2, figsize=SIZE["pair"], sharey=True)
+    bins = np.linspace(lim[0], lim[1], 91)
+    panels = (("vis", w_hybrid_vis, flags_vis), ("prop", w_hybrid_prop, flags_prop))
+    for ax, (channel, w, flags) in zip(axes, panels, strict=False):
+        if w is None:
+            ax.set_visible(False)
+            continue
+        w = np.asarray(w, float)
+        ok = np.isfinite(w)
+        wf = w[ok]
+        median, q1, q3 = np.median(wf), np.percentile(wf, 25), np.percentile(wf, 75)
+        outside = np.mean((wf < lim[0]) | (wf > lim[1]))
+        ax.hist(np.clip(wf, *lim), bins=bins, density=True, color=COLORS["hybrid"],
+                alpha=0.75, label=f"network, all {wf.size} trials")
+        ax.hist(post, bins=bins, density=True, histtype="step", lw=1.3,
+                color=COLORS["analytical"], label="analytical posterior")
+        ax.axvline(median, color=COLORS["hybrid"], lw=1.0)
+        note = (f"{100 * outside:.1f}% of trials outside [{lim[0]:g}, {lim[1]:g}]"
+                f"\n(piled into the edge bins)")
+        if flags is not None:
+            flags = np.asarray(flags)[ok]
+            note += f"\n{100 * np.mean(flags == 1):.0f}% read from the mu_{channel} ratio"
+        ax.text(0.02, 0.97, note, transform=ax.transAxes, fontsize=7.5, va="top",
+                color="0.35")
+        ax.set(xlabel=f"implied weight, {channel} (var_{channel} root / mu_{channel} ratio)",
+               xlim=lim,
+               title=f"{channel}: median {median:.2f} (IQR {q1:.2f} to {q3:.2f})")
+        ax.legend(fontsize=7.5, frameon=False, loc="upper right")
+    axes[0].set_ylabel("density")
+    label_panels(axes)
     fig.tight_layout()
     return fig
 
@@ -385,6 +491,20 @@ def all_figures(pred, d, names, analysis_cfg, w=None, curves=None,
         figs["08_position_regression"] = position_regression_scatter(
             pred[:, i], d["seg_vis_mu"], d["fused_mu"], d["post_c1"],
             metrics["position_regression_vis"], "mu_vis")
+    files = getattr(saved, "files", saved) if saved is not None else ()
+
+    def _saved(key):
+        return saved[key] if saved is not None and key in files else None
+
+    # the headline in the variance domain, with the implied weight (the
+    # hybrid read, stored by 03_analyze.py) on the posterior beside it
+    if ("variance_regression_vis" in metrics and "weight_regression_vis" in metrics
+            and w is not None):
+        i = names.index("var_vis")
+        figs["08v_variance_regression"] = variance_regression_figure(
+            pred[:, i], d["fused_var"], d["seg_vis_var"], d["fused_mu"] - d["seg_vis_mu"],
+            d["post_c1"], metrics["variance_regression_vis"], w,
+            metrics["weight_regression_vis"], "var_vis", flags=_saved("hybrid_flags_vis"))
     if "variance_signature_vis" in metrics:
         figs["09_variance_hump_vis"] = variance_hump(
             metrics["variance_signature_vis"], "var_vis")
@@ -393,29 +513,21 @@ def all_figures(pred, d, names, analysis_cfg, w=None, curves=None,
     if "model_comparison_vis" in metrics:
         figs["11_model_comparison"] = model_comparison_curves(
             metrics["model_comparison_vis"], "mu_vis")
-    if saved is not None and "bias_centres" in getattr(saved, "files", saved):
+    if saved is not None and "bias_centres" in files:
         figs["12_behavioral_bias"] = behavioral_bias(saved)
-    if saved is not None and "congruency_index" in getattr(saved, "files", saved):
+    if saved is not None and "congruency_index" in files:
         figs["13_congruency"] = congruency_panels(
             saved, metrics.get("balance_vs_post"))
-    if saved is not None and "rf_shift_gain" in getattr(saved, "files", saved):
+    if saved is not None and "rf_shift_gain" in files:
         figs["14_rf_shifts"] = rf_shift_hist(saved)
-    if ("sigma_out" in metrics and "mu_vis" in names
-            and "seg_vis_mu" in d and "fused_mu" in d):
-        # the same quantity by the two estimators, on identical axes.
-        # sigma_out is the read-out noise measured on the p_common=1 control
-        # (03_analyze.py --control); this run's own residual_std must NOT be
-        # used here, since on the flagship it also contains causal
-        # misweighting and is ~3x too large, which starves the sigma_w filter.
-        i = names.index("mu_vis")
-        wbp = implied_weight_by_posterior(
-            pred[:, i], d["seg_vis_mu"], d["fused_mu"], d["post_c1"],
-            metrics["sigma_out"][i],
-            sigma_w_criterion=analysis_cfg.get("sigma_w_criterion", 0.1),
-            min_separation=analysis_cfg.get("min_separation", 1.0))
-        figs["15_weight_vs_post_ratio"] = implied_weight_vs_posterior(wbp, "ratio")
-        figs["16_weight_vs_post_leastsq"] = implied_weight_vs_posterior(
-            wbp, "least_squares")
+    if w is not None:
+        # the implied weight in posterior bins, every trial, and its
+        # distribution on every trial against the posterior's
+        figs["15_weight_vs_posterior"] = weight_vs_posterior(
+            weight_by_posterior(w, d["post_c1"]), "vis")
+        figs["16_weight_distribution"] = hybrid_weight_distribution(
+            w, w_prop, d["post_c1"], flags_vis=_saved("hybrid_flags_vis"),
+            flags_prop=_saved("hybrid_flags_prop"))
     return figs
 
 
@@ -437,11 +549,11 @@ def panel_fusion_weight(disparity, w_network, p_analytical, grid, w_prop=None,
             color=COLORS["analytical"], label="analytical p(C=1)")
     c_net, m_net, _ = mean_by_bin(disparity, w_network, grid)
     ax.plot(c_net, m_net, "o-", lw=PANEL_LW, ms=PANEL_MS,
-            color=COLORS["network"], label="implied, from mu_vis")
+            color=COLORS["network"], label="implied weight, vis")
     if w_prop is not None:
         c_p, m_p, _ = mean_by_bin(disparity, w_prop, grid)
         ax.plot(c_p, m_p, "s-", lw=PANEL_LW, ms=PANEL_MS,
-                color=COLORS["prop"], label="implied, from mu_prop")
+                color=COLORS["prop"], label="implied weight, prop")
     # headroom for the legend: at 2.5 in the three-entry legend is two-thirds
     # of the axes width, so it sits ABOVE the curve's peak rather than on it
     ax.set_ylim(-0.1, 1.4)

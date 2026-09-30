@@ -327,3 +327,77 @@ def test_manuscript_dir_protects_the_flagship_figures():
     assert manuscript_dir() == RESULTS / "manuscript"
     assert manuscript_dir("flagship") == RESULTS / "manuscript"
     assert manuscript_dir("pcommon07") == RESULTS / "manuscript_pcommon07"
+
+
+def test_weight_figures_draw_the_hybrid_read():
+    """04, 08v, 15 and 16: the pipeline's weight figures, all from the hybrid
+    read of a channel -- the curve through zero disparity, the variance-domain
+    headline beside the weight on the posterior (points coloured by source),
+    the weight in posterior bins, and its distribution against the
+    posterior's with the overflow piled into the edge bins."""
+    from cmsi.analysis.causal import (
+        hybrid_weight,
+        mixture_variance,
+        variance_regression,
+        weight_by_posterior,
+        weight_regression,
+    )
+    from cmsi.viz import results
+    from cmsi.viz.style import COLORS
+
+    rng = np.random.default_rng(1)
+    n = 3000
+    disp = rng.normal(0, 12, n)
+    post = 1 / (1 + np.exp(0.4 * (np.abs(disp) - 8)))
+    fused_var, seg_var = rng.uniform(2, 3, n), rng.uniform(5, 9, n)
+    delta = 0.6 * disp
+    var_out = mixture_variance(post, fused_var, seg_var, delta) + rng.normal(0, 0.05, n)
+    mu_out = post * delta + rng.normal(0, 0.3, n)
+    w, _, flags = hybrid_weight(var_out, fused_var, seg_var, delta, mu_out, np.zeros(n))
+    grid = [-40, -30, -20, -15, -10, -5, -2, 0, 2, 5, 10, 15, 20, 30, 40]
+
+    fig = results.fusion_weight_curve(disp, w, post, grid, w_prop=w)
+    ax = fig.axes[0]
+    labels = [line.get_label() for line in ax.get_lines()]
+    assert sum("implied" in lab for lab in labels) == 2
+    assert any("analytical" in lab for lab in labels)
+    # the curve carries through zero disparity: the network's line has a
+    # point at every grid centre, the origin included
+    net = [line for line in ax.get_lines() if "vis" in line.get_label()][0]
+    assert 0.0 in np.round(net.get_xdata(), 6)
+    assert ax.get_ylim() == (-0.1, 1.1)
+
+    reg_v = variance_regression(var_out, fused_var, seg_var, delta, post)
+    fig2 = results.variance_regression_figure(var_out, fused_var, seg_var, delta, post, reg_v,
+                                              w, weight_regression(w, post), "var_vis",
+                                              flags=flags)
+    assert len(fig2.axes) == 2
+    assert "variance-domain regression" in fig2.axes[0].get_title()
+    assert "implied weight on the posterior" in fig2.axes[1].get_title()
+    labels = [t.get_text() for t in fig2.axes[1].get_legend().get_texts()]
+    assert any("variance root" in lab for lab in labels)
+    assert any("position ratio" in lab for lab in labels)
+    fit = [line for line in fig2.axes[1].get_lines() if line.get_label().startswith("fit")][0]
+    assert fit.get_color() == COLORS["hybrid"]
+
+    fig3 = results.weight_vs_posterior(weight_by_posterior(w, post), "vis")
+    ax = fig3.axes[0]
+    assert ax.get_xlim() == (0, 1)
+    assert any("all 3000 trials" in t.get_text() for t in ax.texts)
+
+    w_wide = w.copy()
+    w_wide[:30] = 5.0                                   # thirty trials beyond the axis
+    fig4 = results.hybrid_weight_distribution(w_wide, w, post, flags_vis=flags,
+                                              flags_prop=flags)
+    assert len(fig4.axes) == 2
+    assert fig4.axes[0].get_xlim() == (-1.0, 2.0)
+    texts = " ".join(t.get_text() for t in fig4.axes[0].texts)
+    assert f"{100 * 30 / n:.1f}% of trials outside" in texts
+    assert "read from the mu_vis ratio" in texts
+    assert "vis: median" in fig4.axes[0].get_title()
+    assert "prop: median" in fig4.axes[1].get_title()
+    labels = [t.get_text() for t in fig4.axes[0].get_legend().get_texts()]
+    assert any(lab.startswith("network, all") for lab in labels)
+    assert any("analytical posterior" in lab for lab in labels)
+    from matplotlib import pyplot as plt
+    plt.close("all")

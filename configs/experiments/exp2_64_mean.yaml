@@ -1,19 +1,19 @@
 seed: 0
 generative:
-  p_common: 1.0
+  p_common: 0.5
   mu0: 0.0
-  sigma0_sq: 425.0
+  sigma0_sq: 100
   eye_mu: 0.0
-  eye_sigma_sq: 325.0
+  eye_sigma_sq: 81
   sigma2_vis_range:
   - 1
-  - 2
+  - 1.2
   sigma2_prop_range:
-  - 3
-  - 5
+  - 4
+  - 4.5
   sigma2_eye_range:
-  - 3.3
-  - 5
+  - 3.7
+  - 4.2
 encoding:
   n_vis: 76
   n_prop: 76
