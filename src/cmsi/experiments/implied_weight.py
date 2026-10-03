@@ -81,14 +81,25 @@ def experiment_dir(name, create=True):
     return path
 
 
-def load_run(run):
-    """(pred, d_test, names, cfg) for results/<run>/, on its stored test split."""
+def load_run(run, config=None):
+    """(pred, d_test, names, cfg) for results/<run>/, on its stored test split.
+
+    The analysis block of `cfg` follows utils.analysis_block: the yaml at
+    `config` when given, else the run's config.yaml as stage 3 left it, else
+    the checkpoint's."""
     from cmsi.data import subset
     from cmsi.models import predict
-    from cmsi.utils import dataset_path, load_checkpoint, load_dataset, run_dir
+    from cmsi.utils import (
+        analysis_block,
+        dataset_path,
+        load_checkpoint,
+        load_dataset,
+        run_dir,
+    )
 
     out = run_dir(run, create=False)
     model, cfg, _, splits = load_checkpoint(out / "model.pt")
+    cfg, _ = analysis_block(cfg, out, config)
     d_full, _ = load_dataset(dataset_path((out / "dataset.txt").read_text().strip()))
     d = subset(d_full, splits["test"])
     return predict(model, d["X"]), d, list(d_full["target_names"]), cfg

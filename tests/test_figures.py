@@ -155,19 +155,78 @@ def _trio(tmp_path):
     n = 3000
     disparity = rng.uniform(-45, 45, n)
     post = 1 / (1 + np.exp((np.abs(disparity) - 8) / 3))
-    fused, seg = rng.normal(size=n), rng.normal(size=n) + 4 * np.sign(disparity)
-    pred = seg + post * (fused - seg) * 0.86 + rng.normal(scale=0.6, size=n)
     w = post + rng.normal(scale=0.05, size=n)
+    flags = (np.abs(disparity) > 6).astype(int)        # ratio where the gap is wide
     grid = np.linspace(-40, 40, 17)
-    reg = {"slope": 0.86, "intercept": 0.0, "slope_ci95": [0.83, 0.88]}
+    reg = {"slope": 0.98, "intercept": 0.01, "slope_ci95": [0.97, 0.99]}
     centres = np.linspace(-40, 40, 17)
     saved = {"bias_centres": centres, "bias_net": np.sin(centres / 8),
              "bias_centres_opt": centres, "bias_opt": np.sin(centres / 8) * 1.1}
     figs = {"A": results.panel_fusion_weight(disparity, w, post, grid, w_prop=w),
-            "B": results.panel_position_regression(pred, seg, fused, post, reg),
+            "B": results.panel_weight_regression(w, post, reg, flags=flags),
             "C": results.panel_bias_vs_disparity(saved)}
     paths = save_figures(figs, tmp_path, formats=("svg", "png"))
     return {p.stem: p for p in paths if p.suffix == ".svg"}, figs
+
+
+def test_weight_regression_panel_has_both_legends_and_the_shares(tmp_path):
+    """Figure 2B: the hybrid read against the posterior, sources in one legend
+    (lower right, with their shares of all trials), the two lines in the
+    other (upper left), on the standard panel with panel A's y range."""
+    from cmsi.viz import results
+    rng = np.random.default_rng(1)
+    n = 2000
+    post = rng.uniform(0, 1, n)
+    w = post + rng.normal(scale=0.1, size=n)
+    flags = np.where(post > 0.6, 0, 1)
+    reg = {"slope": 0.97, "intercept": 0.0, "slope_ci95": [0.96, 0.98]}
+    fig = results.panel_weight_regression(w, post, reg, flags=flags, n_show=500)
+    ax = fig.axes[0]
+    legends = [art for art in ax.get_children() if art.__class__.__name__ == "Legend"]
+    assert len(legends) == 2
+    texts = [t.get_text() for leg in legends for t in leg.get_texts()]
+    assert f"var_vis root: {100 * np.mean(flags == 0):.0f}%" in texts
+    assert f"mu_vis ratio: {100 * np.mean(flags == 1):.0f}%" in texts
+    assert any(t.startswith("fit: slope 0.97") for t in texts)
+    assert ax.get_xlim() == (0, 1) and ax.get_ylim() == (-0.25, 1.4)
+    assert tuple(fig.get_size_inches()) == tuple(results.CELL_SQUARE)
+    # the scatter is subsampled for drawing; the shares are not
+    drawn = sum(len(c.get_offsets()) for c in ax.collections)
+    assert drawn == 500
+
+
+def test_manuscript_panels_figure_2_is_weight_regression(tmp_path):
+    """The manuscript's figure 2 is A fusion weight, B the hybrid read on the
+    posterior (08v panel B), C bias vs disparity; the position regression is
+    no longer a manuscript panel."""
+    from matplotlib import pyplot as plt
+
+    from cmsi.viz import results
+    rng = np.random.default_rng(2)
+    n = 600
+    names = ["mu_vis", "var_vis", "mu_prop", "var_prop"]
+    post = rng.uniform(0, 1, n)
+    d = {"disparity": rng.uniform(-30, 30, n), "post_c1": post,
+         "mu_vis": rng.normal(size=n), "var_vis": rng.uniform(2, 6, n),
+         "mu_prop": rng.normal(size=n), "var_prop": rng.uniform(2, 6, n)}
+    pred = np.stack([d[k] for k in names], axis=1) + rng.normal(scale=0.1, size=(n, 4))
+    centres = np.linspace(-30, 30, 7)
+    saved = {"bias_centres": centres, "bias_net": np.sin(centres / 8),
+             "bias_centres_opt": centres, "bias_opt": np.sin(centres / 8),
+             "hybrid_flags_vis": np.where(post > 0.5, 0, 1)}
+    metrics = {"weight_regression_vis": {"slope": 0.97, "intercept": 0.0,
+                                         "slope_ci95": [0.96, 0.98]}}
+    w = post + rng.normal(scale=0.1, size=n)
+    figs = results.manuscript_panels(pred, d, names, {"disparity_grid": centres.tolist()},
+                                     w, w, saved, metrics)
+    keys = {k for k in figs if k.startswith(results.F2)}
+    assert keys == {f"{results.F2}/A_fusion_weight", f"{results.F2}/B_weight_regression",
+                    f"{results.F2}/C_bias_vs_disparity", f"{results.F2}/row_ABC"}
+    row = figs[f"{results.F2}/row_ABC"]
+    assert [ax.get_title() for ax in row.axes] == [
+        "fusion-segregation transition", "implied weight vs posterior", "bias vs disparity"]
+    for fig in figs.values():
+        plt.close(fig)
 
 
 def test_manuscript_panels_share_frame_axes_and_fonts(tmp_path):

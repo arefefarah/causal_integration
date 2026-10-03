@@ -17,16 +17,16 @@ generative:
   p_common: 0.3
 
   mu0: 0.0                     # spatial prior mean on hand position
-  sigma0_sq: 425.0             # hand sd 20.6 deg
+  sigma0_sq: 100.0             # hand sd 10 deg
 
   eye_mu: 0.0
-  eye_sigma_sq: 325.0          # eye sd 18.0 deg
+  eye_sigma_sq: 81.0           # eye sd 9 deg
 
   # Per-trial measurement noise, drawn uniform and independently of C.
-  # matlab_match's ranges scaled by 0.30 (see header). sd in brackets.
-  sigma2_vis_range:  [1.2, 6.6]     # sd 1.1-2.6 deg
-  sigma2_prop_range: [1.8, 9.6]     # sd 1.3-3.1 deg
-  sigma2_eye_range:  [3.3, 13.2]    # sd 1.8-3.6 deg
+  # Narrow ranges (see header). sd in brackets.
+  sigma2_vis_range:  [1.0, 1.2]     # sd 1.0-1.1 deg
+  sigma2_prop_range: [4.0, 4.5]     # sd 2.0-2.1 deg
+  sigma2_eye_range:  [3.7, 4.2]     # sd 1.9-2.0 deg
 
 # --------------------------------------------------------------------------- #
 # ENCODING (scalar measurements -> population codes = the network input)
@@ -35,7 +35,7 @@ encoding:
   n_vis: 76                    # gaussian receptive fields, retinal visual cue
   n_prop: 76                   # push-pull code, proprioceptive hand
   n_eye: 76                    # push-pull code, eye position
-  visual_field: [-85.0, 85.0]  # 2*rf_width margin -> 0.8% containment rejection
+  visual_field: [-85.0, 85.0]  # 2*rf_width margin -> 0.0% containment rejection here
   rf_width: 6.0
   gain_K: 180.0                # activity gain = gain_K / variance (SS4-calibrated)
   slope_range: [-1.0, 1.0]
@@ -70,7 +70,14 @@ training:
 # ANALYSIS
 # --------------------------------------------------------------------------- #
 analysis:
-  disparity_grid: [-40, -30, -20, -15, -10, -5, -2, 0, 2, 5, 10, 15, 20, 30, 40]
-  reliability_levels: [1.5, 3.5, 6.0]   # must lie inside sigma2_vis_range
+  # Bin centres of the disparity curves (figures 03/04/05/12, manuscript Fig. 2A/C,
+  # the conditioned-bias flag); trials go to the nearest centre. Since 2026-10-03:
+  # 2-deg steps across the transition (|d| < 12 holds 80 % of the trials on this
+  # domain, 99 % lie below 34 deg), ending at +-30 so no bin rests on a few dozen
+  # trials. The analysis block is not a training parameter -- 03_analyze.py
+  # --config applies a change to an existing run without retraining.
+  disparity_grid: [-30, -20, -15, -12, -10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10, 12, 15, 20, 30]
+  reliability_levels: [1.0, 1.1, 1.2]   # must lie inside sigma2_vis_range; with this
+                                        # range figure 05's levels differ by little
   ridge_alpha: 1.0
   decoder_test_size: 0.25

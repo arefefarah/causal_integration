@@ -45,11 +45,17 @@ Makefile                 shortcuts: make help
 GUIDE.md                 the complete guide: every analysis, every figure, and
                          the number the stored runs actually produced
 CROSS_PRIOR_RESULT.md    write-up of the cross-prior sweep
-configs/flagship.yaml    the calibrated p_common = 0.5 network -- start here
-configs/optimal_sweep.yaml the configuration the readability sweeps converged on
-                         (IMPLIED_WEIGHT_RESULT.md): small domain, relu 256x256,
-                         gain_K 720, lr 3e-4, 100k trials; run it with 06 train
-configs/pcommon{0,1}.yaml the two controls;  pcommon{028,03,07} the satellites
+configs/flagship.yaml    the p_common = 0.5 network -- start here. Since 2026-10-02
+                         the small-domain, narrow-range configuration the implied-
+                         weight investigation converged on (sigma0_sq 100, eye 81,
+                         sigma2 [1,1.2]/[4,4.5]/[3.7,4.2]); the header has the why
+configs/flagship_wide.yaml the flagship until then (sigma0_sq 425, eye 325, wide
+                         ranges), kept for reference
+configs/pcommon{0,1}.yaml the two controls;  pcommon{028,03,07} the satellites --
+                         each is flagship.yaml with only p_common changed
+configs/optimal_sweep.yaml the training recipe the readability sweeps converged on
+                         (IMPLIED_WEIGHT_RESULT.md): relu 256x256, gain_K 720,
+                         lr 3e-4, 100k trials on the flagship's domain; 06 train
 configs/default.yaml     every parameter, documented;  realistic, equal_n and
                          matlab_match are earlier parameter sets, kept to compare
 src/cmsi/
@@ -115,6 +121,19 @@ poetry run python scripts/04_figures.py       --run flagship --only model
                                               # --only: inputs | training | model | manuscript
 ```
 
+The `analysis` block of a config (`disparity_grid`, `reliability_levels`,
+`ridge_alpha`, `decoder_test_size`) is not a training parameter, so it can
+change without retraining: `03_analyze.py --config configs/flagship.yaml`
+re-analyses an existing run with that file's block, records it in
+`metrics.json` (`analysis_config`, `analysis_config_source`) and writes it
+back into `results/<run>/config.yaml`, which stage 4 and the `06` experiment
+then follow by default (`utils.analysis_block`; `--config` on those too).
+`run_all.sh` passes its config to stages 3 and 4 explicitly. The
+`disparity_grid` of the live configs was changed on 2026-10-03 to 2-deg steps
+across the transition, ending at ±30 (the ±40 bins of the previous grid held
+a few dozen trials on the 10° domain); after editing a grid, re-run stage 3
+and 4 on each run with `--config`.
+
 The cross-prior sweep is a separate experiment with its own output folder:
 
 ```bash
@@ -132,7 +151,73 @@ be re-binned without retraining.
 
 Stage 0 is a gate, not a report: it exits non-zero if the config fails a design
 criterion, so `run_all.sh` stops before spending a training run on a dataset
-whose targets are miscalibrated. Run it on any config you edit.
+whose targets are miscalibrated. Run it on any config you edit. (The current
+flagship gets a WARN, not a FAIL, on the share of intermediate-posterior
+trials — see its header — so `run_all.sh` carries on.)
+
+### Rerunning the flagship family
+
+The whole set the analyses and the guide rest on, in the order the controls
+require. `run_all.sh` names each run after its config, trains the always-fuse
+twin beside it (figure 07), and passes `--control pcommon1` to stage 3 by
+itself once `results/pcommon1/metrics.json` exists — which is why the
+p_common = 1 control goes first. Every run writes `results/<name>/` and
+`results/manuscript_<name>/`; the flagship's manuscript figures go to
+`results/manuscript/`.
+
+```bash
+# 0. the gate on the new flagship (expect one WARN on intermediate posterior mass)
+poetry run python scripts/00_calibrate.py --config configs/flagship.yaml
+
+# 1. the p_common = 1 control FIRST: its residuals are sigma_out for every other run
+poetry run bash scripts/run_all.sh --config configs/pcommon1.yaml
+
+# 2. the flagship, the p_common = 0 control, the three satellites (any order)
+poetry run bash scripts/run_all.sh --config configs/flagship.yaml
+poetry run bash scripts/run_all.sh --config configs/pcommon0.yaml
+poetry run bash scripts/run_all.sh --config configs/pcommon028.yaml
+poetry run bash scripts/run_all.sh --config configs/pcommon03.yaml
+poetry run bash scripts/run_all.sh --config configs/pcommon07.yaml
+
+# 3. the implied-weight experiment on the flagship (figures 04/05/08v/15/16 under
+#    results/experiments/implied_weight/flagship/, the weight per reliability level)
+poetry run python scripts/06_implied_weight.py figures     --run flagship
+poetry run python scripts/06_implied_weight.py reliability --run flagship --levels 5
+
+# 4. the cross-prior sweep: nine priors x three seeds = 27 networks, sigma_out
+#    from the new pcommon1 (results/prior_sweep/, results/manuscript/prior_sweep/)
+poetry run python scripts/05_prior_sweep.py --priors 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 \
+                                            --seeds 0 1 2 --control pcommon1
+```
+
+Each `run_all.sh` call is two trainings (the run and its twin) plus stage 3's
+lesion null (100 draws); the sweep is 27 trainings and writes after every seed,
+so it can be interrupted and `--replot` still works. To check a run after
+stage 3, `results/<name>/metrics.json` → `sigma_out_source` must read
+`"pcommon1"` for every run but pcommon1 itself (`"self"`); if it reads
+`"self"` elsewhere, pcommon1 was not analysed first — rerun
+`03_analyze.py --run <name> --twin <name>_twin --control pcommon1` and
+`04_figures.py --run <name>`.
+
+**Re-analysing without retraining** (after a change to a config's `analysis`
+block, such as the 2026-10-03 `disparity_grid`): stage 3 and 4 on each run,
+`pcommon1` first so its fresh residuals are what the others read —
+
+```bash
+poetry run python scripts/03_analyze.py --run pcommon1 --twin pcommon1_twin --config configs/pcommon1.yaml
+poetry run python scripts/04_figures.py --run pcommon1
+for r in flagship pcommon0 pcommon028 pcommon03 pcommon07; do
+  poetry run python scripts/03_analyze.py --run $r --twin ${r}_twin --control pcommon1 \
+                                          --config configs/$r.yaml
+  poetry run python scripts/04_figures.py --run $r
+done
+poetry run python scripts/06_implied_weight.py figures     --run flagship
+poetry run python scripts/06_implied_weight.py reliability --run flagship --levels 5
+```
+
+(The control reads its own residuals and records `sigma_out_source: "self"`.
+The sweep does not use the config grid — its Panel A has its own — so it
+needs no rerun.)
 
 `--control pcommon1` hands stage 3 the p_common = 1 network's residual spread as
 `sigma_out`, the read-out noise per output, which sets the nominal per-trial
@@ -289,7 +374,8 @@ Run them after touching anything in `data/` or `analysis/`.
 ```
 results/calibration/<config>/     stage 0: the gate's verdict and its figures
 results/<run>/
-  config.yaml        the exact parameters that produced this run
+  config.yaml        the exact parameters that produced this run (training
+                     sections from stage 2; analysis block as stage 3 last used it)
   dataset.txt        which dataset it was trained on
   model.pt           weights + config + the train/val/test split
   metrics.json       every number the analysis computed
@@ -308,7 +394,10 @@ results/<run>/
                      every trial, per channel, against the posterior's
 results/manuscript/<figure>/      the manuscript figures built from the flagship
                                   run, one folder per figure, on the standard
-                                  panel; results/manuscript_<run>/ for any other run
+                                  panel (figure 2: A the fusion weight, B the
+                                  weight on the posterior = 08v panel B, C the
+                                  bias curve); results/manuscript_<run>/ for
+                                  any other run
 results/prior_sweep/
   sweep.json         per-(prior, seed) rows and the per-prior aggregate
   curves.npz         per-trial arrays of the first seed, for re-binning
@@ -449,7 +538,8 @@ designed: per-unit additivity indices and population geometry.
 
 `standardize_inputs` and `balance_loss` are both on by default. The three input
 groups differ ~30× in magnitude and the outputs live on different scales (means
-≈ ±10 deg, variances ≈ 5–25 deg²). Without both, the shared trunk learns
+spanning ±30 deg, variances ≈ 2–7 deg² on the current flagship). Without both,
+the shared trunk learns
 `var_prop` fine and starves `mu_prop`, even though a dedicated decoder reaches
 R²≈0.97 on it. `figures/training/02_per_output_loss.png` is where that shows up.
 Use Adam, not Rprop — Rprop is a full-batch method and misbehaves on mini-batches
@@ -477,4 +567,9 @@ and the hybrid of the two per channel, which is what the code reads now. The
 ratio, the σ_w filter, the least-squares per-bin weight, the joint read across
 both position outputs, the variance-only read and the configuration sweeps
 that led here (`07_architecture`, `08_fixed_variance`, `09_sweep`, `06 sigma /
-compare / design`) were removed on 2026-09-29.
+compare / design`) were removed on 2026-09-29. On 2026-10-02 the configuration
+that investigation converged on became `configs/flagship.yaml` (the previous
+one is `flagship_wide.yaml`), the old flagship family's results were deleted,
+and the whole family — six runs with twins, the 27-network prior sweep, the
+manuscript figures and the `06` experiment — was rerun on 2026-10-02/03;
+`GUIDE.md` and `CROSS_PRIOR_RESULT.md` carry that rerun's numbers.

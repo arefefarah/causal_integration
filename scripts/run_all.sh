@@ -88,10 +88,10 @@ if [[ -f "results/pcommon1/metrics.json" ]] \
    && grep -q '"residual_std"' "results/pcommon1/metrics.json"; then
   CONTROL_ARG="--control pcommon1"
 fi
-python scripts/03_analyze.py --run "$NAME" --twin "${NAME}_twin" $CONTROL_ARG
+python scripts/03_analyze.py --run "$NAME" --twin "${NAME}_twin" $CONTROL_ARG --config "$CONFIG"
 
 echo "=== 4. figures ============================================"
-python scripts/04_figures.py --run "$NAME"
+python scripts/04_figures.py --run "$NAME" --config "$CONFIG"
 
 echo
 echo "done -> results/$NAME/"

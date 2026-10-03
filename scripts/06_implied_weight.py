@@ -87,7 +87,7 @@ def _run_context(args):
     """Load the run and its control, run the shared analysis once."""
     control = _resolve_control(args.run, args.control)
     print(f"loading results/{args.run} (control: {control})")
-    pred, d, names, cfg = iw.load_run(args.run)
+    pred, d, names, cfg = iw.load_run(args.run, getattr(args, "config", None))
     ctrl_resid, ctrl_names = iw.control_residuals(control)
     if ctrl_names != names:
         raise SystemExit(f"control '{control}' has outputs {ctrl_names}, "
@@ -241,6 +241,9 @@ if __name__ == "__main__":
                              "(default: the one stage 3 recorded, else pcommon1)")
         sp.add_argument("--name", default=None,
                         help="experiment folder name (default: the run name)")
+        sp.add_argument("--config", default=None,
+                        help="yaml whose analysis block (disparity_grid, ...) to "
+                             "use (default: the run's config.yaml as stage 3 left it)")
 
     sp = sub.add_parser("figures", help="the pipeline's weight figures (04, 05, 08v, 15, 16) "
                                         "for one run")

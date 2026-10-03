@@ -6,6 +6,7 @@ not the whole config, so you can always see what a function actually depends on.
 """
 
 from copy import deepcopy
+from pathlib import Path
 
 import yaml
 
@@ -28,6 +29,36 @@ def save_config(cfg, path):
     with open(path, "w", encoding="utf-8") as fh:
         yaml.safe_dump(cfg, fh, sort_keys=False)
     return path
+
+
+def analysis_block(cfg, run_dir, path=None):
+    """The `analysis` section a run's stages 3, 4 and the 06 experiment use,
+    and where it came from -> (cfg with that section swapped in, source).
+
+    The analysis block (disparity_grid, reliability_levels, ridge_alpha,
+    decoder_test_size, ...) is not a training parameter, so it may change
+    without retraining. It is taken, in order, from the yaml at `path` when
+    one is given (03_analyze.py --config), else from results/<run>/config.yaml
+    when that exists, else from the checkpoint's own config (`cfg`, the one
+    the run was trained with). Stage 3 writes the block it used back into
+    results/<run>/config.yaml, so one `--config` re-analysis makes every later
+    stage-4 or 06 run follow it; the generative, encoding, model and training
+    sections are always the checkpoint's.
+    """
+    cfg = deepcopy(cfg)
+    stored = Path(run_dir) / "config.yaml"
+    if path is not None:
+        source = Path(path)
+    elif stored.exists():
+        source = stored
+    else:
+        return cfg, "checkpoint"
+    with open(source, encoding="utf-8") as fh:
+        block = yaml.safe_load(fh).get("analysis")
+    if not block:
+        raise KeyError(f"{source} has no analysis section")
+    cfg["analysis"] = block
+    return cfg, str(source)
 
 
 def tweak(cfg, **overrides):

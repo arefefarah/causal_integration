@@ -4,8 +4,17 @@
     python scripts/03_analyze.py --run baseline --twin twin      # emergent vs imposed
     python scripts/03_analyze.py --run flagship --control pcommon1
                                  # sigma_out, the read-out noise (SS7.1)
+    python scripts/03_analyze.py --run flagship --config configs/flagship.yaml
+                                 # take the analysis block (disparity_grid,
+                                 # reliability_levels, ...) from that file
+                                 # rather than from the checkpoint
 
-Everything is computed on the test split stored in the checkpoint. Writes:
+Everything is computed on the test split stored in the checkpoint. The
+analysis block is not a training parameter: with --config it comes from the
+yaml given, otherwise from results/<run>/config.yaml, otherwise from the
+checkpoint (utils.analysis_block), and the block used is written back into
+results/<run>/config.yaml and recorded in metrics.json, so stage 4 and the 06
+experiment follow it. Writes:
 
     results/<run>/metrics.json     every number, for the write-up
     results/<run>/analysis.npz     the per-trial arrays stage 4 plots,
@@ -29,19 +38,23 @@ from cmsi import analysis
 from cmsi.data import subset
 from cmsi.models import hidden_activations, predict
 from cmsi.utils import (
+    analysis_block,
     dataset_path,
     load_checkpoint,
     load_dataset,
     load_json,
     run_dir,
+    save_config,
     save_json,
 )
 
 
-def analyse(run, twin=None, control=None):
+def analyse(run, twin=None, control=None, config=None):
     out = run_dir(run)
     model, cfg, history, splits = load_checkpoint(out / "model.pt")
+    cfg, acfg_source = analysis_block(cfg, out, config)
     acfg = cfg["analysis"]
+    print(f"analysis block from: {acfg_source}")
     p_prior = cfg["generative"]["p_common"]
 
     # the dataset the checkpoint's config points at, restricted to the test split
@@ -54,7 +67,8 @@ def analyse(run, twin=None, control=None):
 
     metrics = {"run": run, "head": cfg["model"]["head"], "p_common": p_prior,
                "n_test": int(len(pred)),
-               "best_val": history["best_val"], "best_epoch": history["best_epoch"]}
+               "best_val": history["best_val"], "best_epoch": history["best_epoch"],
+               "analysis_config": acfg, "analysis_config_source": acfg_source}
     if "rejection_rate" in d_full:
         metrics["rejection_rate"] = float(np.asarray(d_full["rejection_rate"]).ravel()[0])
     arrays = {"pred": pred, "target": target,
@@ -343,7 +357,11 @@ def analyse(run, twin=None, control=None):
 
     save_json(metrics, out / "metrics.json")
     np.savez_compressed(out / "analysis.npz", **arrays)
-    print(f"\nwrote {out / 'metrics.json'} and {out / 'analysis.npz'}")
+    # the run's config.yaml records what produced its results: the training
+    # sections from the checkpoint, the analysis section this stage used
+    save_config(cfg, out / "config.yaml")
+    print(f"\nwrote {out / 'metrics.json'}, {out / 'analysis.npz'} and "
+          f"{out / 'config.yaml'} (analysis block from {acfg_source})")
     return metrics
 
 
@@ -365,5 +383,9 @@ if __name__ == "__main__":
     p.add_argument("--control", default=None,
                    help="run name of a p_common=1 control; its residual_std "
                         "becomes sigma_out, the read-out noise (SS7.1)")
+    p.add_argument("--config", default=None,
+                   help="yaml whose analysis block (disparity_grid, "
+                        "reliability_levels, ...) to use instead of the "
+                        "checkpoint's; written back to results/<run>/config.yaml")
     args = p.parse_args()
-    analyse(args.run, args.twin, args.control)
+    analyse(args.run, args.twin, args.control, args.config)

@@ -2,9 +2,12 @@
 
     python scripts/04_figures.py --run baseline
     python scripts/04_figures.py --run baseline --only model
+    python scripts/04_figures.py --run baseline --config configs/flagship.yaml
 
 Reads what stages 1-3 already computed, so this is cheap to re-run while you
-fiddle with a panel. Figures go to:
+fiddle with a panel. The analysis block (disparity_grid, reliability_levels)
+comes from --config when given, else from results/<run>/config.yaml as stage
+3 left it, else from the checkpoint (utils.analysis_block). Figures go to:
 
     results/<run>/figures/inputs      what the network is shown
     results/<run>/figures/training    did it converge
@@ -23,7 +26,14 @@ import numpy as np
 import _bootstrap  # noqa: F401
 from cmsi import analysis
 from cmsi.data import subset
-from cmsi.utils import dataset_path, load_checkpoint, load_dataset, load_json, run_dir
+from cmsi.utils import (
+    analysis_block,
+    dataset_path,
+    load_checkpoint,
+    load_dataset,
+    load_json,
+    run_dir,
+)
 from cmsi.viz import apply_style, inputs, results, save_figures, training
 from cmsi.viz.manuscript import manuscript_dir
 
@@ -32,6 +42,8 @@ def main(args):
     apply_style()
     out = run_dir(args.run)
     _, cfg, history, splits = load_checkpoint(out / "model.pt")
+    cfg, acfg_source = analysis_block(cfg, out, args.config)
+    print(f"analysis block from: {acfg_source}")
 
     dataset_name = (out / "dataset.txt").read_text().strip() \
         if (out / "dataset.txt").exists() else "main"
@@ -94,4 +106,7 @@ if __name__ == "__main__":
     p.add_argument("--only", choices=["inputs", "training", "model", "manuscript"],
                    default=None,
                    help="render just one group")
+    p.add_argument("--config", default=None,
+                   help="yaml whose analysis block to draw with (default: the "
+                        "run's config.yaml as stage 3 left it)")
     main(p.parse_args())

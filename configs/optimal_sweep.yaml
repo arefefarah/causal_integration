@@ -1,7 +1,10 @@
 # OPTIMAL_SWEEP -- the configuration the readability sweeps of 2026-09-20/21
 # converged on (IMPLIED_WEIGHT_RESULT.md, Parts I and II; the sweep code itself
 # was retired on 2026-09-29, its results stay under results/experiments/sweep/).
-# Every setting below that differs from configs/flagship.yaml was chosen
+# Since 2026-10-02 configs/flagship.yaml already has this file's domain and
+# noise ranges (sigma0_sq 100, eye_sigma_sq 81, narrow ranges); what still
+# differs is the training recipe -- relu 256 x 256 with std_floor 1.0, gain_K
+# 720, lr 3e-4, 600 epochs / patience 40, 100k trials -- each piece chosen
 # because a sweep showed it lowers the network's own error relative to the
 # sensory noise. What the combination gave in the cloud runs (one seed, 100k
 # trials, cpu), visual channel:
@@ -101,7 +104,13 @@ training:
 # ANALYSIS
 # --------------------------------------------------------------------------- #
 analysis:
-  disparity_grid: [-40, -30, -20, -15, -10, -5, -2, 0, 2, 5, 10, 15, 20, 30, 40]
+  # Bin centres of the disparity curves (figures 03/04/05/12, manuscript Fig. 2A/C,
+  # the conditioned-bias flag); trials go to the nearest centre. Since 2026-10-03:
+  # 2-deg steps across the transition (|d| < 12 holds 80 % of the trials on this
+  # domain, 99 % lie below 34 deg), ending at +-30 so no bin rests on a few dozen
+  # trials. The analysis block is not a training parameter -- 03_analyze.py
+  # --config applies a change to an existing run without retraining.
+  disparity_grid: [-30, -20, -15, -12, -10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10, 12, 15, 20, 30]
   reliability_levels: [1.0, 1.1, 1.2]   # must lie inside sigma2_vis_range; with this
                                         # range figure 05's levels differ by little
   ridge_alpha: 1.0

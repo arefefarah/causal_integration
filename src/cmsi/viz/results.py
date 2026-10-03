@@ -585,6 +585,66 @@ def panel_position_regression(pred_col, seg, fused, post, reg, ax=None):
                          "position-domain regression", "upper left")
 
 
+def panel_weight_regression(w, post, reg, flags=None, output_name="vis", ax=None,
+                            n_show=6000, seed=0):
+    """Panel B of 08v_variance_regression as a manuscript panel: the implied
+    weight of one channel (its hybrid read, analysis.hybrid_weight) against
+    the analytical posterior on every trial, the points coloured by the
+    output each weight came from, with the fit (analysis.weight_regression;
+    slope 1, intercept 0 = Bayes-optimal). Trials are subsampled for drawing
+    only (n_show); the shares in the legend count every trial.
+
+    Two legends, because one of five entries would cover the cloud on a
+    2.5-in panel: the sources in the lower right, where a good network has
+    almost no points (high posterior, low weight), and the two lines in the
+    upper left under the headroom the y limit leaves above the cloud.
+    """
+    from matplotlib.lines import Line2D
+    ax = _panel_axes(ax)
+    rng = np.random.default_rng(seed)
+    w, post = np.asarray(w, float), np.asarray(post, float)
+    ok = np.flatnonzero(np.isfinite(w))
+    pick = rng.choice(ok, min(n_show, ok.size), replace=False)
+    handles, labels = [], []
+    if flags is None:
+        ax.scatter(post[pick], w[pick], s=2, alpha=0.15, color=COLORS["hybrid"],
+                   rasterized=True)
+    else:
+        flags = np.asarray(flags)
+        names = {0: f"var_{output_name} root", 1: f"mu_{output_name} ratio",
+                 2: "variance peak"}
+        # the root trials form the tight band along the identity line and are
+        # drawn last, on top of the ratio trials' wider cloud
+        for value in (1, 2, 0):
+            sel = pick[flags[pick] == value]
+            if sel.size:
+                ax.scatter(post[sel], w[sel], s=2, alpha=0.2,
+                           color=HYBRID_SOURCES[value][1], rasterized=True)
+        for value, (_, col) in HYBRID_SOURCES.items():
+            share = np.mean(flags[ok] == value)
+            if share > 0:
+                handles.append(Line2D([], [], ls="", marker="o", ms=3.5, color=col))
+                labels.append(f"{names[value]}: {100 * share:.0f}%")
+    ax.plot([0, 1], [0, 1], "--", lw=1, color=COLORS["analytical"],
+            label="Bayes-optimal (slope 1)")
+    ax.plot([0, 1], [reg["intercept"], reg["slope"] + reg["intercept"]],
+            lw=PANEL_LW, color=COLORS["hybrid"],
+            label=f"fit: slope {reg['slope']:.2f}\n"
+                  f"[{reg['slope_ci95'][0]:.2f}, {reg['slope_ci95'][1]:.2f}]")
+    if handles:
+        ax.add_artist(ax.legend(handles, labels, fontsize=PANEL_FONT["legend"],
+                                loc="lower right", handlelength=1.0,
+                                handletextpad=0.5, borderaxespad=0.4))
+    # the same y range as panel A (04_fusion_weight), with its headroom for
+    # the legend above the cloud; ticks stop at 1 so the headroom reads as such
+    ax.set_xlim(0, 1)
+    ax.set_ylim(-0.25, 1.4)
+    ax.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
+    return _finish_panel(ax, "analytical posterior p(C=1|x)",
+                         f"implied weight, {output_name}",
+                         "implied weight vs posterior", "upper left")
+
+
 def panel_bias_vs_disparity(saved, ax=None):
     """The left half of 12_behavioral_bias as a manuscript panel."""
     ax = _panel_axes(ax)
@@ -669,25 +729,25 @@ def manuscript_panels(pred, d, names, analysis_cfg, w, w_prop, saved, metrics):
     Three fixed-frame panels with identical size, axes rectangle and fonts,
     plus the composed row. Returns {} when any input is missing, and says so.
     """
+    files = getattr(saved, "files", saved) if saved is not None else ()
     need = {"fusion weight": w is not None,
-            "position regression": "position_regression_vis" in metrics,
-            "bias curve": saved is not None
-            and "bias_centres" in getattr(saved, "files", saved)}
+            "weight regression": "weight_regression_vis" in metrics,
+            "bias curve": saved is not None and "bias_centres" in files}
     missing = [k for k, ok in need.items() if not ok]
     if missing:
         print(f"manuscript panels skipped, missing: {', '.join(missing)}")
         return {}
-    i = names.index("mu_vis")
     grid = analysis_cfg["disparity_grid"]
-    reg = metrics["position_regression_vis"]
+    reg = metrics["weight_regression_vis"]
+    flags = saved["hybrid_flags_vis"] if "hybrid_flags_vis" in files else None
 
     def fw(ax=None):
         return panel_fusion_weight(d["disparity"], w, d["post_c1"], grid,
                                    w_prop=w_prop, ax=ax)
 
-    def pr(ax=None):
-        return panel_position_regression(pred[:, i], d["seg_vis_mu"],
-                                         d["fused_mu"], d["post_c1"], reg, ax=ax)
+    def wr(ax=None):
+        return panel_weight_regression(w, d["post_c1"], reg, flags=flags,
+                                       output_name="vis", ax=ax)
 
     def bd(ax=None):
         return panel_bias_vs_disparity(saved, ax=ax)
@@ -711,9 +771,9 @@ def manuscript_panels(pred, d, names, analysis_cfg, w, w_prop, saved, metrics):
     # draw the same four series
     figs = {
         f"{F2}/A_fusion_weight": fw(),
-        f"{F2}/B_position_regression": pr(),
+        f"{F2}/B_weight_regression": wr(),
         f"{F2}/C_bias_vs_disparity": bd(),
-        f"{F2}/row_ABC": manuscript_row([fw, pr, bd]),
+        f"{F2}/row_ABC": manuscript_row([fw, wr, bd]),
         f"{FSC}/output_scatter_2x2": manuscript_grid([sc(j) for j in range(len(names))], ncols=2),
         f"{FEH}/error_histograms_2x2": manuscript_grid([eh(j) for j in range(len(names))], ncols=2),
     }
