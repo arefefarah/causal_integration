@@ -60,6 +60,20 @@ def units():
     idx = c["index"]
     u_con = int(np.argmax(np.where(c["classes"] == "congruent", idx, -np.inf)))
     u_opp = int(np.argmin(np.where(c["classes"] == "opposite", idx, np.inf)))
+    # example mixed unit: the mixed unit with the index closest to zero among
+    # those clearly tuned to both cues (response range >= 0.5 on each sweep)
+    rng_v = c["resp_vis"].max(0) - c["resp_vis"].min(0)
+    rng_p = c["resp_prop"].max(0) - c["resp_prop"].min(0)
+    both = (c["classes"] == "mixed") & (rng_v >= 0.5) & (rng_p >= 0.5)
+    u_mix = int(np.argmin(np.where(both, np.abs(idx), np.inf)))
+    # sub-structure of the mixed class: units modulated by less than 0.1 by one cue
+    weak = np.minimum(rng_v, rng_p) < 0.1
+    mixed_sub = {"n_mixed": int((c["classes"] == "mixed").sum()),
+                 "one_cue_only": int(((c["classes"] == "mixed") & weak).sum()),
+                 "hand_only": int(((c["classes"] == "mixed") & (rng_v < 0.1)).sum()),
+                 "vision_only": int(((c["classes"] == "mixed") & (rng_p < 0.1)).sum()),
+                 "both_cues": int(((c["classes"] == "mixed") & ~weak).sum()),
+                 "criterion": "response range on one sweep < 0.1"}
 
     rows = []
     for run, p in sorted(RUN_PRIOR.items(), key=lambda kv: kv[1]):
@@ -94,7 +108,7 @@ def units():
         ax.set_xticks(x)
         ax.set_xticklabels(["main", "twin", "fuse\nctrl", "segregate\nctrl"])
         ax.set_ylim(0, 58)
-        return finish_panel(ax, "network", "units of 64", "unit classes by network", "upper left")
+        return finish_panel(ax, "", "units of 64", "unit classes by network", "upper left")
 
     def pD(ax=None):
         ax = panel_axes(ax)
@@ -128,18 +142,22 @@ def units():
         ax.set_xticklabels([f"{r['p_common']:g}" for r, _ in pairs])
         ax.set_ylim(0, 40)
         return finish_panel(ax, "prior on a common cause", "opposite units of 64",
-                            "opposite units: causal vs fused targets", "upper right")
+                            "opposite units: causal vs twin", "upper right")
 
-    draws = [example(u_con, "congruent unit"), example(u_opp, "opposite unit"), pC, pD, pE]
-    figs = {"Fig_units/row_ABCDE": manuscript_grid(draws, ncols=3)}
-    for key, fn in zip(("A_congruent_unit", "B_opposite_unit", "C_classes_by_network",
-                        "D_counts_vs_prior", "E_opposite_causal_vs_twin"), draws):
+    draws = [example(u_con, "congruent unit"), example(u_opp, "opposite unit"), example(u_mix, "mixed unit"),
+             pC, pD, pE]
+    figs = {"Fig_units/row_ABCDEF": manuscript_grid(draws, ncols=3)}
+    for key, fn in zip(("A_congruent_unit", "B_opposite_unit", "C_mixed_unit", "D_classes_by_network",
+                        "E_counts_vs_prior", "F_opposite_causal_vs_twin"), draws):
         figs[f"Fig_units/{key}"] = fn()
     save_figures(figs, OUT, formats=FORMATS)
-    save_json({"example_units": {"congruent": u_con, "opposite": u_opp},
+    save_json({"example_units": {"congruent": u_con, "opposite": u_opp, "mixed": u_mix},
+               "mixed_substructure": mixed_sub,
                "index": idx.tolist(), "classes": c["classes"].tolist(),
+               "sweep_range_vis": rng_v.tolist(), "sweep_range_prop": rng_p.tolist(),
                "runs": rows, "twins": twins}, OUT / "Fig_units" / "numbers.json")
-    print(f"units: example congruent unit {u_con} ({idx[u_con]:+.2f}), opposite unit {u_opp} ({idx[u_opp]:+.2f})")
+    print(f"units: example congruent unit {u_con} ({idx[u_con]:+.2f}), opposite unit {u_opp} ({idx[u_opp]:+.2f}), "
+          f"mixed unit {u_mix} ({idx[u_mix]:+.2f}); mixed sub-structure {mixed_sub}")
     for r in rows + twins:
         print(f"   {r['run']:16s} p={r['p_common']:<4g} con {r['n_congruent']:2d} opp {r['n_opposite']:2d} "
               f"mixed {r['n_mixed']:2d} untuned {r['n_untuned']}")

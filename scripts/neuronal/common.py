@@ -24,7 +24,7 @@ from cmsi.viz.manuscript import (CELL_SQUARE, CELL_WIDE, PANEL_FONT,  # noqa: E4
 from cmsi.viz.style import COLORS, apply_style, save_figures         # noqa: E402,F401
 
 OUT = ROOT / "results" / "neuronal_level_analysis"
-CLASS_COLORS = {"congruent": "#1f77b4", "opposite": "#d62728", "mixed": "#7f7f7f"}
+CLASS_COLORS = {"congruent": "#1f77b4", "opposite": "#d62728", "mixed": "#ccbb44"}  # mixed: rgb(204,187,68), never the grey of the random bands or the intact bars
 CLASSES = ("congruent", "opposite", "mixed")
 OUTPUT_NAMES = ("mu_vis", "var_vis", "mu_prop", "var_prop")
 OUTPUT_LABELS = ("μ vis", "σ² vis", "μ hand", "σ² hand")
