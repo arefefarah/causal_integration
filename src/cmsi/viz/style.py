@@ -74,6 +74,7 @@ COLORS = {
     "eye": "#9467bd",
     "variance": "#ff7f0e",   # the weight read from a variance output
     "hybrid": "#8c2d9e",     # variance root where unique, position ratio where not
+    "twin": "#9e9e9e",       # the always-fuse twin, beside the causal network
 }
 
 

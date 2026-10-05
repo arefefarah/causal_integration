@@ -407,8 +407,8 @@ results/prior_sweep/
 ```
 
 Every figure is written as `.png`, `.tif` and `.svg` side by side, at its
-printed size and to the PLOS ONE specification (`viz/style.py`); manuscript and
-sweep figures also get a `.pdf`.
+printed size and to the PLOS ONE specification (`viz/style.py`); no `.pdf`
+is written.
 
 Two stage boundaries earn their keep. Numbers are separated from figures, so you
 can re-plot without refitting decoders and diff `metrics.json` between runs. And
@@ -572,4 +572,8 @@ that investigation converged on became `configs/flagship.yaml` (the previous
 one is `flagship_wide.yaml`), the old flagship family's results were deleted,
 and the whole family — six runs with twins, the 27-network prior sweep, the
 manuscript figures and the `06` experiment — was rerun on 2026-10-02/03;
-`GUIDE.md` and `CROSS_PRIOR_RESULT.md` carry that rerun's numbers.
+`GUIDE.md` and `CROSS_PRIOR_RESULT.md` carry that rerun's numbers. On
+2026-10-03 the manuscript's figure 2B became the implied weight on the
+posterior (in place of the position regression) and figure 7 — the posterior
+decoded by layer beside the RF shift gains — was added to
+`results/manuscript/` (GUIDE §9.4).

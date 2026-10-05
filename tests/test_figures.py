@@ -229,6 +229,146 @@ def test_manuscript_panels_figure_2_is_weight_regression(tmp_path):
         plt.close(fig)
 
 
+def test_decoding_panel_is_thin_labelled_bars_on_the_wide_cell():
+    """Figure 7A: held-out R² per hidden layer, the causal network beside its
+    twin, narrow bars carrying their values, the layers named as the paper
+    names them, and headroom above the tallest bar for the legend."""
+    from matplotlib import pyplot as plt
+
+    from cmsi.viz import results
+    causal = {"layer0": 0.888, "layer1": 0.973}
+    twin = {"layer0": 0.365, "layer1": 0.288}
+    fig = results.panel_decoding(causal, twin)
+    ax = fig.axes[0]
+    assert tuple(fig.get_size_inches()) == tuple(results.CELL_WIDE)
+    bars = [p for p in ax.patches if p.get_width() > 0]
+    assert len(bars) == 4 and {round(b.get_width(), 3) for b in bars} == {0.2}
+    assert [t.get_text() for t in ax.get_xticklabels()] == ["SIL", "MSL"]
+    values = {t.get_text() for t in ax.texts}
+    assert {"0.89", "0.97", "0.36", "0.29"} <= values           # every bar labelled
+    labels = [t.get_text() for t in ax.get_legend().get_texts()]
+    assert labels == ["causal network", "always-fuse twin"]
+    assert ax.get_ylim() == (0, 1.45) and max(ax.get_yticks()) == 1.0
+    # the twin's bars are grey, the network's the network colour
+    colours = {b.get_facecolor() for b in bars}
+    assert len(colours) == 2
+    plt.close(fig)
+    # without a twin: two bars, no legend entry for it
+    fig = results.panel_decoding(causal)
+    assert len([p for p in fig.axes[0].patches if p.get_width() > 0]) == 2
+    plt.close(fig)
+
+
+def test_model_decoding_figures_are_drawn_like_the_manuscript_panel():
+    """06_decoding / 07_emergent_vs_imposed share figure 7A's drawing: narrow
+    bars carrying their values, SIL/MSL names, the twin in grey, headroom
+    for the legend; on the single-panel figure size."""
+    from matplotlib import pyplot as plt
+
+    from cmsi.viz import results
+    from cmsi.viz.style import COLORS
+    causal = {"layer0": 0.888, "layer1": 0.973}
+    twin = {"layer0": 0.365, "layer1": 0.288}
+    fig = results.decoding_comparison({"causal network": causal, "always-fuse twin": twin})
+    ax = fig.axes[0]
+    assert tuple(fig.get_size_inches()) == tuple(SIZE["single"])
+    bars = [p for p in ax.patches if p.get_width() > 0]
+    assert len(bars) == 4 and {round(b.get_width(), 3) for b in bars} == {0.2}
+    assert [t.get_text() for t in ax.get_xticklabels()] == ["SIL", "MSL"]
+    assert {"0.89", "0.97", "0.36", "0.29"} <= {t.get_text() for t in ax.texts}
+    assert [t.get_text() for t in ax.get_legend().get_texts()] == [
+        "causal network", "always-fuse twin"]
+    from matplotlib.colors import to_hex
+    assert {to_hex(b.get_facecolor()) for b in bars} == {COLORS["network"], COLORS["twin"]}
+    assert ax.get_ylim() == (0, 1.3) and max(ax.get_yticks()) == 1.0
+    plt.close(fig)
+    fig = results.decoding_bars(causal)
+    ax = fig.axes[0]
+    assert len([p for p in ax.patches if p.get_width() > 0]) == 2
+    assert [t.get_text() for t in ax.get_xticklabels()] == ["SIL", "MSL"]
+    assert {"0.89", "0.97"} <= {t.get_text() for t in ax.texts}
+    assert ax.get_legend() is None
+    plt.close(fig)
+
+
+def test_rf_shift_panel_marks_both_reference_frames():
+    """Figure 7B: the gains in 0.1-wide bins aligned to zero, the x range
+    always holding both the spatial (0) and the retinal (+1) marks, the
+    median in the title."""
+    from matplotlib import pyplot as plt
+
+    from cmsi.viz import results
+    rng = np.random.default_rng(0)
+    g = np.clip(rng.normal(-0.1, 0.3, 64), -1.2, 0.4)
+    fig = results.panel_rf_shift({"rf_shift_gain": g})
+    ax = fig.axes[0]
+    assert tuple(fig.get_size_inches()) == tuple(results.CELL_WIDE)
+    lo, hi = ax.get_xlim()
+    assert lo <= min(-0.5, g.min()) and hi >= 1.3                 # both marks inside
+    widths = {round(p.get_width(), 6) for p in ax.patches}
+    assert widths == {0.1}
+    assert all(round(p.get_x() / 0.1, 6) == round(p.get_x() / 0.1) for p in ax.patches)
+    marks = sorted(ln.get_xdata()[0] for ln in ax.lines)
+    assert marks == [0.0, 1.0]
+    labels = [t.get_text() for t in ax.get_legend().get_texts()]
+    assert labels == ["spatial code (0)", "retinal code (+1)"]
+    assert f"median {np.median(g):.2f}" in ax.get_title()
+    counts = sum(p.get_height() for p in ax.patches)
+    assert counts == 64 and ax.get_ylim()[1] > max(p.get_height() for p in ax.patches)
+    plt.close(fig)
+
+
+def test_manuscript_panels_figure_7_is_decoding_and_rf_shift(tmp_path):
+    """The manuscript's figure 7 is A the posterior decoded by layer, B the RF
+    shift gains, two wide cells in one 7.5 x 2.5 in row; it is skipped
+    cleanly when the run has no decoding or no RF sweep."""
+    from matplotlib import pyplot as plt
+
+    from cmsi.viz import results
+    rng = np.random.default_rng(3)
+    n = 400
+    names = ["mu_vis", "var_vis", "mu_prop", "var_prop"]
+    post = rng.uniform(0, 1, n)
+    d = {"disparity": rng.uniform(-30, 30, n), "post_c1": post,
+         "mu_vis": rng.normal(size=n), "var_vis": rng.uniform(2, 6, n),
+         "mu_prop": rng.normal(size=n), "var_prop": rng.uniform(2, 6, n)}
+    pred = np.stack([d[k] for k in names], axis=1) + rng.normal(scale=0.1, size=(n, 4))
+    centres = np.linspace(-30, 30, 7)
+    saved = {"bias_centres": centres, "bias_net": np.sin(centres / 8),
+             "bias_centres_opt": centres, "bias_opt": np.sin(centres / 8),
+             "hybrid_flags_vis": np.where(post > 0.5, 0, 1),
+             "rf_shift_gain": rng.normal(0, 0.3, 64)}
+    metrics = {"weight_regression_vis": {"slope": 0.97, "intercept": 0.0,
+                                         "slope_ci95": [0.96, 0.98]},
+               "post_c1_decoding_r2": {"layer0": 0.9, "layer1": 0.97},
+               "twin_post_c1_decoding_r2": {"layer0": 0.3, "layer1": 0.3}}
+    w = post + rng.normal(scale=0.1, size=n)
+    figs = results.manuscript_panels(pred, d, names, {"disparity_grid": centres.tolist()},
+                                     w, w, saved, metrics)
+    keys = {k for k in figs if k.startswith(results.F7)}
+    assert keys == {f"{results.F7}/A_decoding", f"{results.F7}/B_rf_shift",
+                    f"{results.F7}/row_AB"}
+    row = figs[f"{results.F7}/row_AB"]
+    assert tuple(row.get_size_inches()) == (7.5, 2.5)
+    assert [ax.get_title()[:22] for ax in row.axes] == [
+        "where the causal poste", "reference frame of MSL"]
+    assert [t.get_text() for ax in row.axes for t in ax.texts if t.get_text() in "AB"] == ["A", "B"]
+    paths = save_figures({f"{results.F7}/row_AB": row}, tmp_path, formats=("svg", "png"))
+    assert all(p.parent == tmp_path / results.F7 for p in paths)
+    text = (tmp_path / results.F7 / "row_AB.svg").read_text(encoding="utf-8")
+    assert tuple(sorted(set(re.findall(r"font-size: ?([\d.]+)px", text)))) == ("12", "8", "9")
+    for fig in figs.values():
+        plt.close(fig)
+    # no decoding in metrics -> no figure 7, nothing else lost
+    metrics.pop("post_c1_decoding_r2")
+    figs = results.manuscript_panels(pred, d, names, {"disparity_grid": centres.tolist()},
+                                     w, w, saved, metrics)
+    assert not any(k.startswith(results.F7) for k in figs)
+    assert f"{results.F2}/row_ABC" in figs
+    for fig in figs.values():
+        plt.close(fig)
+
+
 def test_manuscript_panels_share_frame_axes_and_fonts(tmp_path):
     svgs, figs = _trio(tmp_path)
     sizes, rects, fonts = set(), set(), set()

@@ -1822,8 +1822,8 @@ at 300 dpi, in Arial (Liberation Sans on Linux, which is metrically identical)
 with every font between 8 and 12 pt, and lettered panels on every multi-panel
 figure. Each figure is saved three times: `.png` to look at, `.tif` for
 submission (flattened RGB, no alpha channel, LZW-compressed, 300 dpi metadata),
-and `.svg` to edit. The sweep figures additionally get a `.pdf` for the LaTeX
-draft. `save_figures` reads every file back and warns if it breaks a limit;
+and `.svg` to edit; no `.pdf` is written. `save_figures` reads every file
+back and warns if it breaks a limit;
 `tests/test_figures.py` pins the contract.
 
 **About the SVGs.** They are the same physical size as the raster files, text
@@ -1929,11 +1929,18 @@ configuration the levels (1.0, 1.1, 1.2 deg²) span the whole of the narrow
 analytical midpoints move by only 0.1° across the five levels.
 
 **`06_decoding.png`** — bar chart of held-out R² for decoding `post_c1` from
-each hidden layer. Your flagship: 0.888 at SIL, 0.973 at MSL.
+each hidden layer, the layers named SIL and MSL as the paper names them.
+Your flagship: 0.888 at SIL, 0.973 at MSL.
 
-**`07_emergent_vs_imposed.png`** — the same bars for the causal model and the
-always-fuse twin side by side. Your flagship: 0.888/0.973 against 0.365/0.288.
-The contrast is the emergence argument (§7.8 on why the SIL bar is now high).
+**`07_emergent_vs_imposed.png`** — the same bars for the causal network and
+the always-fuse twin (grey) side by side. Your flagship: 0.888/0.973 against
+0.365/0.288. The contrast is the emergence argument (§7.8 on why the SIL bar
+is now high). Since 2026-10-03 both figures are drawn by the routine behind
+the manuscript's figure 7A (`results._draw_decoding`): bars 0.2 of the group
+spacing wide rather than matplotlib's 0.4, each carrying its value, the y
+axis with headroom above 1.0 for the labels and the legend. On a control the
+posterior is constant and the decoder's R² is slightly negative (−0.04); the
+label then sits on the baseline rather than below the axes.
 
 **`08_position_regression.png`** — the headline. Scatter of
 `(network − seg)` against `post_c1 · (fused − seg)`, both in degrees, with the
@@ -2024,7 +2031,8 @@ quoting either sign.
 **`14_rf_shifts.png`** — two histograms. Left: distribution of RF shift gain
 across MSL units, with 0 (spatial code) and +1 (retinal code) marked. Right:
 distribution of gain-field slopes. Your flagship median shift gain: −0.087
-(±0.1 across the family, against +1 for a retinal code).
+(±0.1 across the family, against +1 for a retinal code). The left histogram
+is panel B of the manuscript's figure 7 (§9.4).
 
 **`15_weight_vs_posterior.png`** — the implied weight against the analytical
 posterior in 10 equal-width posterior bins, every trial
@@ -2061,7 +2069,7 @@ one folder per figure, whichever run produced them (the flagship run for the
 per-run figures, the sweep for the cross-prior figure). Rendering a run other
 than the flagship writes to `results/manuscript_<run>/` instead, so a
 satellite can never overwrite the paper's figures. Each folder holds every
-format of its figure — `.png`, `.tif`, `.svg` and `.pdf` — saved at exactly
+format of its figure — `.png`, `.tif` and `.svg` — saved at exactly
 the frame (`viz.exact_frame`) rather than cropped to content, which is what
 lets panels tile edge to edge.
 
@@ -2093,6 +2101,7 @@ every panel from here on, unless a figure is explicitly given another size.
 | `output_scatter_2x2/` | `output_scatter_2x2` | 2 × 2 squares, A B / C D | 5.0 × 5.0 | `01_output_scatter` |
 | `error_histograms_2x2/` | `error_histograms_2x2` | 2 × 2 squares, A B / C D | 5.0 × 5.0 | `02_error_histograms` |
 | `fig4_variance_hump/` | `row_AB` | 1 × 2 wides | 7.5 × 2.5 | `09_variance_hump_vis`, `10_variance_hump_prop` |
+| `fig7_decoding_rf_shift/` | `A_decoding`, `B_rf_shift`, `row_AB` | 2 wides; 1 × 2 row | 3.75 × 2.5 each; 7.5 × 2.5 | `07_emergent_vs_imposed`, left half of `14_rf_shifts` |
 | `prior_sweep/` | `prior_sweep_ABC` | a full over two wides | 7.5 × 5.0 | the cross-prior figure (§8.2, §9.5) |
 
 (Folders without a figure number are named by content until one is assigned;
@@ -2122,7 +2131,23 @@ Deliberate details, all measured rather than estimated:
 - in the cross-prior figure the colourbar is carved from panel A's axes width
   (0.62 in) so the cell's outer margins are untouched, and the y labels are
   shortened to fit a 1.75-in axes ("implied fusion weight", "network
-  midpoint (deg)").
+  midpoint (deg)");
+- figure 7 (`panel_decoding`, `panel_rf_shift`, added 2026-10-03) is two wide
+  cells like figure 4. Panel A: held-out R² for p(C=1|x) per hidden layer,
+  the causal network (blue) beside its always-fuse twin (grey,
+  `COLORS["twin"]`), the layers named SIL and MSL as the paper names them;
+  the bars are 0.2 of the group spacing wide (0.28 in) rather than
+  matplotlib's 0.4, each carries its value in 8 pt above it, and the y axis
+  runs to 1.45 with ticks to 1.0 so the two-entry legend sits above the
+  "0.97" label rather than on it. Panel B: the RF shift gains of the 64 MSL
+  units in 0.1-wide bins aligned to zero, white bar edges, the spatial (0,
+  dashed) and retinal (+1, dotted) marks as vertical lines; the x range
+  always includes both marks, so the retinal mark stands alone on the
+  right (the gains run −1.3 to 0.4), the legend sits upper left over the
+  low tail, 40 % headroom as in figure 4, and the median is in the title
+  the way the error histograms carry their bias. Skipped, with a message,
+  when `metrics.json` has no `post_c1_decoding_r2` or `analysis.npz` no
+  `rf_shift_gain`.
 
 The tests parse the SVGs and assert the cell size, identical axes rectangles
 across cells, the font-size set, and that no artist crosses its own cell's
@@ -2144,8 +2169,8 @@ former.
 Produced by `scripts/05_prior_sweep.py`, not by `04_figures.py`. These are not
 per-run figures: each one summarises all 27 networks.
 
-**`prior_sweep.png`** (with `.tif` for submission, `.svg` to edit and `.pdf` for
-LaTeX) — the main figure, three panels, 7.5 in wide. Its manuscript version,
+**`prior_sweep.png`** (with `.tif` for submission and `.svg` to edit) — the
+main figure, three panels, 7.5 in wide. Its manuscript version,
 on the standard panel, is `results/manuscript/prior_sweep/prior_sweep_ABC`
 (§9.4).
 

@@ -147,12 +147,49 @@ def weight_vs_posterior(res, output_name="vis"):
     return fig
 
 
-def decoding_bars(scores, title="p(C=1) decodable from"):
+LAYER_NAMES = {"layer0": "SIL", "layer1": "MSL"}   # the manuscript's names
+SERIES_COLOURS = (COLORS["network"], COLORS["twin"], COLORS["prop"], COLORS["eye"])
+
+
+def _draw_decoding(ax, series, bar_width=0.2, gap=0.06, ylim_top=1.45,
+                   value_fontsize=8):
+    """Held-out R² for p(C=1|x) per hidden layer as grouped bars: one group
+    per layer, one bar per series -- (label, {layer: r2}, colour) -- the
+    layers named as the paper names them (SIL, MSL).
+
+    The bars are narrow (`bar_width` of the group spacing, against
+    matplotlib's 0.4 for two series) and each carries its value, since the
+    numbers (0.97 against 0.29) are the result; the y limit leaves room
+    above a bar of 1.0 for its label and the legend. Shared by the model
+    figures 06/07 and the manuscript's figure 7A, so the three agree.
+    """
+    present = {k for _, scores, _ in series for k in scores}
+    layers = [k for k in LAYER_NAMES if k in present] or sorted(present)
+    x = np.arange(len(layers), dtype=float)
+    offsets = (np.arange(len(series)) - (len(series) - 1) / 2) * (bar_width + gap)
+    for (label, scores, col), off in zip(series, offsets, strict=True):
+        vals = [float(scores.get(k, np.nan)) for k in layers]
+        ax.bar(x + off, vals, bar_width, color=col, label=label)
+        for xi, v in zip(x + off, vals, strict=True):
+            if np.isfinite(v):
+                # a control's R² is slightly negative (constant posterior):
+                # its label sits on the baseline rather than below the axes
+                ax.text(xi, max(v, 0.0) + 0.02, f"{v:.2f}", ha="center",
+                        va="bottom", fontsize=value_fontsize)
+    ax.set_xticks(x, [LAYER_NAMES.get(k, k) for k in layers])
+    ax.set_xlim(-0.6, len(layers) - 0.4)
+    ax.set_ylim(0, ylim_top)
+    ax.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
+    ax.grid(False, axis="x")
+    return layers
+
+
+def decoding_bars(scores, title="p(C=1|x) decodable from"):
     """scores: {layer_name: held-out r2} -- i.e. analysis.summarise output."""
-    names = list(scores)
     fig, ax = plt.subplots(figsize=SIZE["single"])
-    ax.bar(names, [scores[n] for n in names], color=COLORS["network"])
-    ax.set(ylabel="held-out R2", ylim=(0, 1), title=title)
+    _draw_decoding(ax, [("causal network", scores, COLORS["network"])],
+                   ylim_top=1.15, value_fontsize=9)      # no legend: less headroom
+    ax.set(xlabel="hidden layer", ylabel="held-out R² for p(C=1|x)", title=title)
     fig.tight_layout()
     return fig
 
@@ -162,17 +199,15 @@ def decoding_comparison(by_model, title="emergent vs imposed"):
 
     If p(C=1) is decodable from the twin -- which was never asked for it -- the
     latent emerges from the integration task rather than from the objective.
+    Drawn as the manuscript's figure 7A is (narrow bars carrying their values,
+    the twin in grey), on the single-panel figure size.
     """
-    layers = sorted({k for v in by_model.values() for k in v})
-    width = 0.8 / len(by_model)
-    x = np.arange(len(layers))
-
+    series = [(label, scores, SERIES_COLOURS[i % len(SERIES_COLOURS)])
+              for i, (label, scores) in enumerate(by_model.items())]
     fig, ax = plt.subplots(figsize=SIZE["single"])
-    for i, (label, scores) in enumerate(by_model.items()):
-        ax.bar(x + i * width, [scores.get(k, 0) for k in layers], width, label=label)
-    ax.set_xticks(x + width * (len(by_model) - 1) / 2, layers)
-    ax.set(ylabel="held-out R2 for p(C=1)", ylim=(0, 1), title=title)
-    ax.legend()
+    _draw_decoding(ax, series, ylim_top=1.3, value_fontsize=9)
+    ax.set(xlabel="hidden layer", ylabel="held-out R² for p(C=1|x)", title=title)
+    ax.legend(loc="upper right")
     fig.tight_layout()
     return fig
 
@@ -484,7 +519,7 @@ def all_figures(pred, d, names, analysis_cfg, w=None, curves=None,
         figs["06_decoding"] = decoding_bars(decoding)
     if decoding and twin_decoding:
         figs["07_emergent_vs_imposed"] = decoding_comparison(
-            {"causal model": decoding, "always-fuse twin": twin_decoding})
+            {"causal network": decoding, "always-fuse twin": twin_decoding})
 
     if "position_regression_vis" in metrics:
         i = names.index("mu_vis")
@@ -710,6 +745,56 @@ def panel_variance_hump(sig, output_name, legend=True, ax=None):
     return fig
 
 
+def panel_decoding(causal, twin=None, ax=None, bar_width=0.2):
+    """07_emergent_vs_imposed on the WIDE cell: held-out R² for the trial-wise
+    posterior p(C=1|x) from each hidden layer, the causal network beside its
+    always-fuse twin (same architecture and inputs, fused targets only),
+    which is the controlled contrast. Drawn by `_draw_decoding`, like the
+    model figure: narrow bars (0.28 in on the wide cell) carrying their
+    values. The headroom is larger here -- on a 1.75-in axes the two-entry
+    legend spans about a quarter of the range, and a value label stands
+    about 0.1 above a bar of 1.0 (measured on the render).
+    """
+    ax = _panel_axes(ax, cell=CELL_WIDE)
+    series = [("causal network", causal, COLORS["network"])]
+    if twin:
+        series.append(("always-fuse twin", twin, COLORS["twin"]))
+    _draw_decoding(ax, series, bar_width=bar_width, ylim_top=1.45,
+                   value_fontsize=PANEL_FONT["legend"])
+    return _finish_panel(ax, "hidden layer", "held-out R² for p(C=1|x)",
+                         "where the causal posterior is decodable", "upper right")
+
+
+def panel_rf_shift(saved, ax=None, bin_width=0.1):
+    """The left half of 14_rf_shifts on the WIDE cell: the RF shift gain of
+    every MSL unit (d preferred spatial position / d eye position) with the
+    two reference frames marked -- 0, a spatial (body-frame) code; +1, a
+    retinal one. The x range always includes both marks, so a spatial code
+    reads as a pile at zero with the retinal mark standing alone; the bins
+    are `bin_width` wide and aligned to zero. The median goes in the title,
+    the way the error histograms carry their bias.
+    """
+    ax = _panel_axes(ax, cell=CELL_WIDE)
+    g = np.asarray(saved["rf_shift_gain"], float)
+    g = g[np.isfinite(g)]
+    lo = min(-0.5, np.floor(g.min() / bin_width) * bin_width)
+    hi = max(1.3, np.ceil(g.max() / bin_width) * bin_width)
+    edges = np.round(np.arange(lo, hi + bin_width / 2, bin_width), 6)
+    counts, _, _ = ax.hist(g, bins=edges, color=COLORS["network"],
+                           edgecolor="white", linewidth=0.4)
+    ax.axvline(0, ls="--", lw=PANEL_LW, color=COLORS["analytical"],
+               label="spatial code (0)")
+    ax.axvline(1, ls=":", lw=PANEL_LW, color=COLORS["analytical"],
+               label="retinal code (+1)")
+    ax.set_xlim(lo, hi)
+    # headroom for the legend (upper left, over the low tail), as in figure 4
+    ax.set_ylim(0, 1.4 * max(counts.max(), 1))
+    return _finish_panel(ax, "RF shift gain (Δ preferred position / Δ eye)",
+                         "MSL units",
+                         f"reference frame of MSL units   median {np.median(g):.2f}",
+                         "upper left")
+
+
 def manuscript_row(draw):
     """Three standard panels in one 7.5 x 2.5 in figure, lettered A-C."""
     return manuscript_grid(draw, ncols=3)
@@ -721,6 +806,7 @@ F2 = "fig2_weight_regression_bias"
 FSC = "output_scatter_2x2"                   # figure number not yet assigned
 FEH = "error_histograms_2x2"                 # figure number not yet assigned
 F4 = "fig4_variance_hump"
+F7 = "fig7_decoding_rf_shift"
 
 
 def manuscript_panels(pred, d, names, analysis_cfg, w, w_prop, saved, metrics):
@@ -784,4 +870,22 @@ def manuscript_panels(pred, d, names, analysis_cfg, w, w_prop, saved, metrics):
         figs[f"{F4}/row_AB"] = manuscript_grid(vh, ncols=2, cell=CELL_WIDE)
     else:
         print("figure 4 skipped: no variance_signature in metrics.json")
+    # figure 7: the posterior decoded by layer (06/07), causal network beside
+    # its twin, and the RF shift gains of the MSL units (14) -- two WIDE
+    # cells, 7.5 x 2.5 in, the same outer size as figures 2 and 4
+    if "post_c1_decoding_r2" in metrics and "rf_shift_gain" in files:
+        dec, twin = metrics["post_c1_decoding_r2"], metrics.get("twin_post_c1_decoding_r2")
+
+        def dc(ax=None):
+            return panel_decoding(dec, twin, ax=ax)
+
+        def rf(ax=None):
+            return panel_rf_shift(saved, ax=ax)
+
+        figs[f"{F7}/A_decoding"] = dc()
+        figs[f"{F7}/B_rf_shift"] = rf()
+        figs[f"{F7}/row_AB"] = manuscript_grid([dc, rf], ncols=2, cell=CELL_WIDE)
+    else:
+        print("figure 7 skipped: needs post_c1_decoding_r2 in metrics.json and "
+              "rf_shift_gain in analysis.npz")
     return figs

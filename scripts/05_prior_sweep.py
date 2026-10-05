@@ -242,14 +242,14 @@ def draw(out, agg, curves):
             "variance_hump_vs_prior": hump_panel(agg).figure}
     # png to look at, tif for submission (PLOS: flattened RGB, LZW, 300 dpi),
     # svg to edit, pdf as a vector copy for the LaTeX draft
-    save_figures(figs, out / "figures", formats=("png", "tif", "svg", "pdf"))
+    save_figures(figs, out / "figures", formats=("png", "tif", "svg"))
     print(f"wrote {out/'figures'}/prior_sweep and variance_hump_vs_prior "
-          f"(.png, .tif, .svg, .pdf)")
+          f"(.png, .tif, .svg)")
     # and the manuscript version, on the standard panel, in its own folder
     mdir = manuscript_dir()
     save_figures({f"{FOLDER}/prior_sweep_ABC": manuscript_figure(agg, curves)},
-                 mdir, formats=("png", "tif", "svg", "pdf"))
-    print(f"wrote {mdir / FOLDER}/prior_sweep_ABC (.png, .tif, .svg, .pdf)")
+                 mdir, formats=("png", "tif", "svg"))
+    print(f"wrote {mdir / FOLDER}/prior_sweep_ABC (.png, .tif, .svg)")
 
 
 def replot(min_count=None, max_se=None):

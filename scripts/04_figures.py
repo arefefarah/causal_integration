@@ -92,7 +92,7 @@ def main(args):
                 saved["pred"], d, d_full["target_names"], cfg["analysis"],
                 w, w_prop, saved, metrics)
             mdir = manuscript_dir(args.run)
-            written += save_figures(figs, mdir, formats=("png", "tif", "svg", "pdf"))
+            written += save_figures(figs, mdir, formats=("png", "tif", "svg"))
             print(f"manuscript figures from run '{args.run}' -> {mdir}")
 
     for path in written:
