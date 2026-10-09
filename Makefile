@@ -4,7 +4,7 @@
 # environment first.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup test lint format calibrate data train analyze figures all quick sweep clean clean-runs
+.PHONY: help setup test lint format calibrate data train analyze figures neuronal all quick sweep clean clean-runs
 
 RUN    ?= baseline
 DATA   ?= main
@@ -45,6 +45,9 @@ analyze:  ## compare RUN against the analytical observer
 
 figures:  ## render every figure for RUN
 	poetry run python scripts/04_figures.py --run $(RUN)
+
+neuronal:  ## the neuronal-level analyses of RUN (Figs. 4, 9, 10), no torch needed  (make neuronal RUN=flagship)
+	poetry run python scripts/neuronal/run.py --run $(RUN)
 
 all:  ## whole pipeline + control twin  (make all CONFIG=configs/wide_rf.yaml)
 	poetry run bash scripts/run_all.sh --config $(CONFIG)

@@ -247,9 +247,9 @@ def draw(out, agg, curves):
           f"(.png, .tif, .svg)")
     # and the manuscript version, on the standard panel, in its own folder
     mdir = manuscript_dir()
-    save_figures({f"{FOLDER}/prior_sweep_ABC": manuscript_figure(agg, curves)},
+    save_figures({f"{FOLDER}/{FOLDER}": manuscript_figure(agg, curves)},
                  mdir, formats=("png", "tif", "svg"))
-    print(f"wrote {mdir / FOLDER}/prior_sweep_ABC (.png, .tif, .svg)")
+    print(f"wrote {mdir / FOLDER}/{FOLDER} (.png, .tif, .svg) and {mdir}/{FOLDER}.png")
 
 
 def replot(min_count=None, max_se=None):

@@ -3,7 +3,7 @@
 **Figure:** `results/prior_sweep/figures/prior_sweep.tif` (PLOS submission copy:
 7.5 in wide, 300 dpi, flattened RGB, LZW), with `.png` to view, `.svg` to edit
 and `.pdf` for LaTeX; the standard-panel version for the manuscript is
-`results/manuscript/prior_sweep/prior_sweep_ABC`
+`results/manuscript/fig7_prior_sweep/fig7_prior_sweep` (named `prior_sweep/prior_sweep_ABC` until 5 Oct 2026 and `fig6_prior_sweep` until 6 Oct 2026)
 **Supplementary:** `results/prior_sweep/figures/variance_hump_vs_prior.tif`
 (+ `.png`, `.svg`, `.pdf`)
 **Data:** `results/prior_sweep/sweep.json`, `results/prior_sweep/curves.npz`
@@ -87,7 +87,7 @@ Two details visible in the panel are deliberate:
 - **The grid is the manuscript's 18-bin grid** from −30° to +30° with its two
   innermost edges at ±1.5°; it predates the hybrid read and is kept so that
   old and new sweeps draw on the same bins. (The per-run figures — 04, 12,
-  manuscript Fig. 2A/C — use the config's `disparity_grid`, since 2026-10-03
+  manuscript Fig. 4A/C — use the config's `disparity_grid`, since 2026-10-03
   19 centres from −30° to +30° in 2° steps across the transition; same range,
   different bins, and a 0° centre that this grid does not have.)
 - **Two guards, and gaps break the line.** A bin is dropped when it holds

@@ -33,6 +33,7 @@ that has Arial. The stack below tries Arial first and falls through.
 """
 
 import io
+import shutil
 import warnings
 from pathlib import Path
 
@@ -284,22 +285,28 @@ def check_plos(path):
 FORMATS = ("png", "tif", "svg")
 
 
-def save_figures(figs, outdir, formats=FORMATS, close=True, check=True):
+def save_figures(figs, outdir, formats=FORMATS, close=True, check=True, flat=True):
     """figs: {name: Figure}. Writes {outdir}/{name}.{fmt} for each format.
 
     "png" is the working copy (300 dpi, for the guide and for looking at);
     "tif" is the submission copy (flattened RGB, LZW); "svg" is the editable
-    vector copy; "pdf" is vector too, for a LaTeX draft. Every png/tif/svg is
-    read back and checked against the PLOS limits; a violation is a warning,
-    not an error, so a figure that runs a little wide still gets written and
-    the message says by how much. Returns the paths.
+    vector copy. Every png/tif/svg is read back and checked against the PLOS
+    limits; a violation is a warning, not an error, so a figure that runs a
+    little wide still gets written and the message says by how much. Returns
+    the paths.
+
+    A key like "fig5_variance_hump/fig5_variance_hump" is a COMPOSED
+    manuscript figure, named as its folder: with `flat` a copy of its png is
+    also written one level up (outdir/fig5_variance_hump.png), so the
+    manuscript's figures can be uploaded from one flat listing. Panels
+    ("fig5_variance_hump/A_...") get no copy. The copies are not returned.
     """
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
     paths = []
     for name, fig in figs.items():
-        # a key like "fig4_variance_hump/row_AB" puts every format of that
-        # figure in its own subfolder
+        # a key like "fig5_variance_hump/A_variance_hump_vis" puts every
+        # format of that figure in its own subfolder
         (outdir / name).parent.mkdir(parents=True, exist_ok=True)
         for fmt in formats:
             path = outdir / f"{name}.{fmt}"
@@ -315,6 +322,8 @@ def save_figures(figs, outdir, formats=FORMATS, close=True, check=True):
                 rep = check_plos(path)
                 for p in rep["problems"]:
                     warnings.warn(f"{path.name}: {p}", stacklevel=2)
+            if flat and fmt == "png" and path.stem == path.parent.name and path.parent != outdir:
+                shutil.copyfile(path, path.parent.parent / path.name)
         if close:
             plt.close(fig)
     return paths

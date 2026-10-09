@@ -18,12 +18,21 @@ from cmsi.analysis.causal import (binned_weight, hybrid_weight,     # noqa: E402
                                   transition_fit, variance_signature)
 from cmsi.analysis.decoding import decode                            # noqa: E402
 from cmsi.data.encoding import encode                                # noqa: E402
-from cmsi.viz.manuscript import (CELL_SQUARE, CELL_WIDE, PANEL_FONT,  # noqa: E402,F401
+from cmsi.viz.manuscript import (CELL_SQUARE, CELL_WIDE, FIG_BIAS,    # noqa: E402,F401
+                                 FIG_LESION, FIG_UNITS, PANEL_FONT,   # (FIG_*: paper names)
                                  PANEL_LW, PANEL_MS, finish_panel,
-                                 manuscript_grid, panel_axes)
+                                 manuscript_dir, manuscript_grid, panel_axes)
 from cmsi.viz.style import COLORS, apply_style, save_figures         # noqa: E402,F401
 
-OUT = ROOT / "results" / "neuronal_level_analysis"
+
+
+def out_dir(run="flagship"):
+    """Where the neuronal-level analyses of `run` go: beside the run's other
+    model figures, results/<run>/figures/model/neuronal_level_analysis/, one
+    folder per figure (composed figure named as its folder, panels, numbers)."""
+    return ROOT / "results" / run / "figures" / "model" / "neuronal_level_analysis"
+
+
 CLASS_COLORS = {"congruent": "#1f77b4", "opposite": "#d62728", "mixed": "#ccbb44"}  # mixed: rgb(204,187,68), never the grey of the random bands or the intact bars
 CLASSES = ("congruent", "opposite", "mixed")
 OUTPUT_NAMES = ("mu_vis", "var_vis", "mu_prop", "var_prop")

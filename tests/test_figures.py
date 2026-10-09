@@ -12,6 +12,7 @@ checked at write time by `save_figures` itself, which warns on a violation.
 import re
 import warnings
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -170,7 +171,7 @@ def _trio(tmp_path):
 
 
 def test_weight_regression_panel_has_both_legends_and_the_shares(tmp_path):
-    """Figure 2B: the hybrid read against the posterior, sources in one legend
+    """Figure 4B: the hybrid read against the posterior, sources in one legend
     (lower right, with their shares of all trials), the two lines in the
     other (upper left), on the standard panel with panel A's y range."""
     from cmsi.viz import results
@@ -195,8 +196,8 @@ def test_weight_regression_panel_has_both_legends_and_the_shares(tmp_path):
     assert drawn == 500
 
 
-def test_manuscript_panels_figure_2_is_weight_regression(tmp_path):
-    """The manuscript's figure 2 is A fusion weight, B the hybrid read on the
+def test_manuscript_panels_figure_4_is_weight_regression(tmp_path):
+    """The manuscript's figure 4 is A fusion weight, B the hybrid read on the
     posterior (08v panel B), C bias vs disparity; the position regression is
     no longer a manuscript panel."""
     from matplotlib import pyplot as plt
@@ -219,10 +220,11 @@ def test_manuscript_panels_figure_2_is_weight_regression(tmp_path):
     w = post + rng.normal(scale=0.1, size=n)
     figs = results.manuscript_panels(pred, d, names, {"disparity_grid": centres.tolist()},
                                      w, w, saved, metrics)
-    keys = {k for k in figs if k.startswith(results.F2)}
-    assert keys == {f"{results.F2}/A_fusion_weight", f"{results.F2}/B_weight_regression",
-                    f"{results.F2}/C_bias_vs_disparity", f"{results.F2}/row_ABC"}
-    row = figs[f"{results.F2}/row_ABC"]
+    F = results.FIG_WEIGHT
+    keys = {k for k in figs if k.startswith(F)}
+    assert keys == {f"{F}/A_fusion_weight", f"{F}/B_weight_regression",
+                    f"{F}/C_bias_vs_disparity", f"{F}/{F}"}
+    row = figs[f"{results.FIG_WEIGHT}/{results.FIG_WEIGHT}"]
     assert [ax.get_title() for ax in row.axes] == [
         "fusion-segregation transition", "implied weight vs posterior", "bias vs disparity"]
     for fig in figs.values():
@@ -230,7 +232,7 @@ def test_manuscript_panels_figure_2_is_weight_regression(tmp_path):
 
 
 def test_decoding_panel_is_thin_labelled_bars_on_the_wide_cell():
-    """Figure 7A: held-out R² per hidden layer, the causal network beside its
+    """Figure 9A: held-out R² per hidden layer, the causal network beside its
     twin, narrow bars carrying their values, the layers named as the paper
     names them, and headroom above the tallest bar for the legend."""
     from matplotlib import pyplot as plt
@@ -260,7 +262,7 @@ def test_decoding_panel_is_thin_labelled_bars_on_the_wide_cell():
 
 
 def test_model_decoding_figures_are_drawn_like_the_manuscript_panel():
-    """06_decoding / 07_emergent_vs_imposed share figure 7A's drawing: narrow
+    """06_decoding / 07_emergent_vs_imposed share figure 9A's drawing: narrow
     bars carrying their values, SIL/MSL names, the twin in grey, headroom
     for the legend; on the single-panel figure size."""
     from matplotlib import pyplot as plt
@@ -292,7 +294,7 @@ def test_model_decoding_figures_are_drawn_like_the_manuscript_panel():
 
 
 def test_rf_shift_panel_marks_both_reference_frames():
-    """Figure 7B: the gains in 0.1-wide bins aligned to zero, the x range
+    """Figure 9B: the gains in 0.1-wide bins aligned to zero, the x range
     always holding both the spatial (0) and the retinal (+1) marks, the
     median in the title."""
     from matplotlib import pyplot as plt
@@ -318,8 +320,8 @@ def test_rf_shift_panel_marks_both_reference_frames():
     plt.close(fig)
 
 
-def test_manuscript_panels_figure_7_is_decoding_and_rf_shift(tmp_path):
-    """The manuscript's figure 7 is A the posterior decoded by layer, B the RF
+def test_manuscript_panels_figure_9_is_decoding_and_rf_shift(tmp_path):
+    """The manuscript's figure 9 is A the posterior decoded by layer, B the RF
     shift gains, two wide cells in one 7.5 x 2.5 in row; it is skipped
     cleanly when the run has no decoding or no RF sweep."""
     from matplotlib import pyplot as plt
@@ -345,28 +347,70 @@ def test_manuscript_panels_figure_7_is_decoding_and_rf_shift(tmp_path):
     w = post + rng.normal(scale=0.1, size=n)
     figs = results.manuscript_panels(pred, d, names, {"disparity_grid": centres.tolist()},
                                      w, w, saved, metrics)
-    keys = {k for k in figs if k.startswith(results.F7)}
-    assert keys == {f"{results.F7}/A_decoding", f"{results.F7}/B_rf_shift",
-                    f"{results.F7}/row_AB"}
-    row = figs[f"{results.F7}/row_AB"]
+    keys = {k for k in figs if k.startswith(results.FIG_DECODING)}
+    assert keys == {f"{results.FIG_DECODING}/A_decoding", f"{results.FIG_DECODING}/B_rf_shift",
+                    f"{results.FIG_DECODING}/{results.FIG_DECODING}"}
+    row = figs[f"{results.FIG_DECODING}/{results.FIG_DECODING}"]
     assert tuple(row.get_size_inches()) == (7.5, 2.5)
     assert [ax.get_title()[:22] for ax in row.axes] == [
         "where the causal poste", "reference frame of MSL"]
     assert [t.get_text() for ax in row.axes for t in ax.texts if t.get_text() in "AB"] == ["A", "B"]
-    paths = save_figures({f"{results.F7}/row_AB": row}, tmp_path, formats=("svg", "png"))
-    assert all(p.parent == tmp_path / results.F7 for p in paths)
-    text = (tmp_path / results.F7 / "row_AB.svg").read_text(encoding="utf-8")
+    F = results.FIG_DECODING
+    paths = save_figures({f"{F}/{F}": row}, tmp_path, formats=("svg", "png"))
+    assert all(p.parent == tmp_path / F for p in paths)
+    # the composed figure, named as its folder, is also copied flat beside it
+    assert (tmp_path / f"{F}.png").exists()
+    text = (tmp_path / F / f"{F}.svg").read_text(encoding="utf-8")
     assert tuple(sorted(set(re.findall(r"font-size: ?([\d.]+)px", text)))) == ("12", "8", "9")
     for fig in figs.values():
         plt.close(fig)
-    # no decoding in metrics -> no figure 7, nothing else lost
+    # no decoding in metrics -> no figure 9, nothing else lost
     metrics.pop("post_c1_decoding_r2")
     figs = results.manuscript_panels(pred, d, names, {"disparity_grid": centres.tolist()},
                                      w, w, saved, metrics)
-    assert not any(k.startswith(results.F7) for k in figs)
-    assert f"{results.F2}/row_ABC" in figs
+    assert not any(k.startswith(results.FIG_DECODING) for k in figs)
+    assert f"{results.FIG_WEIGHT}/{results.FIG_WEIGHT}" in figs
     for fig in figs.values():
         plt.close(fig)
+
+
+def test_model_comparison_panels_are_wide_cells_with_the_house_style(tmp_path):
+    """Figure 8: per-decile implied weight (network + five strategies) and the
+    per-decile RMSE of each strategy on a log axis, two WIDE cells, 7.5 x 2.5
+    in, panel letters A B, fonts 8/9/12 and a flat copy of the composed png."""
+    from matplotlib import pyplot as plt
+
+    from cmsi.viz import results
+    c = np.linspace(0.05, 0.95, 10)
+    strategies = ("averaging", "integration", "segregation", "selection", "fixed")
+    mc = {"bin_centres": c.tolist(), "bin_weight_net": (0.95 * c).tolist(),
+          "bin_weight": {k: (c if k == "averaging" else np.where(c > 0.5, 1.0, 0.0)
+                             if k == "selection" else np.full(10, {"integration": 1.0,
+                                                                   "segregation": 0.0,
+                                                                   "fixed": 0.05}[k])).tolist()
+                         for k in strategies},
+          "bin_rmse": {k: np.linspace(0.5 if k == "averaging" else 1.0,
+                                      8.0 if k == "integration" else 1.2, 10).tolist()
+                       for k in strategies},
+          "best": "averaging"}
+    draw = [lambda ax: results.panel_model_weight(mc, ax=ax),
+            lambda ax: results.panel_model_rmse(mc, ax=ax)]
+    row = results.manuscript_grid(draw, ncols=2, cell=results.CELL_WIDE)
+    assert tuple(row.get_size_inches()) == (7.5, 2.5)
+    assert [ax.get_title() for ax in row.axes] == ["weight by posterior decile",
+                                                   "which strategy explains the network"]
+    assert row.axes[1].get_yscale() == "log"
+    labels = [t.get_text() for t in row.axes[0].get_legend().get_texts()]
+    assert labels == ["model averaging", "model selection", "full integration",
+                      "full segregation", "best fixed weight", "network"]
+    assert [t.get_text() for ax in row.axes for t in ax.texts if t.get_text() in "AB"] == ["A", "B"]
+    F = results.FIG_MODEL
+    paths = save_figures({f"{F}/{F}": row}, tmp_path, formats=("svg", "png"))
+    assert all(p.parent == tmp_path / F for p in paths)
+    assert (tmp_path / f"{F}.png").exists()
+    text = (tmp_path / F / f"{F}.svg").read_text(encoding="utf-8")
+    assert tuple(sorted(set(re.findall(r"font-size: ?([\d.]+)px", text)))) == ("12", "8", "9")
+    plt.close(row)
 
 
 def test_manuscript_panels_share_frame_axes_and_fonts(tmp_path):
@@ -471,9 +515,11 @@ def test_wide_cell_shares_margins_and_saves_into_its_folder(tmp_path):
             lambda ax: results.panel_variance_hump(sig, "var_prop", legend=False, ax=ax)]
     row = results.manuscript_grid(draw, ncols=2, cell=results.CELL_WIDE)
     assert tuple(row.get_size_inches()) == (7.5, 2.5)           # same outer size as a 1 x 3
-    paths = save_figures({"fig4_variance_hump/row_AB": row}, tmp_path, formats=("svg", "png"))
-    assert all(p.parent == tmp_path / "fig4_variance_hump" for p in paths)
-    text = (tmp_path / "fig4_variance_hump" / "row_AB.svg").read_text(encoding="utf-8")
+    F = results.FIG_HUMP
+    paths = save_figures({f"{F}/{F}": row}, tmp_path, formats=("svg", "png"))
+    assert all(p.parent == tmp_path / F for p in paths)
+    assert (tmp_path / f"{F}.png").exists()                 # flat copy of the composed figure
+    text = (tmp_path / F / f"{F}.svg").read_text(encoding="utf-8")
     assert tuple(sorted(set(re.findall(r"font-size: ?([\d.]+)px", text)))) == ("12", "8", "9")
     assert "d\u00b2" in text and "deg\u00b2" in text          # glyph, not mathtext
     plt.close(row)
@@ -512,7 +558,8 @@ def test_sweep_manuscript_figure_is_a_full_over_two_wides(tmp_path):
     assert cax.get_position().x1 * W < 7.5 - m["right"] + 1e-6      # colourbar inside A's cell
     letters = [t.get_text() for ax in (axA, axB, axC) for t in ax.texts]
     assert letters == ["A", "B", "C"]
-    paths = save_figures({f"{prior_sweep.FOLDER}/prior_sweep_ABC": fig}, tmp_path, formats=("svg",))
+    F = prior_sweep.FOLDER
+    paths = save_figures({f"{F}/{F}": fig}, tmp_path, formats=("svg",))
     text = paths[0].read_text(encoding="utf-8")
     assert paths[0].parent.name == prior_sweep.FOLDER
     assert tuple(sorted(set(re.findall(r"font-size: ?([\d.]+)px", text)))) == ("12", "8", "9")
@@ -526,6 +573,30 @@ def test_manuscript_dir_protects_the_flagship_figures():
     assert manuscript_dir() == RESULTS / "manuscript"
     assert manuscript_dir("flagship") == RESULTS / "manuscript"
     assert manuscript_dir("pcommon07") == RESULTS / "manuscript_pcommon07"
+
+
+def test_figure_registry_numbers_the_paper_once():
+    """viz/manuscript.py is the one place a figure is numbered: the names run
+    fig1..fig11 without a gap, in the paper's order, and every writer (the
+    per-run panels, the sweep, the neuronal scripts) takes its name from
+    there. Figure 1 is the drawn schematic, which the pipeline never renders."""
+    import re
+
+    from cmsi.viz import manuscript, prior_sweep, results
+    names = manuscript.FIGURES
+    assert [manuscript.figure_number(n) for n in names] == list(range(1, len(names) + 1))
+    assert all(re.fullmatch(r"fig\d+_[a-z_]+", n) for n in names)
+    assert names[0] == manuscript.FIG_TASK
+    assert prior_sweep.FOLDER == manuscript.FIG_SWEEP
+    rendered = {results.FIG_SCATTER, results.FIG_ERRORS, results.FIG_WEIGHT, results.FIG_HUMP,
+                results.FIG_MODEL, results.FIG_DECODING}
+    neuronal = {manuscript.FIG_BIAS, manuscript.FIG_UNITS, manuscript.FIG_LESION}
+    assert rendered | neuronal | {manuscript.FIG_SWEEP, manuscript.FIG_TASK} == set(names)
+    assert manuscript.FIG_TASK not in rendered | neuronal
+    # the figure name does not leak into the code except through the registry
+    src = (Path(results.__file__).read_text(encoding="utf-8")
+           + Path(prior_sweep.__file__).read_text(encoding="utf-8"))
+    assert not re.search(r'"fig\d+_', src)
 
 
 def test_weight_figures_draw_the_hybrid_read():

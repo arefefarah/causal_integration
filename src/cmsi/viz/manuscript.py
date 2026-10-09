@@ -126,6 +126,50 @@ def manuscript_dir(run="flagship"):
     return RESULTS / ("manuscript" if run == "flagship" else f"manuscript_{run}")
 
 
+# --------------------------------------------------------------------------- #
+# The manuscript's figures, numbered as in the paper
+# --------------------------------------------------------------------------- #
+# One folder per figure under manuscript_dir(), named fig<N>_<content>; the
+# composed figure inside carries the same name (png, tif, svg) and
+# `save_figures` drops a flat copy of its png beside the folder, so the
+# manuscript's media/ can be filled from one listing. Panels are A_..., B_...
+#
+# Renumber or rename HERE and nowhere else: the code refers to a figure by
+# what it shows (FIG_WEIGHT, FIG_UNITS), never by its number, so moving a
+# figure in the paper is a one-line change. Who writes each:
+#
+#   fig1   task, generative model, encoding, network   drawn by hand (not rendered
+#                                                       by the pipeline; see GUIDE 9.4)
+#   fig2   output scatter 2 x 2                          04_figures.py (results.manuscript_panels)
+#   fig3   error histograms 2 x 2                        04_figures.py
+#   fig4   fusion weight A-C                             04_figures.py
+#   fig5   decision bias                                 scripts/neuronal/run.py
+#   fig6   variance hump                                 04_figures.py
+#   fig7   prior sweep                                   05_prior_sweep.py
+#   fig8   model comparison                              04_figures.py
+#   fig9   decoding + RF shift                           04_figures.py
+#   fig10  units                                         scripts/neuronal/run.py
+#   fig11  lesion behaviour                              scripts/neuronal/run.py
+FIG_TASK = "fig1_task_model_network"
+FIG_SCATTER = "fig2_output_scatter"
+FIG_ERRORS = "fig3_error_histograms"
+FIG_WEIGHT = "fig4_fusion_weight"
+FIG_BIAS = "fig5_decision_bias"
+FIG_HUMP = "fig6_variance_hump"
+FIG_SWEEP = "fig7_prior_sweep"
+FIG_MODEL = "fig8_model_comparison"
+FIG_DECODING = "fig9_decoding_rf_shift"
+FIG_UNITS = "fig10_units"
+FIG_LESION = "fig11_lesion_behaviour"
+FIGURES = (FIG_TASK, FIG_SCATTER, FIG_ERRORS, FIG_WEIGHT, FIG_BIAS, FIG_HUMP,
+           FIG_SWEEP, FIG_MODEL, FIG_DECODING, FIG_UNITS, FIG_LESION)
+
+
+def figure_number(name):
+    """The paper's number of a figure folder name ('fig9_decoding_rf_shift' -> 9)."""
+    return int(name.split("_", 1)[0][3:])
+
+
 def folder_of(path):
     """The manuscript figure folder a saved file belongs to (its parent)."""
     return Path(path).parent.name

@@ -103,6 +103,19 @@ baked into the network.
 `run_all.sh` stops there, so a config whose targets are miscalibrated never
 reaches training.
 
+**The neuronal-level analyses** (`scripts/neuronal/run.py`, added 2026-10-04)
+sit beside the stages rather than in them. They take a trained run and ask
+what its multisensory units do: example congruent, opposite and mixed units
+and the class counts against the prior and against the always-fuse twins
+(Fig. 10), the decision-conditioned bias at the transition midpoint (Fig. 5),
+and four lesion designs on the causal behaviour (Fig. 11). Output goes to
+`results/<run>/figures/model/neuronal_level_analysis/`, with the three
+composed figures copied to the run's manuscript folder; `--run <name>` does
+it for another configuration (§7.9, §7.10, §9.6, Part 10). The script is
+torch-free: `scripts/neuronal/npmodel.py` reads a checkpoint and runs the
+forward pass in numpy (checked against the stored predictions to 1e-5), so
+the analyses run on a machine without PyTorch.
+
 ---
 
 # Part 3 — The codebase, file by file
@@ -337,7 +350,7 @@ implied-weight investigation tried (§4.3).
 | `flagship.yaml` | 0.5 | the main network (since 2026-10-02: the small-domain, narrow-range configuration the implied-weight investigation converged on) |
 | `pcommon1.yaml` | 1.0 | always-one-cause control (design document §9.1; here §7.2 and §7.8); train and analyse it **first**, its residuals are σ_out for every other run |
 | `pcommon0.yaml` | 0.0 | always-two-causes control (design document §9.2; here §7.8) |
-| `pcommon028.yaml` | 0.28 | satellite, matching Körding's human prior fit |
+| `pcommon028.yaml` | 0.28 | satellite, matching Körding's human prior fit; trained and stored, but since 2026-10-04 not analysed in the neuronal-level work nor cited in the manuscript (too close to 0.3 to add anything; its tables below are kept as stored) |
 | `pcommon03.yaml` | 0.3 | satellite |
 | `pcommon07.yaml` | 0.7 | satellite |
 
@@ -404,7 +417,7 @@ analysis:
 were removed from every config on 2026-09-29 with the ratio itself; §7.2.)
 
 **The `analysis` block is not a training parameter.** It sets the bin centres
-of the disparity curves (figures 03/04/05/12, manuscript Fig. 2A/C, the
+of the disparity curves (figures 03/04/05/12, manuscript Fig. 4A/C, the
 conditioned-bias flag), the levels of figure 05 and the decoders of §7.8, and
 nothing the network sees. Stage 3 and 4 therefore take it from the config file
 given with `--config`, else from `results/<run>/config.yaml` as stage 3 last
@@ -836,7 +849,7 @@ the numbers that were 0.84–0.92 on the wide configuration; the move to the
 
 ## 7.3 The position-domain regression — the headline
 
-(The headline *statistic*; in the manuscript's Figure 2 its scatter was
+(The headline *statistic*; in the manuscript's Figure 4 its scatter was
 replaced on 2026-10-03 by the weight on the posterior of §7.2, panel B of
 figure 08v, which shows the same slope-below-one from the per-trial read with
 the two sources of the read coloured. Both regressions stay in
@@ -1123,7 +1136,7 @@ on the wide configuration.
 
 ### `var_prop` is the same figure at about three-quarter scale
 
-Figure 10 is not an independent result; it is a consistency check. Its between
+Figure `10_variance_hump_prop` is not an independent result; it is a consistency check. Its between
 term peaks at 1.81 against 2.34 for `var_vis`, and its hump is +0.66 against
 +0.83.
 
@@ -1322,6 +1335,53 @@ that the opposite units in the flagship exist *because* of the causal task.
 (The always-segregate control, `pcommon0`, sits in between, 25 / 21: a
 network that reports each cue separately has a use for both signs.)
 
+`pcommon028` is kept on disk but, since 2026-10-04, no longer analysed or
+cited: its prior is too close to 0.3 to add anything, and the manuscript
+reports the main network with the satellites at 0.3 and 0.7.
+
+### The twins, the example units, and what the mixed class contains (Fig. 9)
+
+The p_common = 1 control differs from the flagship in its inputs as well as
+in its targets (every trial has one cause), so it cannot by itself say
+whether the opposite units come from the causal targets or from the input
+statistics. The always-fuse twins can: each twin received exactly the trials
+of its causal network and was trained on fused targets only. The same
+congruency index on the twins (`scripts/neuronal/run.py units`,
+`units/numbers.json`):
+
+| world | causal network (con / opp / mixed) | always-fuse twin | opposite units added by the causal targets |
+|---|---|---|---|
+| p = 0.3 | 17 / 31 / 16 | 36 / 17 / 11 | 14 |
+| p = 0.5 | 15 / 21 / 28 | 43 / 13 / 8 | 8 |
+| p = 0.7 | 18 / 17 / 29 | 40 / 15 / 9 | 2 |
+
+At every prior the causal network has more opposite units than its twin, by
+1.1 to 1.8 times, and the excess falls as the prior rises and fewer trials
+have to be kept apart. That is the direct form of the argument that opposite
+units exist because of the causal task. One seed per network, so a
+difference of a few units is within what another seed could move; the
+ordering, which holds at all three priors, is the result. Note that the
+claim is about the *targets*, not about ambiguity: the always-segregate
+control has 21 opposite units, as many as the flagship, with no ambiguity at
+all.
+
+The index is a correlation and says nothing about the shape of the tuning.
+Fig. 9A–C show three units of the flagship: the most congruent (unit 30,
+index +0.99) has the same tuning for either cue (a dip at zero); the most
+opposite (unit 31, −0.92) rises with the visual cue and falls with the hand
+cue; the mixed example (unit 47, −0.13; chosen by a rule, the mixed unit with
+the index closest to zero among those whose response spans at least 0.5 on
+both sweeps) has a dip at zero for the hand and a low-to-high step for
+vision, neither matched nor mirrored. The mixed class is also heterogeneous
+in a way the index hides: of the flagship's 28 mixed units, 10 are modulated
+by less than 0.1 by one cue over the ±20° sweep (9 hand-only, 1 vision-only),
+so they are unimodal within the sweep rather than mixed in the sense of
+combining the cues, and the other 18 combine the cues with tuning of neither
+canonical type (`units/numbers.json`, `mixed_substructure`, with the per-unit
+sweep ranges). The "untuned" threshold of the classification (std > 1e-4 on
+each sweep) is far below this, which is why the untuned count is 0 on every
+run.
+
 ### Congruent-minus-opposite balance
 
 Per trial: mean activity of congruent units minus mean activity of opposite
@@ -1426,6 +1486,43 @@ subpopulation is necessary", which is what a distributed code looks like.
 z-scores, were a one-off 200-draw run on the wide flagship; they are not in
 `results/` and are not repeated here.)
 
+### Lesion on the behaviour: four designs (Fig. 10)
+
+The RMSE lesion above answers necessity for the *read-out*. Since 2026-10-04
+`scripts/neuronal/run.py r5` asks the same question of the *causal
+behaviour*, on the flagship and on `pcommon03` (whose opposite class is half
+its layer), with the same mean-clamping. A lesion of 15–31 units leaves the
+trained read-out too far out of calibration for the transition fit to be
+reliable (RMSE 0.44 → 1.7–3.9°, midpoints often unfittable), so the behaviour
+is summarised by two trial means that need no fit, from the hybrid visual
+weight: **fusion** = mean weight on test trials with |Δ| ≤ 2° (intact 0.81
+flagship, 0.64 at p = 0.3) and **segregation** = 1 − mean weight on trials
+with |Δ| ≥ 15° (0.99 on both). Four designs, one per column of Fig. 10; the
+numbers are in `lesion_behaviour/numbers_<run>.json`:
+
+| design | what it does | flagship | p = 0.3 | verdict |
+|---|---|---|---|---|
+| v1 whole-class clamp, read-out frozen (A, E) | the class clamped; weight curve, the two summaries and the other statistics against 100 size-matched random lesions | fusion z −0.20 / −1.34 / +1.22, segregation z +1.66 / −0.99 / −0.44 (con / opp / mixed); no \|z\| > 2 | the opposite lesion overshoots to w = 1.07 at 5° and stays at 0.5–0.65 far out (hand slope 2.51 vs 0.43 ± 0.74, z +2.8); 3 of 54 comparisons beyond 2 sd over both networks, which is chance | no power: the random band spans 0–1 because any large lesion breaks the calibration |
+| v2 single-unit lesions (B, F) | each of 64 units clamped alone; Δ summary against the unit's index; class means against 5,000 random subsets | \|Δ segregation\| ≤ 0.08; class means p 0.12–0.81; r(index, Δ) = +0.27 | ≤ 0.13; p 0.16–0.78; r = +0.11 | no single unit matters; cannot rank the classes |
+| v3 cumulative lesion, class order vs 30 random orders (C, G) | units of one class removed one at a time, most typical first; summaries after each step against random orders over all 64 | after the class: congruent, segregation 0.96 (random 15: 0.75 ± 0.12, z +1.9), fusion 0.67 (0.69 ± 0.08); opposite, segregation 0.57 (0.66 ± 0.12), fusion 0.54 (0.63 ± 0.08, z −1.2); mixed, fusion 0.68 (0.57 ± 0.09, z +1.3), segregation 0.52 (0.58 ± 0.16) | opposite, fusion 0.54 (0.36 ± 0.13, z +1.5), segregation 0.37 (0.55 ± 0.16, z −1.2); congruent, fusion 0.34 (0.49 ± 0.10, z −1.5), segregation 0.82 (0.76 ± 0.11) | the classes push in different directions, none beyond 2 sd of random |
+| v4 whole-class clamp, read-out refitted (D, H) | ridge read-out (α = 10⁻³) refitted on the training split from the remaining units; against 20 random lesions, each refitted | fusion 0.81 / 0.81 / 0.81, segregation 0.99 / 0.99 / 0.99, slopes 0.80–1.01; one deficit, visual slope 0.80 vs 0.92 ± 0.05 without opposite units (z −2.5) | fusion 0.64 / 0.585 / 0.65 (intact 0.647; random-31 refits 0.628 ± 0.010, z −4.4 for the opposite lesion); RMSE 0.84° vs 0.65 ± 0.05 without the congruent units (z +3.9), its causal statistics intact | the behaviour recovers: what any class carries is also carried elsewhere |
+
+**How to read it.** No class of units is necessary for the causal behaviour:
+with the read-out as trained, removing a class moves fusion and segregation
+by 0.2–1.9 sd of what removing as many arbitrary units does, and with the
+read-out refitted the behaviour returns to its intact values. The code is
+redundant. The classes are not interchangeable, though: the direction of
+each cumulative-lesion curve (congruent units feed fusion and are irrelevant
+to segregation; opposite units feed segregation and, on the flagship, fusion
+too) and the residuals of the refit, both of which involve the opposite
+class of the network that has most of them, are the division of labour the
+tuning shows. The manuscript describes it as a tendency of the
+representation, not a necessity — the distinction between this result and
+Rideaux et al.'s conclusion that the balance between the classes decides
+integrate-versus-separate. Nothing in the figure is filtered, smoothed or
+clipped: the hybrid weight is finite on all 7,500 test trials for every
+lesion, every trial enters every mean, and the bands are mean ± 2 sd.
+
 ### Reference-frame (RF) shift and gain fields
 
 Sweeps visual position at five eye positions, each time presenting the sweep in
@@ -1513,6 +1610,41 @@ per prior, and the sweep does not measure it, so this stays a lead rather
 than a result — but it is now a lead with a curve, not a boolean on thin
 bins: the old grid put the flag on 16–44-trial bins at ±40°, the new one
 rests every bin on at least 78 trials.
+
+### The same split at the midpoint, on synthetic trials (Fig. 4)
+
+Dokka et al. (2019) found heading judgements more biased toward a second
+cue on trials observers reported as one event, and Rideaux et al. (2021)
+reproduced the effect by splitting on their supervised decision unit, as
+evidence of feedback from the decision to the estimate. `scripts/neuronal/run.py r6`
+tests the explanation that needs no feedback. The seen hand is placed at
+±2.5°, ±4.89° (the flagship's transition midpoint) and ±7.5°, 8,000 synthetic
+trials per disparity, the felt hand and the eyes at 0°, every trial with its
+own measurement noise at the mid-range reliabilities and its own Poisson
+spikes; the same noisy measurements go to the network (as spikes) and to the
+analytical observer (as positions). Trials are split on the network's own
+hybrid visual weight at 0.5. The pull is the network's hand estimate minus
+the observer's hand-alone estimate, positive toward the seen hand
+(`decision_bias/numbers.json`):
+
+| nominal \|Δ\| | one-cause fraction | pull, one / two causes (deg) | observer, one / two | measured \|Δ\|, one / two |
+|---|---|---|---|---|
+| 2.5° | 0.77 | 0.45 / 0.76 | 0.43 / 0.72 | 1.50 / 5.84 |
+| 4.89° | 0.49 | 0.75 [0.73, 0.76] / 0.65 [0.63, 0.67] | 0.74 / 0.66 | 2.65 / 7.13 |
+| 7.5° | 0.17 | 0.91 / 0.47 | 0.92 / 0.47 | 3.24 / 8.37 |
+
+**How to read it.** At and above the midpoint the one-cause trials are pulled
+further toward vision (the Dokka/Rideaux effect, in a network with no
+decision unit), and they are the trials whose noise brought the cues
+together (2.65° measured against 7.13°). The observer on the same inputs
+gives the same split to within 0.04° at every point, so the effect, its size
+and its reversal below the midpoint (where the weight is near ceiling in
+both groups and the pull follows the measured gap) are properties of the
+inputs that produced each inference, not of anything fed back from the
+decision. One network, three disparities, synthetic trials: the manuscript
+presents it as a demonstration (Fig. 4). Nothing is filtered: the weight is
+finite on all 8,000 trials at every disparity, every trial enters, and the
+error bars are bootstrap 95 % intervals of the mean.
 
 ## 7.11 Transition fit
 
@@ -1936,7 +2068,7 @@ Your flagship: 0.888 at SIL, 0.973 at MSL.
 the always-fuse twin (grey) side by side. Your flagship: 0.888/0.973 against
 0.365/0.288. The contrast is the emergence argument (§7.8 on why the SIL bar
 is now high). Since 2026-10-03 both figures are drawn by the routine behind
-the manuscript's figure 7A (`results._draw_decoding`): bars 0.2 of the group
+the manuscript's figure 9A (`results._draw_decoding`): bars 0.2 of the group
 spacing wide rather than matplotlib's 0.4, each carrying its value, the y
 axis with headroom above 1.0 for the labels and the legend. On a control the
 posterior is constant and the decoder's R² is slightly negative (−0.04); the
@@ -1959,7 +2091,7 @@ division). B: the implied weight of the visual channel against the analytical
 posterior on every trial, its points coloured by where each weight came from —
 the `var_vis` root on Δ² ≤ c trials, the `mu_vis` ratio on Δ² > c trials —
 with its fit (`analysis.weight_regression`); the legend gives each source's
-share of the trials. Panel B is the manuscript's Figure 2B (§9.4), in place
+share of the trials. Panel B is the manuscript's Figure 4B (§9.4), in place
 of the position-domain regression since 2026-10-03. `metrics.json` carries
 `variance_regression_vis/prop`, `weight_regression_vis/prop`,
 `implied_weight_vs_post[_prop]` and `hybrid_read`. Your flagship:
@@ -2032,7 +2164,7 @@ quoting either sign.
 across MSL units, with 0 (spatial code) and +1 (retinal code) marked. Right:
 distribution of gain-field slopes. Your flagship median shift gain: −0.087
 (±0.1 across the family, against +1 for a retinal code). The left histogram
-is panel B of the manuscript's figure 7 (§9.4).
+is panel B of the manuscript's figure 9 (§9.4).
 
 **`15_weight_vs_posterior.png`** — the implied weight against the analytical
 posterior in 10 equal-width posterior bins, every trial
@@ -2097,15 +2229,36 @@ every panel from here on, unless a figure is explicitly given another size.
 
 | folder | contents | layout | size (in) | built from |
 |---|---|---|---|---|
-| `fig2_weight_regression_bias/` | `A_fusion_weight`, `B_weight_regression`, `C_bias_vs_disparity`, `row_ABC` | 3 squares; 1 × 3 row | 2.5 × 2.5 each; 7.5 × 2.5 | `04_fusion_weight`, panel B of `08v_variance_regression`, left half of `12_behavioral_bias` |
-| `output_scatter_2x2/` | `output_scatter_2x2` | 2 × 2 squares, A B / C D | 5.0 × 5.0 | `01_output_scatter` |
-| `error_histograms_2x2/` | `error_histograms_2x2` | 2 × 2 squares, A B / C D | 5.0 × 5.0 | `02_error_histograms` |
-| `fig4_variance_hump/` | `row_AB` | 1 × 2 wides | 7.5 × 2.5 | `09_variance_hump_vis`, `10_variance_hump_prop` |
-| `fig7_decoding_rf_shift/` | `A_decoding`, `B_rf_shift`, `row_AB` | 2 wides; 1 × 2 row | 3.75 × 2.5 each; 7.5 × 2.5 | `07_emergent_vs_imposed`, left half of `14_rf_shifts` |
-| `prior_sweep/` | `prior_sweep_ABC` | a full over two wides | 7.5 × 5.0 | the cross-prior figure (§8.2, §9.5) |
+| `fig1_task_model_network/` | `fig1_task_model_network` | 2 × 2, drawn by hand | 7.5 × 5.0 | nothing — the schematic of the task, the generative model, the input encoding and the network (`FIG_TASK`); the pipeline never writes it, the folder holds the png/tif/svg exported from the drawing |
+| `fig2_output_scatter/` | `fig2_output_scatter` | 2 × 2 squares, A B / C D | 5.0 × 5.0 | `01_output_scatter` |
+| `fig3_error_histograms/` | `fig3_error_histograms` | 2 × 2 squares, A B / C D | 5.0 × 5.0 | `02_error_histograms` |
+| `fig4_fusion_weight/` | `A_fusion_weight`, `B_weight_regression`, `C_bias_vs_disparity`, `fig4_fusion_weight` | 3 squares; 1 × 3 row | 2.5 × 2.5 each; 7.5 × 2.5 | `04_fusion_weight`, panel B of `08v_variance_regression`, left half of `12_behavioral_bias` |
+| `fig5_decision_bias/` | `fig5_decision_bias` | 3 squares; 1 × 3 row | 7.5 × 2.5 | `scripts/neuronal/run.py r6` (§9.6) |
+| `fig6_variance_hump/` | `A_variance_hump_vis`, `B_variance_hump_prop`, `fig6_variance_hump` | 1 × 2 wides | 7.5 × 2.5 | `09_variance_hump_vis`, `10_variance_hump_prop` |
+| `fig7_prior_sweep/` | `fig7_prior_sweep` | a full over two wides | 7.5 × 5.0 | the cross-prior figure (§8.2, §9.5), written by `05_prior_sweep.py` |
+| `fig8_model_comparison/` | `A_weight_by_decile`, `B_rmse_by_decile`, `fig8_model_comparison` | 1 × 2 wides | 7.5 × 2.5 | `11_model_comparison` (B on a log axis) |
+| `fig9_decoding_rf_shift/` | `A_decoding`, `B_rf_shift`, `fig9_decoding_rf_shift` | 2 wides; 1 × 2 row | 3.75 × 2.5 each; 7.5 × 2.5 | `07_emergent_vs_imposed`, left half of `14_rf_shifts` |
 
-(Folders without a figure number are named by content until one is assigned;
-the names are single strings in `results.py` and `prior_sweep.py`.)
+Folders are named as the figures are numbered in the paper, the composed
+figure inside each folder carries the folder's name, and `save_figures`
+drops a flat copy of every composed png one level up
+(`results/manuscript/fig4_fusion_weight.png`), so the paper's figures can be
+uploaded from one listing. The names live in ONE place, `FIG_*` at the end of
+`viz/manuscript.py` (`FIG_TASK` … `FIG_LESION`, in the paper's order, with a
+table of who writes each); the code refers to a figure by what it shows, never
+by its number, so renumbering the paper is a one-line change there (and a
+`git mv` of the folders already on disk). `results.py` renders six of them,
+`prior_sweep.FOLDER` is `FIG_SWEEP`, and figure 1 — the drawn schematic — is
+never rendered: its folder holds the files exported from the drawing.
+Figures 5, 10 and 11 (the decision-conditioned bias, the
+unit figure and the lesion figure) are the neuronal-level analyses of
+`scripts/neuronal/run.py`, which are run-specific: their full output (every
+panel, the composed figure, a `numbers.json`, `REPORT.md`) lives beside the
+run's other model figures under
+`results/<run>/figures/model/neuronal_level_analysis/{units,decision_bias,lesion_behaviour}/`,
+and the three composed figures are also written to the run's manuscript
+folder as `fig5_decision_bias`, `fig10_units` and `fig11_lesion_behaviour`
+(`--run <name>` for another configuration, `results/manuscript_<name>/`).
 
 Deliberate details, all measured rather than estimated:
 
@@ -2116,10 +2269,10 @@ Deliberate details, all measured rather than estimated:
   never mathtext, which would set them at 6.3 pt in figures whose fonts are
   otherwise exactly {8, 9, 12} pt. For the same reason the prior is labelled
   "common-cause prior" rather than a subscripted *p*;
-- figure 4 carries one legend, in panel A, since both panels draw the same
+- figure 6 carries one legend, in panel A, since both panels draw the same
   four series; panel A's y axis has 40 % headroom so the legend sits above
   the curves — at 30 % the nearest marker was 0.035 in from the legend box;
-- figure 2B (`panel_weight_regression`, since 2026-10-03 in place of the
+- figure 4B (`panel_weight_regression`, since 2026-10-03 in place of the
   position-domain regression) carries two legends, because one of five
   entries would cover the cloud on a 2.5-in panel: the two sources with their
   shares of all trials in the lower right, where a good network has almost
@@ -2132,8 +2285,8 @@ Deliberate details, all measured rather than estimated:
   (0.62 in) so the cell's outer margins are untouched, and the y labels are
   shortened to fit a 1.75-in axes ("implied fusion weight", "network
   midpoint (deg)");
-- figure 7 (`panel_decoding`, `panel_rf_shift`, added 2026-10-03) is two wide
-  cells like figure 4. Panel A: held-out R² for p(C=1|x) per hidden layer,
+- figure 9 (`panel_decoding`, `panel_rf_shift`, added 2026-10-03) is two wide
+  cells like figure 6. Panel A: held-out R² for p(C=1|x) per hidden layer,
   the causal network (blue) beside its always-fuse twin (grey,
   `COLORS["twin"]`), the layers named SIL and MSL as the paper names them;
   the bars are 0.2 of the group spacing wide (0.28 in) rather than
@@ -2144,7 +2297,7 @@ Deliberate details, all measured rather than estimated:
   dashed) and retinal (+1, dotted) marks as vertical lines; the x range
   always includes both marks, so the retinal mark stands alone on the
   right (the gains run −1.3 to 0.4), the legend sits upper left over the
-  low tail, 40 % headroom as in figure 4, and the median is in the title
+  low tail, 40 % headroom as in figure 6, and the median is in the title
   the way the error histograms carry their bias. Skipped, with a message,
   when `metrics.json` has no `post_c1_decoding_r2` or `analysis.npz` no
   `rf_shift_gain`.
@@ -2171,7 +2324,7 @@ per-run figures: each one summarises all 27 networks.
 
 **`prior_sweep.png`** (with `.tif` for submission and `.svg` to edit) — the
 main figure, three panels, 7.5 in wide. Its manuscript version,
-on the standard panel, is `results/manuscript/prior_sweep/prior_sweep_ABC`
+on the standard panel, is `results/manuscript/fig7_prior_sweep/fig7_prior_sweep`
 (§9.4).
 
 - **Panel A** — implied fusion weight against signed body-frame disparity, one
@@ -2216,6 +2369,30 @@ Both are redrawn by `05_prior_sweep.py --replot` from `sweep.json` and
 `curves.npz`, with no training; `--min-count` and `--max-se` re-bin Panel A
 from the stored per-trial arrays of the first seed (§8.2).
 
+## 9.6 `results/<run>/figures/model/neuronal_level_analysis/` — Figs. 5, 10 and 11
+
+The neuronal-level analyses of one run (`scripts/neuronal/run.py`, §7.9 and
+§7.10), on the standard panel like every manuscript figure, in one folder per
+figure: the composed figure named as its folder (and copied flat beside it),
+every panel, and the numbers it was drawn from. The three composed figures
+are also written to the run's manuscript folder under their paper names, so
+`results/manuscript/` holds `fig5_decision_bias`, `fig10_units` and
+`fig11_lesion_behaviour` beside the drawn figure 1 and the rendered figures
+2–4 and 6–9. `REPORT.md` in the
+flagship's folder explains every panel.
+
+| folder | composed figure (paper name) | panels | layout | numbers |
+|---|---|---|---|---|
+| `units/` | `units` (`fig10_units`) | `A_congruent_unit`, `B_opposite_unit`, `C_mixed_unit` (the two tuning curves of each), `D_classes_by_network` (this run, its twin, the two controls), `E_counts_vs_prior` (the five causal networks), `F_opposite_causal_vs_twin` | 2 × 3 squares, 7.5 × 5.0 in | `numbers.json`: index and class of every unit, sweep ranges, example units, mixed sub-structure, counts of every run and twin |
+| `decision_bias/` | `decision_bias` (`fig5_decision_bias`) | A pull histograms by inferred cause at the midpoint, B measured disparity behind each decision, C pull by inferred cause at three disparities, network and observer | 1 × 3 squares, 7.5 × 2.5 in | `numbers.json`: per disparity, per group: n, pull with bootstrap CI, observer's pull, measured disparity, mean posterior |
+| `lesion_behaviour/` | `lesion_behaviour` (`fig11_lesion_behaviour`) | 2 × 4: the run (top) and the comparison network (bottom) × the four designs; singles `<run>_v1_whole_class`, `_v2_single_unit`, `_v3_cumulative`, `_v3_cumulative_fusion`, `_v4_refit`; `recommended_ABC` (the run alone: cumulative fusion, cumulative segregation, refit) | 2 × 4 squares, 10 × 5 in (wider than the PLOS limit; `save_figures` warns) | `numbers_<run>.json`: every design's values, nulls and z-scores |
+
+Class colours are fixed in `scripts/neuronal/common.py` (`CLASS_COLORS`):
+congruent blue `#1f77b4`, opposite red `#d62728`, mixed yellow `#ccbb44`
+(rgb 204, 187, 68, chosen so the mixed class is never confused with the grey
+random bands or the black intact marks). The example-unit panels use the
+input colours (visual red, hand green) of the rest of the guide.
+
 ---
 
 # Part 10 — How to run things
@@ -2232,10 +2409,21 @@ python scripts/04_figures.py --run flagship --only manuscript
 python scripts/05_prior_sweep.py --replot       # redraw the sweep, no training
 python scripts/05_prior_sweep.py --replot --min-count 25 --max-se 0.05
                                                 # re-bin Panel A from curves.npz
+python scripts/neuronal/run.py                  # the neuronal-level analyses of the flagship:
+                                                # units, r6, r5 (Figs. 10, 5, 11), ~4 min
+python scripts/neuronal/run.py units r6         # the two fast ones
+python scripts/neuronal/run.py r5 --redraw      # re-plot the lesion figure from numbers_*.json
+python scripts/neuronal/run.py --run pcommon03  # the same for another run (--compare picks
+                                                # the second network of the lesion figure)
 ```
 
 `04_figures.py --only` takes `inputs`, `training`, `model` or `manuscript`;
-without it every group is rendered.
+without it every group is rendered. `scripts/neuronal/run.py` needs numpy,
+scipy, scikit-learn and matplotlib but not PyTorch (`npmodel.py` runs the
+network in numpy from the checkpoint); its self-test,
+`python scripts/neuronal/npmodel.py flagship pcommon1 pcommon03 pcommon07 pcommon0`,
+compares the numpy forward pass with the predictions stored by stage 3 (max
+difference ≈ 1e-5).
 
 **Side experiments** live outside the numbered stages. `scripts/06_implied_weight.py`
 (`src/cmsi/experiments/implied_weight.py`) applies the implied-weight read
@@ -2437,6 +2625,12 @@ lesion fix, and no table in Parts 5–9 and 12 that describes `flagship_wide`
 (its numbers survive in `CROSS_PRIOR_RESULT.md`, labelled as such, and in
 `IMPLIED_WEIGHT_RESULT.md`, where the two configurations are compared).
 
+The neuronal-level numbers of §7.9 (twins, example units, mixed
+sub-structure, the four lesion designs) and §7.10 (the midpoint split) are
+from 2026-10-04/05, on the same runs, and live in
+`results/flagship/figures/model/neuronal_level_analysis/*/numbers*.json`;
+`pcommon028` is not part of them.
+
 **What is stored where.** `results/<run>/metrics.json` holds every scalar
 quoted in Parts 5–7 (`implied_weight_vs_post`, `weight_regression_*`,
 `hybrid_read`, `position_regression_*`, `variance_regression_*`,
@@ -2481,7 +2675,7 @@ others read.)
 **The 2026-10-03 grid.** The `disparity_grid` of every live config changed on
 2026-10-03 (§4.2). The change touches only the binned bias curves of
 `analysis.npz`, the `conditioned_bias_negative_seen` flag (which reads the
-same on both grids, §7.10) and figures 03/04/05/12 with manuscript Fig. 2A/C;
+same on both grids, §7.10) and figures 03/04/05/12 with manuscript Fig. 4A/C;
 every other stored number is unaffected. The figure descriptions of §9.3 and
 the curves of §7.10 are on the new grid, computed from the stored per-trial
 arrays with the pipeline's own functions; the loop above (or the README's) is
@@ -2610,6 +2804,30 @@ variance-domain regression (figure 08v A): slopes 0.956–0.981 with SE 0.002
 and R² 0.94–0.97 on every run. A one-sentence companion to the position
 regression, from the other output.
 
+**B8. Opposite units come from the causal targets, not from the inputs.**
+§7.9 (twins), Fig. 10. At each of the three causal priors the always-fuse
+twin, trained on the same trials with fused targets, has fewer opposite
+units than the causal network (17 vs 31, 13 vs 21, 15 vs 17), the excess
+falling with the prior (14, 8, 2). This is the controlled version of B4 and
+the sentence to carry; one seed per network keeps it at grade B.
+
+**B9. No class of units is necessary for the causal behaviour; the code is
+redundant.** §7.9 (four designs), Fig. 11. With the read-out as trained,
+removing a whole class moves fusion and segregation by 0.2–1.9 sd of what
+removing as many random units does; with the read-out refitted the
+behaviour returns to its intact values, with three small residuals. This
+replaces the scope guard of D7: the lesion analyses now do answer the
+causal question, and the answer is "no class is necessary". The division of
+labour between the classes (the direction of each cumulative lesion) is a
+tendency, not a necessity; do not promote it.
+
+**B10. The decision-conditioned bias is reproduced without a decision unit,
+and the observer shows it on the same inputs.** §7.10, Fig. 5. At the
+midpoint the one-cause trials are pulled 0.75° against 0.65° (observer 0.74
+against 0.66), because they are the trials whose noise brought the cues
+together (2.65° against 7.13° measured). One network, three disparities,
+synthetic trials: a demonstration, which is how the manuscript presents it.
+
 ## 12.3 Grade C — method verification and controls
 
 None of these is a finding. They belong in Methods or a supplement, and they
@@ -2686,11 +2904,14 @@ result; the number is not a disparity any trial has. Show the point with its
 error bar (seed spread −0.85 to −1.30, the largest in the sweep), explain it
 in the caption, and do not describe it as a transition.
 
-**D7. Any lesion claim about causal behaviour specifically.** §7.9 measures
-lesion effects on read-out RMSE. It does not establish that any subpopulation
-is necessary for the *causal* computation as distinct from the position
-estimate, and on the flagship it does not establish that any subpopulation is
-necessary at all. Do not extend B2 into a claim about causal inference.
+**D7. Any lesion claim that a class is necessary for the causal behaviour.**
+Superseded in part on 2026-10-04: the four designs of §7.9 (Fig. 11) now
+measure the causal behaviour directly, and what they establish is B9, the
+negative — no class is necessary, with the read-out frozen or refitted.
+What remains grade D is the positive form: that opposite units are
+*necessary* for segregation or congruent units for fusion. The cumulative
+lesions show those directions as tendencies within 2 sd of random removal,
+and the refit repairs almost all of it; do not state them as necessities.
 
 **D8. The SIL-to-MSL rise in posterior decodability.** §7.8. 0.89 → 0.97 on
 this configuration (0.27–0.48 → 0.93–0.96 on the wide one). The rise is real

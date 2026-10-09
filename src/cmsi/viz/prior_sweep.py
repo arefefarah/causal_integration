@@ -21,6 +21,7 @@ from matplotlib.colors import Normalize
 from cmsi.viz.manuscript import (
     CELL_FULL,
     CELL_WIDE,
+    FIG_SWEEP,
     PANEL_FONT,
     PANEL_LW,
     PANEL_MS,
@@ -192,7 +193,7 @@ def hump_panel(rows, ax=None):
 # --------------------------------------------------------------------------- #
 # The manuscript version, on the standard cells (viz/manuscript.py)
 # --------------------------------------------------------------------------- #
-FOLDER = "prior_sweep"                       # figure number not yet assigned
+FOLDER = FIG_SWEEP                  # results/manuscript/fig7_prior_sweep/fig7_prior_sweep.*
 COLORBAR_RESERVE = 0.62                      # in, carved from A's axes width
 
 

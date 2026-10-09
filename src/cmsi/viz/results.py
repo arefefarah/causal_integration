@@ -13,6 +13,18 @@ from cmsi.viz.manuscript import (  # noqa: F401  (re-exported for callers and te
     CELL_FULL,
     CELL_SQUARE,
     CELL_WIDE,
+    FIG_BIAS,
+    FIG_DECODING,
+    FIG_ERRORS,
+    FIG_HUMP,
+    FIG_LESION,
+    FIG_MODEL,
+    FIG_SCATTER,
+    FIG_SWEEP,
+    FIG_TASK,
+    FIG_UNITS,
+    FIG_WEIGHT,
+    FIGURES,
     PANEL_FONT,
     PANEL_LW,
     PANEL_MARGIN,
@@ -161,7 +173,7 @@ def _draw_decoding(ax, series, bar_width=0.2, gap=0.06, ylim_top=1.45,
     matplotlib's 0.4 for two series) and each carries its value, since the
     numbers (0.97 against 0.29) are the result; the y limit leaves room
     above a bar of 1.0 for its label and the legend. Shared by the model
-    figures 06/07 and the manuscript's figure 7A, so the three agree.
+    figures 06/07 and the manuscript's figure 9A, so the three agree.
     """
     present = {k for _, scores, _ in series for k in scores}
     layers = [k for k in LAYER_NAMES if k in present] or sorted(present)
@@ -199,7 +211,7 @@ def decoding_comparison(by_model, title="emergent vs imposed"):
 
     If p(C=1) is decodable from the twin -- which was never asked for it -- the
     latent emerges from the integration task rather than from the objective.
-    Drawn as the manuscript's figure 7A is (narrow bars carrying their values,
+    Drawn as the manuscript's figure 9A is (narrow bars carrying their values,
     the twin in grey), on the single-panel figure size.
     """
     series = [(label, scores, SERIES_COLOURS[i % len(SERIES_COLOURS)])
@@ -787,7 +799,7 @@ def panel_rf_shift(saved, ax=None, bin_width=0.1):
     ax.axvline(1, ls=":", lw=PANEL_LW, color=COLORS["analytical"],
                label="retinal code (+1)")
     ax.set_xlim(lo, hi)
-    # headroom for the legend (upper left, over the low tail), as in figure 4
+    # headroom for the legend (upper left, over the low tail), as in figure 6
     ax.set_ylim(0, 1.4 * max(counts.max(), 1))
     return _finish_panel(ax, "RF shift gain (Δ preferred position / Δ eye)",
                          "MSL units",
@@ -795,18 +807,81 @@ def panel_rf_shift(saved, ax=None, bin_width=0.1):
                          "upper left")
 
 
+STRATEGY_STYLE = {
+    # the strategies of SS7.4 beside the network; averaging IS the analytical
+    # observer's prediction, so it takes the analytical black dash
+    "averaging": dict(color=COLORS["analytical"], ls="--", label="model averaging"),
+    "selection": dict(color="#d62728", ls="--", label="model selection"),
+    "integration": dict(color="#ff7f0e", ls="--", label="full integration"),
+    "segregation": dict(color="#2ca02c", ls="--", label="full segregation"),
+    "fixed": dict(color="#9467bd", ls="--", label="best fixed weight"),
+}
+
+
+def panel_model_weight(mc, ax=None):
+    """11_model_comparison, left, on the WIDE cell: the implied weight on the
+    fused estimate within each decile of the analytical posterior, the network
+    beside the five strategies. Averaging tracks the posterior, selection
+    steps at 0.5, a fixed weight is flat."""
+    ax = _panel_axes(ax, cell=CELL_WIDE)
+    c = np.asarray(mc["bin_centres"])
+    for k, st in STRATEGY_STYLE.items():
+        ax.plot(c, mc["bin_weight"][k], st["ls"], lw=PANEL_LW, color=st["color"],
+                label=st["label"])
+    ax.plot(c, mc["bin_weight_net"], "o-", lw=PANEL_LW + 0.4, ms=PANEL_MS,
+            color=COLORS["network"], label="network", zorder=5)
+    ax.set_xlim(-0.03, 1.0)
+    # headroom above the integration line at 1 for the six-entry legend in
+    # two columns, as figure 4A keeps its legend above the curve's peak
+    ax.set_ylim(-0.1, 1.5)
+    ax.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
+    fig = _finish_panel(ax, "analytical p(C=1|x), decile centres",
+                        "weight on fused estimate", "weight by posterior decile")
+    ax.legend(fontsize=PANEL_FONT["legend"], loc="upper left", ncol=2, handlelength=1.6,
+              labelspacing=0.2, columnspacing=1.0, borderaxespad=0.3)
+    return fig
+
+
+def panel_model_rmse(mc, ax=None):
+    """11_model_comparison, right, on the WIDE cell: the RMSE of each strategy
+    against the network's own output within each posterior decile, on a log
+    axis because full integration misses by an order of magnitude where the
+    posterior is low while the others sit within a degree of each other."""
+    ax = _panel_axes(ax, cell=CELL_WIDE)
+    c = np.asarray(mc["bin_centres"])
+    for k, st in STRATEGY_STYLE.items():
+        ax.plot(c, mc["bin_rmse"][k], "o-", lw=PANEL_LW, ms=PANEL_MS, color=st["color"],
+                label=st["label"])
+    ax.set_yscale("log")
+    ax.set_xlim(-0.03, 1.0)
+    ax.set_ylim(0.2, 30)
+    ax.set_yticks([0.3, 1, 3, 10, 30])
+    ax.set_yticklabels(["0.3", "1", "3", "10", "30"])
+    ax.yaxis.set_minor_formatter(plt.NullFormatter())
+    fig = _finish_panel(ax, "analytical p(C=1|x), decile centres",
+                        "RMSE against network (deg)", "which strategy explains the network")
+    ax.legend(fontsize=PANEL_FONT["legend"], loc="upper right", handlelength=1.6,
+              labelspacing=0.2, borderaxespad=0.3)
+    return fig
+
+
 def manuscript_row(draw):
     """Three standard panels in one 7.5 x 2.5 in figure, lettered A-C."""
     return manuscript_grid(draw, ncols=3)
 
 
-# One folder per manuscript figure, so every format of one figure is together.
-# Rename here and nowhere else.
-F2 = "fig2_weight_regression_bias"
-FSC = "output_scatter_2x2"                   # figure number not yet assigned
-FEH = "error_histograms_2x2"                 # figure number not yet assigned
-F4 = "fig4_variance_hump"
-F7 = "fig7_decoding_rf_shift"
+# One folder per manuscript figure, named as the figure is numbered in the
+# paper (FIG_* in viz/manuscript.py -- the ONLY place a figure is numbered);
+# the composed figure inside it carries the SAME name (so
+# results/manuscript/fig4_fusion_weight/fig4_fusion_weight.png), the panels
+# are A_..., B_..., and `save_figures` drops a flat copy of the composed png
+# next to the folder (results/manuscript/fig4_fusion_weight.png) for upload.
+# This module renders FIG_SCATTER, FIG_ERRORS, FIG_WEIGHT, FIG_HUMP, FIG_MODEL
+# and FIG_DECODING; FIG_BIAS, FIG_UNITS and FIG_LESION are written by
+# scripts/neuronal/run.py (the neuronal-level analyses of a run, kept under
+# results/<run>/figures/model/neuronal_level_analysis/ and copied to the
+# run's manuscript folder under these names); FIG_SWEEP by
+# scripts/05_prior_sweep.py; FIG_TASK is a drawn schematic, not rendered.
 
 
 def manuscript_panels(pred, d, names, analysis_cfg, w, w_prop, saved, metrics):
@@ -852,27 +927,43 @@ def manuscript_panels(pred, d, names, analysis_cfg, w, w_prop, saved, metrics):
         return lambda ax=None: panel_error_histogram(
             pred[:, j] - target[:, j], names[j], ax=ax)
 
-    # figure 4: 09/10_variance_hump side by side, two WIDE cells -> 7.5 x 2.5 in,
-    # the same outer size as figure 2; one legend, in A, since both panels
+    # figure 6: 09/10_variance_hump side by side, two WIDE cells -> 7.5 x 2.5 in,
+    # the same outer size as figure 4; one legend, in A, since both panels
     # draw the same four series
     figs = {
-        f"{F2}/A_fusion_weight": fw(),
-        f"{F2}/B_weight_regression": wr(),
-        f"{F2}/C_bias_vs_disparity": bd(),
-        f"{F2}/row_ABC": manuscript_row([fw, wr, bd]),
-        f"{FSC}/output_scatter_2x2": manuscript_grid([sc(j) for j in range(len(names))], ncols=2),
-        f"{FEH}/error_histograms_2x2": manuscript_grid([eh(j) for j in range(len(names))], ncols=2),
+        f"{FIG_WEIGHT}/A_fusion_weight": fw(),
+        f"{FIG_WEIGHT}/B_weight_regression": wr(),
+        f"{FIG_WEIGHT}/C_bias_vs_disparity": bd(),
+        f"{FIG_WEIGHT}/{FIG_WEIGHT}": manuscript_row([fw, wr, bd]),
+        f"{FIG_SCATTER}/{FIG_SCATTER}": manuscript_grid([sc(j) for j in range(len(names))],
+                                                        ncols=2),
+        f"{FIG_ERRORS}/{FIG_ERRORS}": manuscript_grid([eh(j) for j in range(len(names))],
+                                                      ncols=2),
     }
     if "variance_signature_vis" in metrics and "variance_signature_prop" in metrics:
         sv, sp = metrics["variance_signature_vis"], metrics["variance_signature_prop"]
         vh = [lambda ax=None: panel_variance_hump(sv, "var_vis", ax=ax),
               lambda ax=None: panel_variance_hump(sp, "var_prop", legend=False, ax=ax)]
-        figs[f"{F4}/row_AB"] = manuscript_grid(vh, ncols=2, cell=CELL_WIDE)
+        figs[f"{FIG_HUMP}/A_variance_hump_vis"] = vh[0]()
+        figs[f"{FIG_HUMP}/B_variance_hump_prop"] = vh[1]()
+        figs[f"{FIG_HUMP}/{FIG_HUMP}"] = manuscript_grid(vh, ncols=2, cell=CELL_WIDE)
     else:
-        print("figure 4 skipped: no variance_signature in metrics.json")
-    # figure 7: the posterior decoded by layer (06/07), causal network beside
+        print("figure 6 skipped: no variance_signature in metrics.json")
+    # figure 8: model averaging against the four alternatives (11), the
+    # per-decile implied weight and the per-decile RMSE of each strategy
+    # against the network -- two WIDE cells, 7.5 x 2.5 in
+    if "model_comparison_vis" in metrics:
+        mc = metrics["model_comparison_vis"]
+        mw = [lambda ax=None: panel_model_weight(mc, ax=ax),
+              lambda ax=None: panel_model_rmse(mc, ax=ax)]
+        figs[f"{FIG_MODEL}/A_weight_by_decile"] = mw[0]()
+        figs[f"{FIG_MODEL}/B_rmse_by_decile"] = mw[1]()
+        figs[f"{FIG_MODEL}/{FIG_MODEL}"] = manuscript_grid(mw, ncols=2, cell=CELL_WIDE)
+    else:
+        print("figure 8 skipped: no model_comparison_vis in metrics.json")
+    # figure 9: the posterior decoded by layer (06/07), causal network beside
     # its twin, and the RF shift gains of the MSL units (14) -- two WIDE
-    # cells, 7.5 x 2.5 in, the same outer size as figures 2 and 4
+    # cells, 7.5 x 2.5 in, the same outer size as figures 4, 6 and 8
     if "post_c1_decoding_r2" in metrics and "rf_shift_gain" in files:
         dec, twin = metrics["post_c1_decoding_r2"], metrics.get("twin_post_c1_decoding_r2")
 
@@ -882,10 +973,10 @@ def manuscript_panels(pred, d, names, analysis_cfg, w, w_prop, saved, metrics):
         def rf(ax=None):
             return panel_rf_shift(saved, ax=ax)
 
-        figs[f"{F7}/A_decoding"] = dc()
-        figs[f"{F7}/B_rf_shift"] = rf()
-        figs[f"{F7}/row_AB"] = manuscript_grid([dc, rf], ncols=2, cell=CELL_WIDE)
+        figs[f"{FIG_DECODING}/A_decoding"] = dc()
+        figs[f"{FIG_DECODING}/B_rf_shift"] = rf()
+        figs[f"{FIG_DECODING}/{FIG_DECODING}"] = manuscript_grid([dc, rf], ncols=2, cell=CELL_WIDE)
     else:
-        print("figure 7 skipped: needs post_c1_decoding_r2 in metrics.json and "
+        print("figure 9 skipped: needs post_c1_decoding_r2 in metrics.json and "
               "rf_shift_gain in analysis.npz")
     return figs

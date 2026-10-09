@@ -90,11 +90,21 @@ scripts/       00_calibrate  01_generate_data  02_train  03_analyze  04_figures
                05_prior_sweep  run_all.sh
                06_implied_weight   the weight figures and the reliability analysis of a run;
                                    `train` runs a config through the pipeline with its control
+  neuronal/    run.py          the neuronal-level analyses of a run: example congruent,
+                               opposite and mixed units and class counts against the prior
+                               and the always-fuse twins (Fig. 10), the decision-conditioned
+                               bias at the transition midpoint (Fig. 5), four lesion designs
+                               on the causal behaviour (Fig. 11); --run for any configuration
+               common.py       the shared pieces (hybrid read, fusion/segregation summaries,
+                               tuning sweeps, class colours)
+               npmodel.py      a torch-free checkpoint loader and numpy forward pass, so the
+                               analyses run without PyTorch (self-test against stage 3)
 tests/         property tests on the maths, the stage boundaries and the
                figure contract
 data/          generated datasets (.npz)      contents gitignored
-results/       one folder per run, plus calibration/, manuscript/ and
-               prior_sweep/                   contents gitignored
+results/       one folder per run (its figures/model/neuronal_level_analysis/
+               included), plus calibration/, manuscript/ and prior_sweep/
+                                              contents gitignored
 ```
 
 ## Run it
@@ -119,7 +129,17 @@ poetry run python scripts/03_analyze.py       --run flagship --twin flagship_twi
                                               --control pcommon1
 poetry run python scripts/04_figures.py       --run flagship --only model
                                               # --only: inputs | training | model | manuscript
+poetry run python scripts/neuronal/run.py     --run flagship        # = make neuronal RUN=flagship
+                                              # units | r6 | r5 | all; --redraw re-plots r5;
+                                              # --compare picks the lesion figure's second network
 ```
+
+The neuronal-level analyses (`scripts/neuronal/`) sit beside the stages: they
+read a finished run and write to
+`results/<run>/figures/model/neuronal_level_analysis/{units,decision_bias,lesion_behaviour}/`,
+copying the three composed figures to the run's manuscript folder as
+`fig5_decision_bias`, `fig10_units` and `fig11_lesion_behaviour`. They need no
+PyTorch (`npmodel.py` runs the network in numpy from the checkpoint).
 
 The `analysis` block of a config (`disparity_grid`, `reliability_levels`,
 `ridge_alpha`, `decoder_test_size`) is not a training parameter, so it can
@@ -172,10 +192,11 @@ poetry run python scripts/00_calibrate.py --config configs/flagship.yaml
 # 1. the p_common = 1 control FIRST: its residuals are sigma_out for every other run
 poetry run bash scripts/run_all.sh --config configs/pcommon1.yaml
 
-# 2. the flagship, the p_common = 0 control, the three satellites (any order)
+# 2. the flagship, the p_common = 0 control, the satellites at 0.3 and 0.7 (any order;
+#    pcommon028 still trains but is no longer analysed or cited, its prior being too
+#    close to 0.3 to add anything)
 poetry run bash scripts/run_all.sh --config configs/flagship.yaml
 poetry run bash scripts/run_all.sh --config configs/pcommon0.yaml
-poetry run bash scripts/run_all.sh --config configs/pcommon028.yaml
 poetry run bash scripts/run_all.sh --config configs/pcommon03.yaml
 poetry run bash scripts/run_all.sh --config configs/pcommon07.yaml
 
@@ -185,7 +206,7 @@ poetry run python scripts/06_implied_weight.py figures     --run flagship
 poetry run python scripts/06_implied_weight.py reliability --run flagship --levels 5
 
 # 4. the cross-prior sweep: nine priors x three seeds = 27 networks, sigma_out
-#    from the new pcommon1 (results/prior_sweep/, results/manuscript/prior_sweep/)
+#    from the new pcommon1 (results/prior_sweep/, results/manuscript/fig7_prior_sweep/)
 poetry run python scripts/05_prior_sweep.py --priors 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 \
                                             --seeds 0 1 2 --control pcommon1
 ```
@@ -392,12 +413,24 @@ results/<run>/
                      12 behavioural bias, 13 congruency, 14 RF shifts,
                      15 the weight in posterior bins, 16 its distribution on
                      every trial, per channel, against the posterior's
-results/manuscript/<figure>/      the manuscript figures built from the flagship
-                                  run, one folder per figure, on the standard
-                                  panel (figure 2: A the fusion weight, B the
-                                  weight on the posterior = 08v panel B, C the
-                                  bias curve); results/manuscript_<run>/ for
-                                  any other run
+      neuronal_level_analysis/   scripts/neuronal/run.py: units/ (Fig. 10),
+                     decision_bias/ (Fig. 5), lesion_behaviour/ (Fig. 11),
+                     each with its composed figure, panels and numbers*.json;
+                     REPORT.md explains every panel
+results/manuscript/figN_<name>/   the manuscript figures built from the flagship
+                                  run, on the standard panel, one folder per
+                                  figure named as the paper numbers it (fig2_
+                                  output_scatter ... fig11_lesion_behaviour;
+                                  fig1_task_model_network is drawn by hand and
+                                  only stored here; FIG_* in viz/manuscript.py);
+                                  the composed figure inside carries the
+                                  folder's name and a flat copy of its png sits
+                                  beside the folder, so results/manuscript/
+                                  *.png is the set to upload (the .tex reads
+                                  them from media/). figs 1-3, 5, 7, 8 from
+                                  04_figures.py, 6 from 05_prior_sweep.py, 4, 9,
+                                  10 from scripts/neuronal/run.py;
+                                  results/manuscript_<run>/ for any other run
 results/prior_sweep/
   sweep.json         per-(prior, seed) rows and the per-prior aggregate
   curves.npz         per-trial arrays of the first seed, for re-binning
@@ -573,7 +606,21 @@ one is `flagship_wide.yaml`), the old flagship family's results were deleted,
 and the whole family — six runs with twins, the 27-network prior sweep, the
 manuscript figures and the `06` experiment — was rerun on 2026-10-02/03;
 `GUIDE.md` and `CROSS_PRIOR_RESULT.md` carry that rerun's numbers. On
-2026-10-03 the manuscript's figure 2B became the implied weight on the
-posterior (in place of the position regression) and figure 7 — the posterior
-decoded by layer beside the RF shift gains — was added to
-`results/manuscript/` (GUIDE §9.4).
+2026-10-03 the manuscript's fusion-weight figure got the implied weight on the
+posterior as its panel B (in place of the position regression) and the
+posterior decoded by layer beside the RF shift gains was added as a figure to
+`results/manuscript/` (GUIDE §9.4). On 2026-10-04/05 the neuronal-level
+analyses arrived (`scripts/neuronal/`, torch-free): the always-fuse twins'
+unit classes, example units and the mixed class's sub-structure, the
+decision-conditioned bias at the transition midpoint, and four lesion
+designs on the causal behaviour (GUIDE §7.9, §7.10, §9.6); the p = 0.28
+satellite was dropped from every analysis; the manuscript figures were
+numbered in document order and the figure files, folders and labels named to
+match, each folder's composed figure named as the folder with a flat png
+copy beside it; the model comparison became a standard-panel figure; and no
+figure is written as PDF any more. On 2026-10-06 a drawn schematic of the
+task, the generative model, the input encoding and the network became
+figure 1, every other figure moved up one (`fig2_output_scatter` …
+`fig11_lesion_behaviour`), and the numbering moved into one place, the
+`FIG_*` names at the end of `viz/manuscript.py`, which the renderers, the
+sweep and the neuronal scripts all import.

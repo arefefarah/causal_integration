@@ -1,17 +1,29 @@
-"""Neuronal-level analyses for the manuscript's layers-and-units subsection,
-as figures under results/neuronal_level_analysis/<folder>/ with a numbers.json
-each. Torch-free (npmodel.py); house style (cmsi.viz.style / manuscript);
-png, tif and svg, no pdf.
+"""Neuronal-level analyses of one trained network (the manuscript's
+layers-and-units subsection), as figures under
 
-    python scripts/neuronal/run.py units    Fig. units: example tuning curves (R1) and unit
-                                            counts against the prior and the targets (R11), 5 panels
-    python scripts/neuronal/run.py r6       decision-conditioned bias at the midpoint (Rideaux 2E-G)
-    python scripts/neuronal/run.py r5       lesion on causal behaviour, four designs compared
-    python scripts/neuronal/run.py all
+    results/<run>/figures/model/neuronal_level_analysis/<figure>/
 
-Networks: pcommon0 (0), pcommon03 (0.3), flagship (0.5), pcommon07 (0.7),
-pcommon1 (1), and the always-fuse twins of the three causal worlds. The
-p = 0.28 run is not used.
+one folder per figure (the composed figure named as its folder and copied flat
+beside it, its panels, a numbers.json), with the three composed figures also
+written to the run's manuscript folder under their paper names
+(results/manuscript/ for the flagship, results/manuscript_<run>/ otherwise):
+fig5_decision_bias, fig10_units, fig11_lesion_behaviour. Torch-free
+(npmodel.py); house style (cmsi.viz.style / manuscript); png, tif and svg.
+
+    python scripts/neuronal/run.py units            example congruent, opposite and mixed unit of the run,
+                                                    unit counts by network, against the prior, against the twin
+    python scripts/neuronal/run.py r6               decision-conditioned bias at the run's transition midpoint
+    python scripts/neuronal/run.py r5               lesion on causal behaviour, four designs, the run and a
+                                                    comparison network (+ recommended_ABC, the run alone)
+    python scripts/neuronal/run.py all              everything (the default)
+    python scripts/neuronal/run.py --run pcommon03 all          another configuration
+    python scripts/neuronal/run.py r5 --redraw      re-plot from the saved numbers_*.json
+
+Options: --run <name> (default flagship), --compare <name> (the second network
+of r5; default pcommon03, or flagship when the run is pcommon03), --redraw.
+The comparison set for the unit counts is fixed: pcommon0 (0), pcommon03
+(0.3), flagship (0.5), pcommon07 (0.7), pcommon1 (1) and the always-fuse
+twins of the three causal worlds. The p = 0.28 run is not used.
 """
 
 import sys
@@ -20,14 +32,50 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import (CLASS_COLORS, CLASSES, COLORS, OUT, PANEL_FONT, PANEL_LW,   # noqa: E402
-                    PANEL_MS, RUN_LABEL, RUN_PRIOR, TWIN_RUNS, Bundle, apply_style,
-                    behaviour_stats, binned_weight, bootstrap_ci, congruency_np,
-                    decode, finish_panel, fusion_segregation, hybrid_reads, load_run,
-                    manuscript_grid, mean_by_bin, panel_axes, save_figures, save_json)
+from common import (CLASS_COLORS, CLASSES, COLORS, FIG_BIAS, FIG_LESION,      # noqa: E402
+                    FIG_UNITS, PANEL_FONT, PANEL_LW, PANEL_MS, RUN_LABEL,
+                    RUN_PRIOR, TWIN_RUNS, Bundle,
+                    apply_style, behaviour_stats, binned_weight, bootstrap_ci,
+                    congruency_np, decode, finish_panel, fusion_segregation,
+                    hybrid_reads, load_run, manuscript_dir, manuscript_grid,
+                    mean_by_bin, out_dir, panel_axes, save_figures, save_json)
 from cmsi.viz.style import FORMATS  # noqa: E402  (png, tif, svg)
 
 _BUNDLES, _TWINS = {}, {}
+
+# Per-run folders are named by content (like the run's other model figures);
+# the paper names (FIG_BIAS / FIG_UNITS / FIG_LESION in viz/manuscript.py)
+# are used only for the copies in the run's manuscript folder. The composed figure in each folder is named as the
+# folder, so `save_figures` also drops a flat png copy beside it.
+K_BIAS, K_UNITS, K_LESION = "decision_bias", "units", "lesion_behaviour"
+PAPER = {K_BIAS: FIG_BIAS, K_UNITS: FIG_UNITS, K_LESION: FIG_LESION}
+SHORT = {"flagship": "main", "pcommon03": "p = 0.3", "pcommon07": "p = 0.7",
+         "pcommon1": "fuse\nctrl", "pcommon0": "segregate\nctrl"}
+
+# set by main() from --run / --compare; module defaults for interactive use
+RUN, COMPARE = "flagship", "pcommon03"
+OUT, MDIR = out_dir(RUN), manuscript_dir(RUN)
+
+
+def configure(run="flagship", compare=None):
+    """Point every analysis at `run`: outputs under out_dir(run), manuscript
+    copies under manuscript_dir(run), r5's second network `compare`."""
+    global RUN, COMPARE, OUT, MDIR
+    RUN = run
+    COMPARE = compare or ("flagship" if run == "pcommon03" else "pcommon03")
+    OUT, MDIR = out_dir(run), manuscript_dir(run)
+
+
+def save_all(figs, key):
+    """Every figure of one analysis -> OUT/<key>/ (panels, the composed
+    figure named `key`, numbers alongside); the composed figure also -> the
+    run's manuscript folder under its paper name (FIG_BIAS / FIG_UNITS /
+    FIG_LESION), flat copy
+    included, so the manuscript folder holds it like every other figure."""
+    paper = PAPER[key]
+    save_figures({f"{paper}/{paper}": figs[f"{key}/{key}"]}, MDIR, formats=FORMATS, close=False)
+    save_figures(figs, OUT, formats=FORMATS)
+    print(f"   -> {OUT / key}/ and {MDIR / paper}/ (+ flat copies)")
 
 
 def bundle(run):
@@ -55,7 +103,7 @@ def class_sets(classes):
 #                         D counts against the prior; E opposite units, causal vs twin
 # --------------------------------------------------------------------------- #
 def units():
-    b = bundle("flagship")
+    b = bundle(RUN)
     c = b.cong
     idx = c["index"]
     u_con = int(np.argmax(np.where(c["classes"] == "congruent", idx, -np.inf)))
@@ -96,17 +144,20 @@ def units():
 
     def pC(ax=None):
         ax = panel_axes(ax)
-        order = [("flagship", bundle("flagship").counts, "main"),
-                 ("flagship_twin", twin("flagship")["counts"], "twin"),
-                 ("pcommon1", bundle("pcommon1").counts, "fuse ctrl"),
-                 ("pcommon0", bundle("pcommon0").counts, "segregate ctrl")]
+        # this run, its always-fuse twin when one exists, and the two controls
+        order = [(RUN, bundle(RUN).counts, SHORT.get(RUN, RUN))]
+        if RUN in TWIN_RUNS:
+            order.append((f"{RUN}_twin", twin(RUN)["counts"], "twin"))
+        for ctrl in ("pcommon1", "pcommon0"):
+            if ctrl != RUN:
+                order.append((ctrl, bundle(ctrl).counts, SHORT[ctrl]))
         x = np.arange(len(order))
         wdt = 0.26
         for i, cl in enumerate(CLASSES):
             ax.bar(x + (i - 1) * wdt, [o[1][f"n_{cl}"] for o in order], wdt,
                    color=CLASS_COLORS[cl], alpha=0.85, label=cl)
         ax.set_xticks(x)
-        ax.set_xticklabels(["main", "twin", "fuse\nctrl", "segregate\nctrl"])
+        ax.set_xticklabels([o[2] for o in order])
         ax.set_ylim(0, 58)
         return finish_panel(ax, "", "units of 64", "unit classes by network", "upper left")
 
@@ -146,16 +197,16 @@ def units():
 
     draws = [example(u_con, "congruent unit"), example(u_opp, "opposite unit"), example(u_mix, "mixed unit"),
              pC, pD, pE]
-    figs = {"Fig_units/row_ABCDEF": manuscript_grid(draws, ncols=3)}
+    figs = {f"{K_UNITS}/{K_UNITS}": manuscript_grid(draws, ncols=3)}
     for key, fn in zip(("A_congruent_unit", "B_opposite_unit", "C_mixed_unit", "D_classes_by_network",
                         "E_counts_vs_prior", "F_opposite_causal_vs_twin"), draws):
-        figs[f"Fig_units/{key}"] = fn()
-    save_figures(figs, OUT, formats=FORMATS)
-    save_json({"example_units": {"congruent": u_con, "opposite": u_opp, "mixed": u_mix},
+        figs[f"{K_UNITS}/{key}"] = fn()
+    save_all(figs, K_UNITS)
+    save_json({"run": RUN, "example_units": {"congruent": u_con, "opposite": u_opp, "mixed": u_mix},
                "mixed_substructure": mixed_sub,
                "index": idx.tolist(), "classes": c["classes"].tolist(),
                "sweep_range_vis": rng_v.tolist(), "sweep_range_prop": rng_p.tolist(),
-               "runs": rows, "twins": twins}, OUT / "Fig_units" / "numbers.json")
+               "runs": rows, "twins": twins}, OUT / K_UNITS / "numbers.json")
     print(f"units: example congruent unit {u_con} ({idx[u_con]:+.2f}), opposite unit {u_opp} ({idx[u_opp]:+.2f}), "
           f"mixed unit {u_mix} ({idx[u_mix]:+.2f}); mixed sub-structure {mixed_sub}")
     for r in rows + twins:
@@ -166,7 +217,8 @@ def units():
 # --------------------------------------------------------------------------- #
 # R6  decision-conditioned bias at the transition midpoint
 # --------------------------------------------------------------------------- #
-def r6(run="flagship", n=4000, seed=0):
+def r6(run=None, n=4000, seed=0):
+    run = run or RUN
     from cmsi.data.generative import observer
     from common import encode, hybrid_weight, mid_sigmas
     b = bundle(run)
@@ -217,7 +269,7 @@ def r6(run="flagship", n=4000, seed=0):
               f"[{cond['two']['pull_ci'][0]:+.2f},{cond['two']['pull_ci'][1]:+.2f}]; measured |d| one "
               f"{cond['one']['meas_disp']:.2f} two {cond['two']['meas_disp']:.2f}; Bayes pull one "
               f"{cond['one']['bayes_pull']:+.2f} two {cond['two']['bayes_pull']:+.2f}")
-    save_json(res, OUT / "R6_decision_bias" / "numbers.json")
+    save_json(res, OUT / K_BIAS / "numbers.json")
 
     def pA(ax=None):
         ax = panel_axes(ax)
@@ -262,8 +314,8 @@ def r6(run="flagship", n=4000, seed=0):
                   labelspacing=0.3)
         return fig
 
-    figs = {"R6_decision_bias/row_ABC": manuscript_grid([pA, pB, pC], ncols=3)}
-    save_figures(figs, OUT, formats=FORMATS)
+    figs = {f"{K_BIAS}/{K_BIAS}": manuscript_grid([pA, pB, pC], ncols=3)}
+    save_all(figs, K_BIAS)
 
 
 # --------------------------------------------------------------------------- #
@@ -492,11 +544,12 @@ def r5_v4(b, n_random=20, seed=0, alpha=1e-3):
     return out
 
 
-def r5(runs=("flagship", "pcommon03")):
+def r5(runs=None):
     import json
+    runs = runs or (RUN, COMPARE)
     results = {}
     for run in runs:
-        path = OUT / "R5_lesion_behaviour" / f"numbers_{run}.json"
+        path = OUT / K_LESION / f"numbers_{run}.json"
         if "--redraw" in sys.argv and path.exists():
             results[run] = json.loads(path.read_text())
             continue
@@ -610,27 +663,41 @@ def r5(runs=("flagship", "pcommon03")):
     draws, figs = [], {}
     for run in runs:
         draws += [p_v1(run), p_v2(run), p_v3(run), p_v4(run)]
-    figs["R5_lesion_behaviour/row_ABCD_EFGH"] = manuscript_grid(draws, ncols=4)
+    figs[f"{K_LESION}/{K_LESION}"] = manuscript_grid(draws, ncols=4)
     for run in runs:
         for key, fn in (("v1_whole_class", p_v1), ("v2_single_unit", p_v2), ("v3_cumulative", p_v3),
                         ("v4_refit", p_v4)):
-            figs[f"R5_lesion_behaviour/{run}_{key}"] = fn(run)()
-        figs[f"R5_lesion_behaviour/{run}_v3_cumulative_fusion"] = p_v3(run, "fusion")()
-    # recommended manuscript figure: cumulative lesion (fusion, segregation) + refitted read-out, main network
-    figs["R5_lesion_behaviour/recommended_ABC"] = manuscript_grid(
-        [p_v3("flagship", "fusion"), p_v3("flagship", "segregation"), p_v4("flagship")], ncols=3)
-    save_figures(figs, OUT, formats=FORMATS)
+            figs[f"{K_LESION}/{run}_{key}"] = fn(run)()
+        figs[f"{K_LESION}/{run}_v3_cumulative_fusion"] = p_v3(run, "fusion")()
+    # the run alone: cumulative lesion (fusion, segregation) + refitted read-out
+    figs[f"{K_LESION}/recommended_ABC"] = manuscript_grid(
+        [p_v3(runs[0], "fusion"), p_v3(runs[0], "segregation"), p_v4(runs[0])], ncols=3)
+    save_all(figs, K_LESION)
 
 
 ANALYSES = {"units": units, "r6": r6, "r5": r5}
 
-if __name__ == "__main__":
-    apply_style()
+
+def main(argv=None):
+    import argparse
     import warnings
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("analyses", nargs="*", default=["all"], help="units, r6, r5 or all")
+    ap.add_argument("--run", default="flagship", help="the network analysed (default flagship)")
+    ap.add_argument("--compare", default=None, help="r5's second network (default pcommon03)")
+    ap.add_argument("--redraw", action="store_true", help="r5: re-plot from the saved numbers_*.json")
+    args = ap.parse_args(argv)
+    configure(args.run, args.compare)
+    if args.redraw and "--redraw" not in sys.argv:
+        sys.argv.append("--redraw")
+    apply_style()
     warnings.filterwarnings("ignore", category=RuntimeWarning)
-    which = [a for a in sys.argv[1:] if not a.startswith("--")] or ["all"]
-    if which == ["all"]:
-        which = list(ANALYSES)
+    which = list(ANALYSES) if args.analyses == ["all"] else args.analyses
+    print(f"run {RUN} (r5 against {COMPARE}) -> {OUT}")
     for w in which:
         print(f"=== {w} ===")
         ANALYSES[w]()
+
+
+if __name__ == "__main__":
+    main()
