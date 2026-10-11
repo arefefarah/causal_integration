@@ -104,13 +104,23 @@ class Bundle:
     """One run, loaded once: net, config, test split, encoders, metrics,
     sigma_out, unit classes (checked against metrics.json)."""
 
-    def __init__(self, run):
+    def __init__(self, run, control="pcommon1"):
         self.run = run
         self.net, self.ckpt, self.cfg, self.d, self.d_full = load_run(run)
-        self.metrics = json.loads((ROOT / "results" / run / "metrics.json").read_text())
+        mpath = ROOT / "results" / run / "metrics.json"
+        if mpath.exists():
+            self.metrics = json.loads(mpath.read_text())
+        else:
+            # a run that was only trained (02_train.py), e.g. one seed of a seed
+            # study: no stage-3 numbers, so the read-out noise scale comes from
+            # the control that supplies it to every run (03_analyze --control)
+            self.metrics = {}
         self.names = list(self.d_full["target_names"])
-        self.sig_out = np.asarray(self.metrics.get("sigma_out",
-                                                   self.metrics["residual_std"]))
+        if "sigma_out" in self.metrics or "residual_std" in self.metrics:
+            self.sig_out = np.asarray(self.metrics.get("sigma_out", self.metrics.get("residual_std")))
+        else:
+            ctrl = json.loads((ROOT / "results" / control / "metrics.json").read_text())
+            self.sig_out = np.asarray(ctrl["residual_std"])
         self.cong = congruency_np(self.net, self.d_full["encoders"], self.cfg)
         self.classes = self.cong["classes"]
         m = self.metrics.get("congruency", {})

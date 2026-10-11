@@ -4,13 +4,14 @@
 # environment first.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup test lint format calibrate data train analyze figures neuronal all quick sweep clean clean-runs
+.PHONY: help setup test lint format calibrate data train analyze figures neuronal seeds all quick sweep clean clean-runs
 
 RUN    ?= baseline
 DATA   ?= main
 CONFIG ?= configs/flagship.yaml
 PRIORS ?= 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
 SEEDS  ?= 0
+N      ?= 100
 
 help:  ## show this list
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -46,8 +47,13 @@ analyze:  ## compare RUN against the analytical observer
 figures:  ## render every figure for RUN
 	poetry run python scripts/04_figures.py --run $(RUN)
 
-neuronal:  ## the neuronal-level analyses of RUN (Figs. 4, 9, 10), no torch needed  (make neuronal RUN=flagship)
+neuronal:  ## the neuronal-level analyses of RUN (Figs. 5, 10, 11), no torch needed  (make neuronal RUN=flagship)
 	poetry run python scripts/neuronal/run.py --run $(RUN)
+
+seeds:  ## the lesion analysis across N seeds of RUN: trains seeds 1..N-1 (hours), then analyses and draws  (make seeds RUN=flagship N=100)
+	poetry run python scripts/neuronal/seeds.py train    --run $(RUN) --n $(N)
+	poetry run python scripts/neuronal/seeds.py all      --run $(RUN) --n $(N) --extras damage pairs clamp
+	poetry run python scripts/neuronal/seeds.py patterns --run $(RUN)
 
 all:  ## whole pipeline + control twin  (make all CONFIG=configs/wide_rf.yaml)
 	poetry run bash scripts/run_all.sh --config $(CONFIG)

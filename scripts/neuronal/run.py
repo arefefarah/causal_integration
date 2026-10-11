@@ -36,7 +36,7 @@ from common import (CLASS_COLORS, CLASSES, COLORS, FIG_BIAS, FIG_LESION,      # 
                     FIG_UNITS, PANEL_FONT, PANEL_LW, PANEL_MS, RUN_LABEL,
                     RUN_PRIOR, TWIN_RUNS, Bundle,
                     apply_style, behaviour_stats, binned_weight, bootstrap_ci,
-                    congruency_np, decode, finish_panel, fusion_segregation,
+                    congruency_np, finish_panel, fusion_segregation,
                     hybrid_reads, load_run, manuscript_dir, manuscript_grid,
                     mean_by_bin, out_dir, panel_axes, save_figures, save_json)
 from cmsi.viz.style import FORMATS  # noqa: E402  (png, tif, svg)
@@ -439,7 +439,9 @@ def r5_v3(b, n_random=30, seed=0):
     for c, ix in cs.items():
         if len(ix) == 0:
             continue
-        order = ix[np.argsort(-idx_all[ix])]
+        # most typical first: largest |index| for congruent and opposite units,
+        # index closest to zero for mixed units
+        order = ix[np.argsort(idx_all[ix] if c == "mixed" else -idx_all[ix])]
         F, S = [], []
         keep = np.ones(64, bool)
         for u in order:
@@ -567,16 +569,19 @@ def r5(runs=None):
             grid = np.array(cv["grid"])
             c_o, m_o, _ = mean_by_bin(np.abs(b.d["disparity"]), b.d["post_c1"], grid)
             ax.plot(c_o, m_o, "--", lw=PANEL_LW, color=COLORS["analytical"], label="analytical")
-            k_opp = str(r["lesions"]["opposite"]["k"])
-            band = cv["random"][k_opp]
-            bc, bm, bs = np.array(band["c"]), np.array(band["mean"]), np.array(band["sd"])
-            ax.fill_between(bc, bm - 2 * bs, bm + 2 * bs, color="gray", alpha=0.25, lw=0,
-                            label=f"random {k_opp}, ±2 sd")
+            # each class against random lesions of ITS OWN size (the dotted
+            # curve in the class colour is the mean over the 100 random draws
+            # of k units, k the class's count), so no class is held to the
+            # null of another class's size
             ax.plot(cv["intact"]["c"], cv["intact"]["m"], "-", lw=PANEL_LW + 0.4, color="k", label="intact")
             for c in CLASSES:
                 if c in cv:
+                    k_c = str(r["lesions"][c]["k"])
+                    rc = cv["random"][k_c]
+                    ax.plot(rc["c"], rc["mean"], ":", lw=1.0, color=CLASS_COLORS[c])
                     ax.plot(cv[c]["c"], cv[c]["m"], "-", lw=PANEL_LW, color=CLASS_COLORS[c],
-                            label=f"−{c} ({r['lesions'][c]['k']})")
+                            label=f"−{c} ({k_c})")
+            ax.plot([], [], ":", lw=1.0, color="gray", label="random, same k")
             ax.set_ylim(-0.1, 1.8)
             ax.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
             fig = finish_panel(ax, "|disparity| (deg)", "weight on fused estimate",

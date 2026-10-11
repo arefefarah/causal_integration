@@ -76,7 +76,7 @@ encoding:
   n_vis: 76                    # gaussian receptive fields, retinal visual cue
   n_prop: 76                   # push-pull code, proprioceptive hand
   n_eye: 76                    # push-pull code, eye position
-  visual_field: [-85.0, 85.0]  # 2*rf_width margin -> 0.0% containment rejection here
+  visual_field: [-75.0, 75.0]  # 2*rf_width margin -> 0.0% containment rejection here
   rf_width: 6.0
   gain_K: 180.0                # activity gain = gain_K / variance (SS4-calibrated)
   slope_range: [-1.0, 1.0]

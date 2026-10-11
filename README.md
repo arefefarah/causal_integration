@@ -99,6 +99,12 @@ scripts/       00_calibrate  01_generate_data  02_train  03_analyze  04_figures
                                tuning sweeps, class colours)
                npmodel.py      a torch-free checkpoint loader and numpy forward pass, so the
                                analyses run without PyTorch (self-test against stage 3)
+               seeds.py        the seed study of one configuration, N networks: the unit
+                               classes, the three fit-free lesion designs, the damage-
+                               matched null, every single-unit and pair lesion, the clamp
+                               at 0 / 1 instead of the mean, and the tuning patterns of
+                               the mixed units: `train` (02_train.py per seed), `analyse`
+                               (--extras damage pairs clamp, --budget), `figure`, `patterns`
 tests/         property tests on the maths, the stage boundaries and the
                figure contract
 data/          generated datasets (.npz)      contents gitignored
@@ -132,6 +138,12 @@ poetry run python scripts/04_figures.py       --run flagship --only model
 poetry run python scripts/neuronal/run.py     --run flagship        # = make neuronal RUN=flagship
                                               # units | r6 | r5 | all; --redraw re-plots r5;
                                               # --compare picks the lesion figure's second network
+poetry run python scripts/neuronal/seeds.py   train --run flagship --n 100   # seeds 1..99, hours
+poetry run python scripts/neuronal/seeds.py   all   --run flagship --n 100 --extras damage pairs clamp
+                                              # analyse + figure (~35 s per network with the
+                                              # extras; --budget 150 to do it in several calls)
+poetry run python scripts/neuronal/seeds.py   patterns --run flagship      # the mixed-unit patterns
+                                              # the three together = make seeds N=100
 ```
 
 The neuronal-level analyses (`scripts/neuronal/`) sit beside the stages: they
@@ -416,7 +428,10 @@ results/<run>/
       neuronal_level_analysis/   scripts/neuronal/run.py: units/ (Fig. 10),
                      decision_bias/ (Fig. 5), lesion_behaviour/ (Fig. 11),
                      each with its composed figure, panels and numbers*.json;
-                     REPORT.md explains every panel
+                     REPORT.md explains every panel; scripts/neuronal/seeds.py
+                     adds lesion_seeds/, unit_counts_seeds/, lesion_pairs_seeds/,
+                     lesion_clamp_seeds/ and mixed_patterns/ (the seed study, 100
+                     networks; copied to results/manuscript/ as figS_<name>)
 results/manuscript/figN_<name>/   the manuscript figures built from the flagship
                                   run, on the standard panel, one folder per
                                   figure named as the paper numbers it (fig2_
@@ -623,4 +638,16 @@ task, the generative model, the input encoding and the network became
 figure 1, every other figure moved up one (`fig2_output_scatter` …
 `fig11_lesion_behaviour`), and the numbering moved into one place, the
 `FIG_*` names at the end of `viz/manuscript.py`, which the renderers, the
-sweep and the neuronal scripts all import.
+sweep and the neuronal scripts all import. On 2026-10-09 the flagship was
+retrained with `visual_field [-75, 75]` (an uncommitted config change; the
+satellites and controls still have `[-85, 85]`, and the neuronal manuscript
+figures are still the old flagship's — GUIDE §12.0 says what has to be
+redone). On 2026-10-10/11 the seed study arrived (`scripts/neuronal/seeds.py`,
+GUIDE §7.9 "The seed study"): 99 more seeds of the flagship configuration,
+the unit classes and the three fit-free lesion designs on every one, a
+damage-matched null, every single-unit and pair lesion (additive, the
+read-out being linear), the whole-class clamp at 0 and at 1 (segregation
+unchanged, fusion unreadable), and the five tuning patterns of the mixed
+units;
+the whole-class clamp panels now draw each class against random lesions of
+its own size.
