@@ -1989,12 +1989,24 @@ opposite sign to the wide configuration's (§7.9) and is not a finding.
 Four points and one seed each is a weak design for a claim about a
 continuous dependence. That is what §8.2 exists to fix.
 
-## 8.2 The prior sweep — nine priors, three seeds
+## 8.2 The prior sweep — nine priors trained, eight reported
 
-`scripts/05_prior_sweep.py` trains a network at every combination of nine priors
-(0.1 … 0.9) and three seeds — **27 networks**, 50,000 trials and 300 epochs
-each — and recovers the implied fusion weight from behaviour alone. No network
-has a causal read-out; each is trained on the same four numbers as the flagship.
+`scripts/05_prior_sweep.py` trains a network at every combination of the
+priors it is given and three seeds. The stored sweep holds nine priors
+(0.1 … 0.9) — **27 networks**, 50,000 trials and 300 epochs each — and
+recovers the implied fusion weight from behaviour alone. No network has a
+causal read-out; each is trained on the same four numbers as the flagship.
+
+**Reported priors (17 Oct 2026).** The paper reports the eight priors
+0.2 … 0.9 (24 networks; `PRIORS` in `05_prior_sweep.py`, Fig. 7, Table 1).
+The 0.1 rows stay in `sweep.json` and in the table below but are not drawn
+or reported: at that prior the posterior exceeds one half on 2 % of trials,
+so its "midpoint" is an extrapolation below zero disparity rather than a
+disparity any trial has (see "the point at 0.1" below). `--replot` draws the
+reported set unless `--priors` names others. Over the eight: slope 1.02,
+intercept −0.24°, R² 0.9997, mean |deviation| 0.12°, max 0.22° on the prior
+means; the 24 networks individually give the same slope and intercept with
+R² 0.999.
 
 Between any two priors **only the Bernoulli constant differs**: same encoders,
 same σ ranges, same architecture, same training protocol. Because the latent
@@ -2201,6 +2213,191 @@ ratio and the trial counts stated, and a sentence saying why 0.1 and 0.2 have
 no hump to reproduce. On the wide configuration this figure had to be
 restricted to [0.2, 0.7] because the ratio collapsed to 0.28 at the top; that
 is no longer true.
+
+## 8.4 The eye-position sweep — does the reference-frame transformation change the game?
+
+Added 2026-10-12 (`scripts/07_eye_sweep.py`; `results/eye_sweep/`; the
+figure `figS_eye_sweep` in `results/manuscript/`). The flagship is retrained
+with ONE change, `generative.eye_sigma_sq`, the spread of the eye position
+across trials: sd 1, 3, 9 (the flagship's), 18 and 27 deg, three seeds each
+(0, 1, 2; the sd 9 networks are the flagship's configuration retrained, not
+the flagship itself). The visual and proprioceptive inputs, the eye signal's
+own noise (sd 1.9–2.0 deg), the encoders, the architecture and the training
+are the flagship's, and so is σ_out (`pcommon1`). With the eyes nearly fixed
+the retinal and the body frame coincide and the eye signal is irrelevant;
+with sd 27 deg every visual measurement has to be shifted by a large,
+noisily known amount before it can be compared with the hand. Each network
+is compared with its OWN observer, because the lever moves the observer
+too: shrinking the eye estimate toward its prior gives
+var_eye = 1 / (1/sig2_eye + 1/eye_sigma_sq), so the body-frame visual
+variance (sig2_vis + var_eye) is 1.9 deg² at sd 1 and 5.0 deg² at sd 27,
+the eye signal's gain k rises from 0.20 to 0.995, and the posterior's
+transition midpoint moves from 4.48 to 5.14 deg. The always-fuse twin of
+every network (same trials, fused targets; `--twin`) was trained as well,
+for its unit classes. Fifteen causal networks and fifteen twins, about two
+minutes each on two CPU cores. Containment rejection is 0 % up to sd 9,
+0.2 % at 18 and 2.8 % at 27 (the visual field is kept at ±75°).
+
+| eye sd (deg) | 1 | 3 | 9 | 18 | 27 |
+|---|---|---|---|---|---|
+| var_vis_body (deg²) / eye gain k | 1.90 / 0.20 | 3.85 / 0.70 | 4.87 / 0.95 | 5.00 / 0.99 | 5.03 / 0.995 |
+| implied weight on p(C=1\|x), slope, vis | 0.991 ± 0.016 | 0.969 ± 0.015 | 0.979 ± 0.009 | 0.953 ± 0.001 | 0.943 ± 0.004 |
+| … hand | 0.988 ± 0.004 | 0.998 ± 0.011 | 0.971 ± 0.017 | 0.953 ± 0.007 | 0.945 ± 0.026 |
+| position regression slope, vis / hand | 0.993 / 0.977 | 0.965 / 0.993 | 0.932 / 0.972 | 0.956 / 0.926 | 0.972 / 0.918 |
+| transition midpoint, network / observer (deg) | 4.47 / 4.48 | 4.85 / 4.91 | 4.85 / 5.09 | 5.05 / 5.14 | 5.03 / 5.14 |
+| fusion (\|Δ\| ≤ 2°), network / observer | 0.831 / 0.839 | 0.821 / 0.825 | 0.811 / 0.817 | 0.804 / 0.816 | 0.793 / 0.816 |
+| segregation (\|Δ\| ≥ 15°), network / observer | 0.988 / 1.000 | 0.992 / 1.000 | 0.995 / 1.000 | 0.981 / 1.000 | 0.982 / 1.000 |
+| variance hump, network / observer (deg²) | 0.24 / 0.26 | 0.66 / 0.68 | 0.84 / 0.90 | 0.83 / 0.93 | 0.80 / 0.94 |
+| reliability-within-disparity slope | 0.99 | 0.97 | 0.94 | 0.96 | 0.96 |
+| model comparison: averaging / selection / fixed RMSE (deg) | 0.66 / 0.70 / 0.77 | 0.55 / 0.70 / 0.87 | 0.59 / 0.78 / 0.94 | 0.75 / 0.93 / 1.05 | 0.83 / 0.99 / 1.12 |
+| read-out RMSE, μ_vis / μ_hand (deg) | 0.66 / 0.61 | 0.55 / 0.57 | 0.59 / 0.59 | 0.75 / 0.65 | 0.83 / 0.66 |
+| p(C=1\|x) decoded, SIL / MSL (R²) | 0.92 / 0.99 | 0.90 / 0.99 | 0.89 / 0.98 | 0.90 / 0.97 | 0.88 / 0.97 |
+| eye position decoded, SIL / MSL (R²) | 0.14 / 0.07 | 0.67 / 0.57 | 0.91 / 0.90 | 0.93 / 0.92 | 0.95 / 0.95 |
+| spatial visual position decoded, SIL / MSL (R²) | 0.98 / 0.98 | 0.96 / 0.97 | 0.95 / 0.96 | 0.94 / 0.95 | 0.93 / 0.95 |
+| RF-shift gain, median, probe ±9° / own ±sd | −0.06 / −0.01 | −0.07 / −0.06 | −0.05 / −0.05 | −0.03 / −0.02 | −0.005 / −0.006 |
+| MSL units, congruent / opposite / mixed | 19.3 / 16.3 / 28.3 | 21.3 / 11.7 / 31.0 | 15.7 / 20.3 / 28.0 | 15.0 / 24.7 / 24.3 | 12.0 / 27.7 / 24.3 |
+| always-fuse twin, congruent / opposite / mixed | 40.7 / 14.0 / 9.3 | 40.0 / 12.0 / 12.0 | 41.0 / 12.0 / 11.0 | 41.3 / 8.7 / 14.0 | 41.7 / 8.3 / 14.0 |
+| opposite units, causal − twin (per seed) | −2, 5, 4 | 0, 1, −2 | 9, 5, 11 | 16, 19, 13 | 19, 19, 20 |
+| best epoch (of 300) | 160 | 202 | 215 | 248 | 288 |
+
+(mean ± SEM over the three seeds where given; every other entry a mean of
+three. `results/eye_sweep/sweep.json` has every value with its sd and SEM,
+per network in `rows`.)
+
+**What changes: almost nothing in the behaviour.** The weight-versus-
+disparity curves of the five levels lie on top of each other and on their
+observers (panel A); the midpoint follows the observer's from 4.47 to 5.03
+deg as the observer's moves from 4.48 to 5.14 (C); fusion and segregation
+stay within 0.02 of the observer's at every level (F); model averaging beats
+selection and a fixed weight at every level, by a growing margin. What
+degrades is small and graded: the slope of the implied weight on the
+posterior falls from 0.99 at sd 1 to 0.94 at sd 27 (both channels), the
+hand's position-regression slope from 0.98 to 0.92, the variance hump from
+94 % to 85 % of the analytical, and the read-out error from 0.55–0.66 to
+0.83 deg (μ_vis) — the transformation costs precision, about 5 % of the
+Bayesian slope over the whole range. The caveat is training: the best epoch
+rises from 160 to 288 of the 300 allowed, so the sd 27 networks were still
+improving when the cap stopped them, and part of the 5 % may be training
+time rather than the task (checked below with 900 epochs).
+
+**The transformation itself is complete at every level.** The median
+RF-shift gain of the MSL is within 0.07 of zero everywhere, probed at the
+same ±9° for every network and at each network's own range (D; the twins
+too, −0.01 to +0.06): the multisensory layer codes vision in spatial
+coordinates whether the eyes moved over 1 or 27 degrees in training, and a
+network trained at sd 1, which never saw the eyes at 9°, still shifts its
+preferred positions correctly when probed there. The spatial visual
+position is decodable from both layers at R² ≥ 0.93 at every level, the eye
+position at R² 0.9–0.95 once it varies (sd ≥ 9; at sd 1 there is nothing
+to decode) and the posterior at 0.97–0.99 from the MSL: the quantities the
+causal computation needs are there in every case.
+
+**What changes a lot: the unit classes.** The opposite class grows with
+the eye spread — 16, 12, 20, 25, 28 units at sd 1, 3, 9, 18, 27 — while the
+congruent class shrinks (19, 21, 16, 15, 12) and the mixed class a little
+(28, 31, 28, 24, 24). The always-fuse twins do the opposite: 14, 12, 12,
+9, 8 opposite units, 40–42 congruent at every level. So the causal-minus-
+twin excess of opposite units, the quantity B8 rests on, is 0 ± 3 with
+the eyes nearly fixed (sd 1: −2, 5, 4; sd 3: 0, 1, −2), 8 at the flagship's
+sd 9 (9, 5, 11; the paper's one seed gave 21 − 13 = 8) and 16–19 at sd 18
+and 27 (16, 19, 13; 19, 19, 20). The causal targets recruit opposite units
+in proportion to how much of a reference-frame transformation the visual
+cue needs: when the retinal and the body frame coincide, a network trained
+on causal targets has no more opposite units than one trained on fused
+targets, although it performs the causal computation just as well (slopes
+0.99). B8's sentence — opposite units come from the causal targets, not
+from the inputs — therefore holds at the flagship's eye range and beyond
+but not at a fixed gaze, and the figure to carry is the interaction, not
+the count: the opposite class is where the causal computation and the
+transformation meet. What the extra opposite units do is not settled here.
+The index is measured with the eye at 0, so they are opposite in the body
+frame; a unit that subtracts the hand from the body-frame visual estimate
+is a disparity detector, and a network that has to build the body-frame
+estimate from retinal input and an eye signal may find an explicit
+disparity more economical than one that reads it off the inputs — but that
+is a hypothesis, and the sweep's lesion analyses (`scripts/neuronal/run.py
+--run`, once the levels are saved as runs) are the test.
+
+**For the manuscript.** Panels A–C and F are the behavioural answer (the
+causal computation survives a 27-fold change in the transformation's size
+with a 5 % loss of Bayesian slope), D the transformation's completeness, E
+the representational answer (opposite units scale with the transformation
+in the causal network only). The experiment is a supplementary candidate as
+it stands (`figS_eye_sweep`); the sd 9 column is the flagship configuration
+retrained, so its numbers differ from the flagship's by seed (e.g. 15.7 /
+20.3 / 28.0 units against 16 / 17 / 31).
+
+## 8.5 The mean-eye-position sweep — the same lever's other half
+
+Added 2026-10-12 (`scripts/07_eye_sweep.py --param eye_mu`;
+`results/eye_mu_sweep/`; `figS_eye_mu_sweep`). The companion of §8.4: now
+`generative.eye_mu` is changed — the eyes are deviated from straight ahead
+on average, by 0 (the flagship), 10, 20, 30 or 40 deg — with the spread kept
+at the flagship's sd 9 deg, three seeds per level and the always-fuse twin
+of every network. The 0-deg level is bit-for-bit the sd 9 level of §8.4
+(same configuration, same seeds), which is the consistency check between
+the two sweeps. The lever changes the task differently from the spread: the
+retinal visual input is shifted by −eye_mu on average, toward the edge of
+the ±75° visual field (containment rejection 0, 0, 0.1, 0.7 and 4.3 %), the
+transformation vision needs is the same size as before but around a
+different centre, and the observer barely notices (the eye gain k is 0.95,
+so the prior mean enters its eye estimate with weight 0.05;
+var_vis_body stays 4.87 deg² and the analytical midpoint 5.06–5.11 deg).
+Because a network trained at eye_mu 40 has never seen the eye near 0, its
+unit classes are measured with the eye held at its own eye_mu
+(`analysis.congruency(..., eye=eye_mu)`, the sweeps in spatial coordinates
+with the visual cue encoded retinally for that eye position; `eye = 0`
+reproduces the previous behaviour exactly), and its RF shift is probed both
+around its own mean (eye_mu ± 9 deg) and around straight ahead (0 ± 9 deg).
+
+| mean eye position (deg) | 0 | 10 | 20 | 30 | 40 |
+|---|---|---|---|---|---|
+| containment rejection | 0 % | 0 % | 0.1 % | 0.7 % | 4.3 % |
+| implied weight on p(C=1\|x), slope, vis / hand | 0.979 / 0.971 | 0.979 / 0.974 | 0.984 / 0.968 | 0.959 / 0.950 | 0.956 / 0.949 |
+| position regression slope, vis / hand | 0.932 / 0.972 | 0.964 / 0.945 | 0.954 / 0.955 | 0.970 / 0.944 | 0.966 / 0.901 |
+| transition midpoint, network / observer (deg) | 4.85 / 5.09 | 4.94 / 5.10 | 4.91 / 5.11 | 4.98 / 5.10 | 4.91 / 5.06 |
+| fusion, network / observer | 0.811 / 0.817 | 0.805 / 0.817 | 0.806 / 0.818 | 0.794 / 0.817 | 0.788 / 0.814 |
+| segregation, network / observer | 0.995 / 1.000 | 0.995 / 1.000 | 0.998 / 1.000 | 0.989 / 1.000 | 0.997 / 1.000 |
+| variance hump, network / observer (deg²) | 0.84 / 0.90 | 0.84 / 0.91 | 0.82 / 0.90 | 0.78 / 0.91 | 0.74 / 0.91 |
+| model comparison: averaging / selection / fixed RMSE (deg) | 0.59 / 0.78 / 0.94 | 0.66 / 0.83 / 1.01 | 0.62 / 0.80 / 0.98 | 0.72 / 0.88 / 1.05 | 0.80 / 0.94 / 1.10 |
+| read-out RMSE, μ_vis / μ_hand (deg) | 0.59 / 0.59 | 0.66 / 0.62 | 0.62 / 0.55 | 0.72 / 0.61 | 0.80 / 0.65 |
+| p(C=1\|x) / eye / spatial vision decoded from the MSL (R²) | 0.98 / 0.90 / 0.96 | 0.98 / 0.89 / 0.96 | 0.98 / 0.89 / 0.96 | 0.97 / 0.88 / 0.95 | 0.96 / 0.89 / 0.95 |
+| RF-shift gain, median, probe own mean ± 9° / probe 0 ± 9° | −0.05 / −0.05 | −0.10 / −0.03 | −0.05 / +0.01 | −0.07 / −0.07 | −0.05 / −0.63 (one seed; two give no preferred positions) |
+| MSL units, congruent / opposite / mixed | 15.7 / 20.3 / 28.0 | 17.3 / 20.7 / 25.7 | 17.0 / 18.0 / 28.7 | 18.0 / 21.0 / 25.0 | 16.7 / 23.7 / 23.7 |
+| always-fuse twin, congruent / opposite / mixed | 41.0 / 12.0 / 11.0 | 41.3 / 13.3 / 9.3 | 39.7 / 10.3 / 14.0 | 42.3 / 8.7 / 13.0 | 37.7 / 15.0 / 11.3 |
+| opposite units, causal − twin (per seed) | 9, 5, 11 | 2, 10, 10 | 9, 5, 9 | 16, 12, 9 | 10, 8, 8 |
+
+**What it shows.** Where the eyes rest, as opposed to how much they move,
+changes almost nothing. The weight curves of the five levels coincide with
+each other and with their observers (A); the midpoint stays 0.1–0.25 deg
+below the analytical at every level, as at the flagship (C); the slopes
+hold at 0.98 up to 20 deg and lose 0.02–0.03 at 30–40 deg, the hand's
+position-regression slope 0.07 at 40 deg (B); fusion and segregation stay
+within 0.03 of the observer's (F). The costs are precision, not
+computation: the read-out error grows from 0.59 to 0.80 deg and the
+variance hump drops from 93 % to 81 % of the analytical as the retinal
+input is pushed toward the edge of the encoded field (at 40 deg the
+retinal distribution is centred at −40 with sd 13.5 against containment
+bounds of ±63, hence the 4.3 % rejection). The transformation is complete
+around each network's own eye range at every level (gain −0.05 to −0.10),
+and the probe at straight ahead shows the limit of what has been learned
+rather than of the transformation: at 30 deg, 2.3–4.3 sd from the trained
+mean, the gain is still −0.07; at 40 deg, where the retinal and the eye
+inputs lie outside anything the network was trained on, one network reads
+−0.63 and two give no preferred positions at all. Unit classes are flat:
+opposite 18–24 in the causal networks, 9–15 in the twins, the excess 5–16
+per network with no trend (9, 7, 8, 12, 9 on average against 0 → 19 over
+the spread sweep). So the result of §8.4 is sharpened: the opposite class
+tracks the *variability* of the eye position — the size of the
+transformation the network has to perform trial by trial — and not its
+mean offset, which only relocates the same transformation.
+
+**For the manuscript.** A supplementary panel beside `figS_eye_sweep` or
+one sentence: shifting the mean eye position by up to 40 deg leaves the
+causal computation (slopes ≥ 0.95, midpoint and fusion/segregation on the
+observer's) and the opposite-unit excess over the twin (5–16 units) where
+the flagship has them, at the price of read-out precision near the edge of
+the visual field.
 
 ---
 
@@ -2494,7 +2691,7 @@ every panel from here on, unless a figure is explicitly given another size.
 | `fig4_fusion_weight/` | `A_fusion_weight`, `B_weight_regression`, `C_bias_vs_disparity`, `fig4_fusion_weight` | 3 squares; 1 × 3 row | 2.5 × 2.5 each; 7.5 × 2.5 | `04_fusion_weight`, panel B of `08v_variance_regression`, left half of `12_behavioral_bias` |
 | `fig5_decision_bias/` | `fig5_decision_bias` | 3 squares; 1 × 3 row | 7.5 × 2.5 | `scripts/neuronal/run.py r6` (§9.6) |
 | `fig6_variance_hump/` | `A_variance_hump_vis`, `B_variance_hump_prop`, `fig6_variance_hump` | 1 × 2 wides | 7.5 × 2.5 | `09_variance_hump_vis`, `10_variance_hump_prop` |
-| `fig7_prior_sweep/` | `fig7_prior_sweep` | a full over two wides | 7.5 × 5.0 | the cross-prior figure (§8.2, §9.5), written by `05_prior_sweep.py` |
+| `fig7_prior_sweep/` | `fig7_prior_sweep` | 1 × 2 wides | 7.5 × 2.5 | the cross-prior figure (§8.2, §9.5), written by `05_prior_sweep.py`; two panels since 17 Oct 2026 (the position-regression panel C was removed with the manuscript section it supported), eight priors |
 | `fig8_model_comparison/` | `A_weight_by_decile`, `B_rmse_by_decile`, `fig8_model_comparison` | 1 × 2 wides | 7.5 × 2.5 | `11_model_comparison` (B on a log axis) |
 | `fig9_decoding_rf_shift/` | `A_decoding`, `B_rf_shift`, `fig9_decoding_rf_shift` | 2 wides; 1 × 2 row | 3.75 × 2.5 each; 7.5 × 2.5 | `07_emergent_vs_imposed`, left half of `14_rf_shifts` |
 
@@ -2579,20 +2776,22 @@ former.
 ## 9.5 `results/prior_sweep/figures/` — the cross-prior experiment
 
 Produced by `scripts/05_prior_sweep.py`, not by `04_figures.py`. These are not
-per-run figures: each one summarises all 27 networks.
+per-run figures: each one summarises the reported sweep networks — the 24 at
+`p_common` 0.2 … 0.9 since 17 Oct 2026 (§8.2; the stored 0.1 rows are not
+drawn).
 
 **`prior_sweep.png`** (with `.tif` for submission and `.svg` to edit) — the
-main figure, three panels, 7.5 in wide. Its manuscript version,
+main figure, two panels, 7.5 in wide. Its manuscript version,
 on the standard panel, is `results/manuscript/fig7_prior_sweep/fig7_prior_sweep`
-(§9.4).
+(§9.4), two wide cells in one row (7.5 × 2.5 in).
 
 - **Panel A** — implied fusion weight against signed body-frame disparity, one
   curve per prior, colour on a sequential viridis ramp (light = low prior).
   Solid with error bars: the network, the mean of the implied weight per bin
   (`analysis.binned_weight`, §8.2).
   Dashed: the analytical posterior for the same prior. The curves fan out in an
-  orderly family — at `p_common` = 0.1 the network's weight never exceeds
-  0.33 even at zero disparity (§8.2, the point at 0.1); at 0.5 it reads 0.80
+  orderly family — at `p_common` = 0.2 the network's weight peaks at 0.51
+  (analytical 0.52); at 0.5 it reads 0.80
   at ±1.5° and is back at zero by ±12°; at 0.9 it holds 0.97 at the centre and
   0.43 at ±9°. Every curve lies on its dashed partner to within 0.05 in every
   bin holding more than 100 trials. Error bars are `1.96 × SE` where `SE` is the standard error
@@ -2608,16 +2807,13 @@ on the standard panel, is `results/manuscript/fig7_prior_sweep/fig7_prior_sweep`
   point per prior, with an identity line. No parameter relates the two axes.
   With three or more seeds the points carry across-seed SEM bars. If every
   logistic fit is rejected by the §7.11 guard the panel prints "no usable
-  transition fit" instead of crashing. On the current sweep the nine points
-  lie on the identity line to within 0.22° (slope 1.016, R² 0.9998), the
-  lowest one at (−0.94, −1.11) — a negative midpoint on both axes, explained
-  in §8.2.
-- **Panel C** — position-regression slope against prior, with the Bayes-optimal
-  value of 1 marked. The legend states which kind of error bar is drawn:
-  "within-run 95% CI" for a single seed, "mean ± 95% CI across N seeds"
-  otherwise. Read the label — the two mean different things (§8.2). On the
-  current sweep the points climb from 0.88 to 0.99 with the prior, all below
-  1 and seven of nine significantly so.
+  transition fit" instead of crashing. On the reported sweep the eight points
+  lie on the identity line to within 0.22° (slope 1.02, R² 0.9997); the
+  stored 0.1 point, at (−0.94, −1.11), is no longer drawn (§8.2).
+- The former **Panel C** (position-regression slope against prior) was removed
+  on 17 Oct 2026 together with the manuscript section it supported; the
+  per-prior slopes are still in `sweep.json` (`posreg_slope_vis`,
+  `posreg_slope_prop`) and in the §8.2 table.
 
 **`variance_hump_vs_prior.png`** — supplementary. Mid-ambiguity variance
 elevation, network against analytical, per prior. Interpret over `p_common`
@@ -2627,6 +2823,30 @@ zero, so there is nothing to reproduce there (§8.3).
 Both are redrawn by `05_prior_sweep.py --replot` from `sweep.json` and
 `curves.npz`, with no training; `--min-count` and `--max-se` re-bin Panel A
 from the stored per-trial arrays of the first seed (§8.2).
+
+### `results/eye_sweep/figures/` — the eye-position sweep (§8.4)
+
+Produced by `scripts/07_eye_sweep.py`; one composed figure on the
+standard panel, `eye_sweep` (2 × 3 squares, 7.5 × 5 in), copied to
+`results/manuscript/` as `figS_eye_sweep`, with its six panels beside it.
+**A** the implied fusion weight against signed body-frame disparity, one
+curve per eye-position sd (viridis ramp, light = wide), seed 0, network
+solid with 1.96 SE bars and the observer's posterior dashed; **B** the
+slope of the implied weight on the posterior (vis, hand) and the
+position-regression slopes (vis, hand) against the eye sd, mean ± SEM over
+the three seeds, with the Bayes-optimal 1 dotted; **C** the transition
+midpoint, network against observer; **D** the median RF-shift gain of the
+MSL at the fixed ±9° probe and at each network's own ±sd, with the
+spatial (0) and retinal (1) codes dotted; **E** the unit classes of the
+MSL, causal network solid and always-fuse twin dashed; **F** fusion
+(|Δ| ≤ 2°) and segregation (|Δ| ≥ 15°) of network and observer. The
+numbers are `sweep.json` (`rows` per network, `aggregated` per level) and
+the curves and per-trial arrays of seed 0 `curves.npz`;
+`results/eye_sweep_long/sweep.json` is the 900-epoch check of the sd 18
+and 27 levels. `results/eye_mu_sweep/figures/eye_mu_sweep` (copied as
+`figS_eye_mu_sweep`) is the same figure for the mean-eye-position lever
+(§8.5), the x axis the mean eye position 0–40 deg and panel D's two
+probes the network's own mean ± 9° and straight ahead ± 9°.
 
 ## 9.6 `results/<run>/figures/model/neuronal_level_analysis/` — Figs. 5, 10 and 11
 
@@ -2698,6 +2918,12 @@ python scripts/neuronal/seeds.py analyse --run flagship --extras damage pairs cl
                                                 # stops after that many seconds and resumes
                                                 # from per_seed/ on the next call
 python scripts/neuronal/seeds.py patterns --run flagship --k 5   # the mixed-unit patterns
+python scripts/07_eye_sweep.py --param eye_sd --levels 1 3 9 18 27 --seeds 0 1 2 --twin --control pcommon1
+python scripts/07_eye_sweep.py --param eye_mu --levels 0 10 20 30 40 --seeds 0 1 2 --twin --control pcommon1
+                                                # the eye sweeps (§8.4, §8.5): 15 networks
+                                                # + 15 twins each, ~2 min per network;
+                                                # --replot redraws, --resume keeps what
+                                                # sweep.json already has
                                                 # (tuning curves of every seed, ~2 s each,
                                                 # cached; k-means; figS_mixed_patterns)
 ```
@@ -3136,6 +3362,13 @@ the sentence to carry. One seed per network keeps it at grade B, but the
 seed study gives the yardstick: the opposite count of the flagship
 configuration has sd 3.6 over 100 seeds (22.4 ± 3.6), so the excesses of 14
 and 8 are far beyond seed noise and the excess of 2 at p = 0.7 is within it.
+The eye-position sweep (§8.4) adds the condition: the excess exists only
+when vision needs a reference-frame transformation — 0 ± 3 opposite units
+with the eyes spread sd 1–3 deg, 8 at the flagship's 9 deg, 16–19 at 18–27
+deg (three seeds each, twins trained alongside) — while the causal
+behaviour itself is the same at every level. State it as "causal targets
+recruit opposite units in proportion to the transformation", not as a
+fixed property of causal training.
 
 **B9. No class of units is necessary for the causal behaviour; the code is
 redundant.** §7.9 (four designs), Fig. 11. With the read-out as trained,
@@ -3161,6 +3394,24 @@ midpoint the one-cause trials are pulled 0.75° against 0.65° (observer 0.74
 against 0.66), because they are the trials whose noise brought the cues
 together (2.65° against 7.13° measured). One network, three disparities,
 synthetic trials: a demonstration, which is how the manuscript presents it.
+
+**B11. The causal computation is robust to the size of the reference-frame
+transformation, and its representation is not.** §8.4, `figS_eye_sweep`.
+With the eyes spread over sd 1 to 27 deg (var_vis_body 1.9 to 5.0 deg²),
+three seeds per level, the implied weight tracks each network's own
+observer at every level (slope on the posterior 0.99 → 0.94, midpoint
+within 0.25 deg of the analytical, fusion and segregation within 0.02,
+model averaging best throughout), the MSL codes vision spatially at every
+level (RF-shift gain within 0.07 of 0 at a fixed ±9° probe), and the
+read-out error rises from 0.55–0.66 to 0.83 deg. The opposite class grows
+from 12–16 to 28 units with the eye spread in the causal networks and
+falls from 14 to 8 in their always-fuse twins. Shifting the MEAN eye
+position by up to 40 deg instead (§8.5, same design) changes none of
+this: slopes ≥ 0.95, midpoint and fusion/segregation on the observer's,
+the opposite excess over the twin 5–16 units at every level — the
+opposite class tracks the eye's variability, not its offset. Fifteen
+networks and fifteen twins per lever at one prior; grade B until a
+second prior or more seeds confirm the unit-class trend.
 
 ## 12.3 Grade C — method verification and controls
 

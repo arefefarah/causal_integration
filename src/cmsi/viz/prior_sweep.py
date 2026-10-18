@@ -1,11 +1,13 @@
 """The cross-prior figure (design SS9.3).
 
-One publication figure, four panels:
+One publication figure, two panels:
 
     A  implied fusion weight vs disparity, one curve per prior
     B  network transition midpoint against the analytical midpoint
-    C  position-domain regression slope vs prior
-    D  the variance hump vs prior
+
+(The position-regression-slope panel that used to be C was removed on
+17 Oct 2026, with the manuscript section it supported; `hump_panel` below is
+the separate variance-hump diagnostic.)
 
 Colour encodes the prior, which is an ordered magnitude, so it uses a single
 sequential hue ramp (light = low prior, dark = high) rather than categorical
@@ -19,7 +21,6 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 
 from cmsi.viz.manuscript import (
-    CELL_FULL,
     CELL_WIDE,
     FIG_SWEEP,
     PANEL_FONT,
@@ -42,7 +43,7 @@ def _ramp(priors):
     return norm, cmap, {p: cmap(norm(p)) for p in priors}
 
 
-def figure(rows, curves, figsize=SIZE["composite"]):
+def figure(rows, curves, figsize=SIZE["pair"]):
     """rows: list of per-prior stat dicts. curves: the npz mapping."""
     rows = sorted(rows, key=lambda r: r["p_common"])
     priors = [r["p_common"] for r in rows]
@@ -51,10 +52,9 @@ def figure(rows, curves, figsize=SIZE["composite"]):
     # constrained layout keeps the colourbar and every label INSIDE figsize, so
     # the saved file is never wider than the 7.5 in PLOS allows
     fig = plt.figure(figsize=figsize, layout="constrained")
-    gs = fig.add_gridspec(2, 2, hspace=0.08, wspace=0.08)
-    axA = fig.add_subplot(gs[0, :])
-    axB = fig.add_subplot(gs[1, 0])
-    axC = fig.add_subplot(gs[1, 1])
+    gs = fig.add_gridspec(1, 2, wspace=0.08, width_ratios=(1.6, 1.0))
+    axA = fig.add_subplot(gs[0, 0])
+    axB = fig.add_subplot(gs[0, 1])
 
     # ---- A: implied weight vs disparity, one curve per prior ---------------
     for r in rows:
@@ -106,7 +106,8 @@ def figure(rows, curves, figsize=SIZE["composite"]):
         axB.set_title("B   Quantitative match, no free parameters",
                       loc="left", fontsize=11, fontweight="600")
         axB.spines[["top", "right"]].set_visible(False)
-        return _panel_c(fig, axA, axB, axC, rows, priors, col)
+        axA.spines[["top", "right"]].set_visible(False)
+        return fig
     lo = float(min(mn[ok].min(), mo[ok].min())) - 1.2
     hi = float(max(mn[ok].max(), mo[ok].max())) + 1.2
     axB.plot([lo, hi], [lo, hi], "--", lw=1, color=OPT, zorder=1,
@@ -130,34 +131,7 @@ def figure(rows, curves, figsize=SIZE["composite"]):
                   loc="left", fontsize=11, fontweight="600")
     axB.legend(fontsize=8.5, frameon=False, loc="upper left")
 
-    return _panel_c(fig, axA, axB, axC, rows, priors, col)
-
-
-def _panel_c(fig, axA, axB, axC, rows, priors, col):
-    """Panel C, factored out so the figure still completes when panel B has
-    nothing to plot."""
-    sl = np.array([r["posreg_slope_vis"] for r in rows])
-    ci = np.array([r["posreg_ci_vis"] for r in rows])
-    err = np.vstack([sl - ci[:, 0], ci[:, 1] - sl])
-    n_seeds = max((r.get("n_seeds", 1) for r in rows), default=1)
-    bar_label = (f"mean $\\pm$ 95% CI across {n_seeds} seeds" if n_seeds > 1
-                 else "within-run 95% CI")
-    axC.axhline(1.0, ls="--", lw=1, color=OPT, zorder=1,
-                label="Bayes-optimal (slope 1)")
-    axC.errorbar(priors, sl, yerr=err, fmt="none", ecolor="#8B96A8",
-                 elinewidth=1.1, capsize=2.5, zorder=2, label=bar_label)
-    for r, y in zip(rows, sl, strict=True):
-        axC.scatter(r["p_common"], y, s=52, color=col[r["p_common"]], zorder=3,
-                    edgecolor="white", linewidth=0.7)
-    axC.set(xlabel="prior  $p_{\\mathrm{common}}$",
-            ylabel="position-regression slope", ylim=(0, 1.18))
-    # two lines: at half the page width a one-line title overruns the figure
-    # edge, and bbox_inches="tight" would then grow the file past 7.5 in
-    axC.set_title("C   Model averaging at every prior,\n      slightly conservative",
-                  loc="left", fontsize=11, fontweight="600")
-    axC.legend(fontsize=8.5, frameon=False, loc="lower right")
-
-    for ax in (axA, axB, axC):
+    for ax in (axA, axB):
         ax.spines[["top", "right"]].set_visible(False)
     return fig
 
@@ -198,7 +172,7 @@ COLORBAR_RESERVE = 0.62                      # in, carved from A's axes width
 
 
 def manuscript_figure(rows, curves):
-    """A over B + C: one CELL_FULL row above two CELL_WIDE cells -> 7.5 x 5 in.
+    """A + B: two CELL_WIDE cells in one row -> 7.5 x 2.5 in.
 
     Same content as `figure`, restyled to the standard: 8/9-pt text, 12-pt
     panel letters, absolute margins shared with every other manuscript figure.
@@ -209,12 +183,11 @@ def manuscript_figure(rows, curves):
     rows = sorted(rows, key=lambda r: r["p_common"])
     priors = [r["p_common"] for r in rows]
     norm, cmap, col = _ramp(priors)
-    W, H = CELL_FULL[0], CELL_FULL[1] + CELL_WIDE[1]
+    W, H = CELL_WIDE[0] * 2, CELL_WIDE[1]
     fig = plt.figure(figsize=(W, H))
-    axA = cell_axes(fig, CELL_FULL, origin=(0, CELL_WIDE[1]),
+    axA = cell_axes(fig, CELL_WIDE, origin=(0, 0),
                     reserve_right=COLORBAR_RESERVE)
-    axB = cell_axes(fig, CELL_WIDE, origin=(0, 0))
-    axC = cell_axes(fig, CELL_WIDE, origin=(CELL_WIDE[0], 0))
+    axB = cell_axes(fig, CELL_WIDE, origin=(CELL_WIDE[0], 0))
 
     # ---- A -------------------------------------------------------------------
     for r in rows:
@@ -231,12 +204,14 @@ def manuscript_figure(rows, curves):
             axA.plot(cn, wn, "o-", ms=PANEL_MS - 0.5, lw=PANEL_LW, color=col[p], zorder=4)
     axA.axhline(0.5, lw=0.6, ls=":", color="grey", zorder=1)
     axA.set(ylim=(-0.06, 1.06), xlim=(-31, 31))
+    # short labels: in a wide cell with the colourbar reserve the axes are
+    # 2.5 in across, and a longer legend would sit on the 0.9 curve
     handles = [plt.Line2D([], [], color="grey", lw=PANEL_LW, marker="o", ms=PANEL_MS,
-                          label="network (implied)"),
+                          label="network"),
                plt.Line2D([], [], color="grey", lw=0.9, ls="--",
-                          label="Bayes-optimal p(C=1|x)")]
+                          label="Bayes-optimal")]
     finish_panel(axA, "body-frame disparity (deg)", "implied fusion weight",
-                 "The fusion-to-segregation transition shifts with the prior")
+                 "Transition shifts with the prior")
     axA.legend(handles=handles, fontsize=PANEL_FONT["legend"], loc="upper left",
                handlelength=1.6, borderaxespad=0.4)
     # colourbar: inside A's cell, to the right of the axes
@@ -279,24 +254,6 @@ def manuscript_figure(rows, curves):
         finish_panel(axB, "analytical midpoint (deg)", "network midpoint (deg)",
                      "Quantitative match, no free parameters")
 
-    # ---- C -------------------------------------------------------------------
-    sl = np.array([r["posreg_slope_vis"] for r in rows])
-    ci = np.array([r["posreg_ci_vis"] for r in rows])
-    err = np.vstack([sl - ci[:, 0], ci[:, 1] - sl])
-    n_seeds = max((r.get("n_seeds", 1) for r in rows), default=1)
-    bar_label = (f"mean \u00b1 95% CI across {n_seeds} seeds" if n_seeds > 1
-                 else "within-run 95% CI")
-    axC.axhline(1.0, ls="--", lw=1, color=OPT, zorder=1, label="Bayes-optimal (slope 1)")
-    axC.errorbar(priors, sl, yerr=err, fmt="none", ecolor="#8B96A8", elinewidth=0.9,
-                 capsize=2, zorder=2, label=bar_label)
-    for r, y in zip(rows, sl, strict=True):
-        axC.scatter(r["p_common"], y, s=26, color=col[r["p_common"]], zorder=3,
-                    edgecolor="white", linewidth=0.6)
-    axC.set(ylim=(0, 1.18))
-    finish_panel(axC, "common-cause prior", "position-regression slope",
-                 "Model averaging at every prior, slightly conservative",
-                 "lower right")
-
-    letter([axA, axB, axC])
+    letter([axA, axB])
     exact_frame(fig)
     return fig

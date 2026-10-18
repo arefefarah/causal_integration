@@ -11,6 +11,8 @@ DATA   ?= main
 CONFIG ?= configs/flagship.yaml
 PRIORS ?= 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
 SEEDS  ?= 0
+EYE_PARAM  ?= eye_sd
+EYE_LEVELS ?= 1 3 9 18 27
 N      ?= 100
 
 help:  ## show this list
@@ -64,6 +66,10 @@ quick:  ## whole pipeline, small and fast  (accepts CONFIG= too)
 sweep:  ## SS9.3 cross-prior sweep, one network per prior per seed  (make sweep SEEDS="0 1 2")
 	poetry run python scripts/05_prior_sweep.py \
 		--priors $(PRIORS) --seeds $(SEEDS) --control pcommon1
+
+eye_sweep:  ## the eye sweep: the flagship with one eye lever changed, per seed  (make eye_sweep SEEDS="0 1 2" [EYE_PARAM=eye_mu EYE_LEVELS="0 10 20 30 40"])
+	poetry run python scripts/07_eye_sweep.py \
+		--param $(EYE_PARAM) --levels $(EYE_LEVELS) --seeds $(SEEDS) --twin --control pcommon1
 
 clean:  ## remove caches and compiled files
 	find . -name '__pycache__' -type d -prune -exec rm -rf {} +

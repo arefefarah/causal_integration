@@ -1,7 +1,15 @@
 """Stage 5 -- the cross-prior experiment (design SS9.3, satellites).
 
-    python scripts/05_prior_sweep.py --priors 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
+    python scripts/05_prior_sweep.py --priors 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
     python scripts/05_prior_sweep.py --control pcommon1        # sigma_out source
+    python scripts/05_prior_sweep.py --replot                  # redraw, reported priors only
+
+The reported priors are 0.2 to 0.9 (PRIORS below). p_common = 0.1 was trained
+in the stored sweep of 2026-10-03 and its rows remain in sweep.json, but it is
+not reported: at that prior the posterior exceeds one half on 2 % of trials,
+so the transition midpoint is an extrapolation rather than a disparity any
+trial has. `--replot` therefore draws the reported priors only, unless
+`--priors` names others.
 
 Trains one network per value of p_common, changing ONLY the Bernoulli constant
 -- same seed, same encoders, same sigma ranges, same architecture -- and asks
@@ -27,6 +35,9 @@ import argparse
 import numpy as np
 
 import _bootstrap  # noqa: F401
+
+# The priors the paper reports (Fig. 7, Table 1). See the module docstring.
+PRIORS = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 from cmsi import analysis
 from cmsi.data import make_dataset, subset
 from cmsi.models import hidden_activations, predict, train
@@ -252,15 +263,22 @@ def draw(out, agg, curves):
     print(f"wrote {mdir / FOLDER}/{FOLDER} (.png, .tif, .svg) and {mdir}/{FOLDER}.png")
 
 
-def replot(min_count=None, max_se=None):
+def replot(min_count=None, max_se=None, priors=None):
     """Redraw from results/prior_sweep/sweep.json + curves.npz. Accepts both
-    the current file layout (`aggregated`) and the single-seed one (`rows`)."""
+    the current file layout (`aggregated`) and the single-seed one (`rows`).
+    Only the priors in `priors` (default PRIORS, the reported set) are drawn;
+    the stored file may hold more."""
     out = RESULTS / "prior_sweep"
     sweep = load_json(out / "sweep.json")
     agg = sweep.get("aggregated") or aggregate(sweep["rows"])
+    wanted = {round(float(x), 2) for x in (PRIORS if priors is None else priors)}
+    stored = sorted(round(float(r["p_common"]), 2) for r in agg)
+    agg = [r for r in agg if round(float(r["p_common"]), 2) in wanted]
+    skipped = sorted(set(stored) - wanted)
     curves = dict(np.load(out / "curves.npz"))
     n_seeds = max((r.get("n_seeds", 1) for r in agg), default=1)
-    print(f"replotting {len(agg)} priors x {n_seeds} seed(s) from {out}")
+    print(f"replotting {len(agg)} priors x {n_seeds} seed(s) from {out}"
+          + (f" (stored but not drawn: {skipped})" if skipped else ""))
     if min_count is not None or max_se is not None:
         mc = MIN_COUNT if min_count is None else min_count
         ms = MAX_SE if max_se is None else max_se
@@ -333,8 +351,9 @@ def main(args):
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--config", default=None, help="base config (default flagship)")
-    p.add_argument("--priors", type=float, nargs="+",
-                   default=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+    p.add_argument("--priors", type=float, nargs="+", default=None,
+                   help=f"priors to train, or with --replot to draw "
+                        f"(default {PRIORS})")
     p.add_argument("--n", type=int, default=50000)
     p.add_argument("--epochs", type=int, default=300)
     p.add_argument("--seeds", type=int, nargs="+", default=[0],
@@ -356,8 +375,10 @@ if __name__ == "__main__":
                         f"(default {MAX_SE})")
     a = p.parse_args()
     if a.replot:
-        replot(min_count=a.min_count, max_se=a.max_se)
+        replot(min_count=a.min_count, max_se=a.max_se, priors=a.priors)
         raise SystemExit(0)
+    if a.priors is None:
+        a.priors = list(PRIORS)
     if a.seed is not None:
         a.seeds = [a.seed]
     if a.config is None:

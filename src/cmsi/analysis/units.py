@@ -49,9 +49,15 @@ def _mid_sigmas(gen):
             "eye": float(np.mean(gen["sigma2_eye_range"]))}
 
 
-def tuning_curves(model, encoders, cfg, positions=None, layer="msl"):
+def tuning_curves(model, encoders, cfg, positions=None, layer="msl", eye=0.0):
     """Each hidden unit's noiseless response to a visual sweep and to a
-    proprioceptive sweep (the other cue held at 0, eye at 0).
+    proprioceptive sweep (the other cue held at spatial 0, the eye at `eye`).
+
+    The sweeps are in SPATIAL coordinates: the visual cue is encoded
+    retinally as x_vis = s - eye with x_eye = eye, so with eye = 0 (the
+    default, and every network whose eye_mu is 0) this is the retinal sweep
+    it always was, and for a network trained with the eyes centred elsewhere
+    (an eye_mu sweep) `eye` = its eye_mu probes it inside its trained range.
 
     Returns (positions, resp_vis, resp_prop), responses (n_positions, n_units).
     """
@@ -63,23 +69,25 @@ def tuning_curves(model, encoders, cfg, positions=None, layer="msl"):
     clean = dict(enc, poisson_noise=False)
     rng = np.random.default_rng(0)  # unused when poisson_noise is off
 
-    d_vis = _sweep_dict(positions, 0.0, 0.0, sig2)
-    d_prop = _sweep_dict(0.0, positions, 0.0, sig2)
-    d_prop["x_vis"] = np.zeros(len(positions))
+    eye = float(eye)
+    d_vis = _sweep_dict(np.asarray(positions, float) - eye, 0.0, eye, sig2)
+    d_prop = _sweep_dict(-eye, positions, eye, sig2)
+    d_prop["x_vis"] = np.full(len(positions), -eye)
     resp_vis = _activations(model, encode(d_vis, encoders, clean, rng))[layer]
     resp_prop = _activations(model, encode(d_prop, encoders, clean, rng))[layer]
     return np.asarray(positions), resp_vis, resp_prop
 
 
-def congruency(model, encoders, cfg, positions=None, layer="msl", threshold=0.5):
+def congruency(model, encoders, cfg, positions=None, layer="msl", threshold=0.5, eye=0.0):
     """Classify units as congruent / opposite / untuned (SS7.5).
 
     Congruency index = Pearson correlation between a unit's visual-sweep and
     proprioceptive-sweep tuning curves (Rideaux's congruency logic): > threshold
     is congruent, < -threshold opposite. Units whose response barely moves over
-    either sweep are untuned and excluded from the balance.
+    either sweep are untuned and excluded from the balance. `eye` is where
+    the eye is held during the sweeps (tuning_curves).
     """
-    positions, rv, rp = tuning_curves(model, encoders, cfg, positions, layer)
+    positions, rv, rp = tuning_curves(model, encoders, cfg, positions, layer, eye=eye)
     n_units = rv.shape[1]
     index = np.zeros(n_units)
     tuned = np.zeros(n_units, bool)

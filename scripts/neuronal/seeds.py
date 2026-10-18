@@ -49,7 +49,9 @@ class pair, the additivity of the effects, the worst pairs); `clamp`, the
 whole-class clamp with the units set to 0 and to 1 instead of their mean
 (lesion_clamp_seeds). `patterns` collects the tuning curves of every unit
 of every network and partitions the mixed units' curves by k-means
-(mixed_patterns, figS_mixed_patterns).
+(mixed_patterns, figS_mixed_patterns). `units` draws the manuscript's unit
+figure from the stored numbers (units_seeds, copied as fig10_units_seeds:
+the patterns row over the unit-class row; see units_paper_figure).
 """
 
 import json
@@ -76,6 +78,8 @@ K_PATTERNS = "mixed_patterns"           # the tuning-curve patterns of the mixed
 PAPER_PATTERNS = "figS_mixed_patterns"
 K_CLAMP = "lesion_clamp_seeds"          # the whole-class clamp with the units set to 0 / 1 (--extras clamp)
 PAPER_CLAMP = "figS_lesion_clamp_seeds"
+K_UNITS_PAPER = "units_seeds"           # the paper's unit figure: patterns row over the unit-class row
+PAPER_UNITS_FIG = "fig10_units_seeds"   # replaces fig10_units (one network) as the manuscript's unit figure
 STATS = ("fusion", "segregation", "rmse")
 MIN_NETWORKS = 5                       # a mean cumulative curve is drawn where this many networks reach that k
 WEAK = 0.1                             # a sweep that moves a unit by less than this: one-cue unit
@@ -1022,21 +1026,25 @@ def figure(run, agg=None, numbers=None):
         clamp_figure(run, agg, label, grid)
 
 
-def unit_figure(run, u, label):
-    """The unit classes of the multisensory layer over the seeds: A the
-    congruency index pooled over every unit of every network, coloured by
-    class; B the counts per class, one point per network, box over seeds,
-    mean ± sd written above; C the mixed class's sub-structure per network."""
-    n = u["n"]
+def _strip(ax, pos, v, color, seed_):
+    v = np.asarray(v, float)
+    if len(v) > 1:
+        ax.boxplot([v], positions=[pos], widths=0.6, showfliers=False,
+                   medianprops=dict(color="k", lw=1.0), boxprops=dict(color=color, lw=1.0),
+                   whiskerprops=dict(color=color, lw=0.8), capprops=dict(color=color, lw=0.8))
+    jitter = np.random.default_rng(seed_).uniform(-0.18, 0.18, len(v)) if len(v) > 1 else [0.0]
+    ax.plot(pos + jitter, v, "o", ms=2.2, color=color, alpha=0.6)
 
-    def strip(ax, pos, v, color, seed_):
-        v = np.asarray(v, float)
-        if len(v) > 1:
-            ax.boxplot([v], positions=[pos], widths=0.6, showfliers=False,
-                       medianprops=dict(color="k", lw=1.0), boxprops=dict(color=color, lw=1.0),
-                       whiskerprops=dict(color=color, lw=0.8), capprops=dict(color=color, lw=0.8))
-        jitter = np.random.default_rng(seed_).uniform(-0.18, 0.18, len(v)) if len(v) > 1 else [0.0]
-        ax.plot(pos + jitter, v, "o", ms=2.2, color=color, alpha=0.6)
+
+def unit_class_panels(u, label, narrow=False):
+    """The three unit-class panels of the seeds, as draw functions `fn(ax=None)`
+    (shared by `unit_figure` and `units_paper_figure`): A the congruency index
+    pooled over every unit of every network, coloured by class; B the counts
+    per class, one point per network, box over seeds, mean ± sd written above;
+    C the mixed class's sub-structure per network. `narrow`: the panels sit in
+    1.875-in cells (the paper figure), so titles are short and A's per-class
+    labels, which B repeats, are left off."""
+    n = u["n"]
 
     def pA(ax=None):
         ax = panel_axes(ax)
@@ -1052,17 +1060,18 @@ def unit_figure(run, u, label):
         ax.set_xlim(-1.02, 1.02)
         top = per_net.max() if per_net.size else 1
         ax.set_ylim(0, 1.35 * top)
-        for c, x in (("opposite", -0.75), ("mixed", 0.0), ("congruent", 0.75)):
-            ax.text(x, 1.22 * top, f"{u['counts'][c]['mean']:.1f} ± {u['counts'][c]['sd']:.1f}",
-                    ha="center", va="center", fontsize=7, color=CLASS_COLORS[c])
+        if not narrow:
+            for c, x in (("opposite", -0.75), ("mixed", 0.0), ("congruent", 0.75)):
+                ax.text(x, 1.22 * top, f"{u['counts'][c]['mean']:.1f} ± {u['counts'][c]['sd']:.1f}",
+                        ha="center", va="center", fontsize=7, color=CLASS_COLORS[c])
         return finish_panel(ax, "congruency index", "units per network per bin",
-                            f"all units, {label}", None)
+                            "all units" if narrow else f"all units, {label}", None)
 
     def pB(ax=None):
         ax = panel_axes(ax)
         for i, c in enumerate(CLASSES):
             d = u["counts"][c]
-            strip(ax, i, d["values"], CLASS_COLORS[c], 3 + i)
+            _strip(ax, i, d["values"], CLASS_COLORS[c], 3 + i)
             ax.text(i, 61, f"{d['mean']:.1f}\n± {d['sd']:.1f}", ha="center", va="top", fontsize=7,
                     color=CLASS_COLORS[c])
         ax.set_xticks(range(len(CLASSES)))
@@ -1071,6 +1080,7 @@ def unit_figure(run, u, label):
         ax.set_ylim(0, 64)
         share = u["share_opposite_gt_congruent"]
         return finish_panel(ax, "", "units of 64",
+                            "classes per network" if narrow else
                             f"classes per network (opp > con: {100 * share:.0f}%)", None)
 
     def pC(ax=None):
@@ -1078,16 +1088,23 @@ def unit_figure(run, u, label):
         ms = u["mixed_substructure"]
         keys = (("both_cues", "both cues"), ("hand_only", "hand only"), ("vision_only", "vision only"))
         for i, (k, lab) in enumerate(keys):
-            strip(ax, i, ms[k]["values"], CLASS_COLORS["mixed"], 7 + i)
+            _strip(ax, i, ms[k]["values"], CLASS_COLORS["mixed"], 7 + i)
             ax.text(i, 61, f"{ms[k]['mean']:.1f}\n± {ms[k]['sd']:.1f}", ha="center", va="top", fontsize=7,
                     color=CLASS_COLORS["mixed"])
         ax.set_xticks(range(len(keys)))
         ax.set_xticklabels([lab for _, lab in keys])
         ax.set_xlim(-0.7, len(keys) - 0.3)
         ax.set_ylim(0, 64)
-        return finish_panel(ax, "", "mixed units of 64", "mixed class sub-structure", None)
+        return finish_panel(ax, "", "mixed units of 64",
+                            "mixed sub-structure" if narrow else "mixed class sub-structure", None)
 
-    draws = [pA, pB, pC]
+    return [pA, pB, pC]
+
+
+def unit_figure(run, u, label):
+    """The unit classes of the multisensory layer over the seeds (the three
+    panels of `unit_class_panels`), as its own supplementary figure."""
+    draws = unit_class_panels(u, label)
     figs = {f"{K_UNITS}/{K_UNITS}": manuscript_grid(draws, ncols=3)}
     for key, fn in zip(("A_index_pooled", "B_counts_by_class", "C_mixed_substructure"), draws):
         figs[f"{K_UNITS}/{key}"] = fn()
@@ -1095,6 +1112,7 @@ def unit_figure(run, u, label):
                  formats=FORMATS, close=False)
     save_figures(figs, out_dir(run), formats=FORMATS)
     print(f"   -> {out_dir(run) / K_UNITS}/ and {manuscript_dir(run) / PAPER_UNITS}/ (+ flat copies)")
+    units_paper_figure(run, u, label)
 
 
 PAIR_LABELS = {"congruent+congruent": "con\n+con", "congruent+opposite": "con\n+opp",
@@ -1477,6 +1495,7 @@ def patterns(run, k=5, control="pcommon1", budget=None, k_range=range(2, 11)):
     np.savez(out / "labels.npz", network=T["networks"][net], unit=np.tile(np.arange(n_units), n_net),
              pattern=pattern, index=idx, classes=cl, flipped=flip)
     patterns_figure(run, numbers)
+    units_paper_figure(run, numbers=numbers)    # the paper's unit figure uses these patterns
     return numbers
 
 
@@ -1556,11 +1575,159 @@ def patterns_figure(run, numbers=None):
 
 
 # --------------------------------------------------------------------------- #
+# The manuscript's unit figure (18 Oct 2026): the tuning patterns of the 100
+# seeds in one row of small panels (A, B the congruent and opposite classes,
+# C-F the four largest mixed patterns) over the unit classes of the same seeds
+# (G-I, the three panels of `unit_class_panels`; J, opposite units of the
+# causal networks against their always-fuse twins). It replaces fig10_units, the
+# one-network figure (three example units; counts per network, per prior and
+# against the twin), whose files are in results/_to_delete/.
+# --------------------------------------------------------------------------- #
+TOP_ROW = {"height": 1.9, "gap": 0.2, "xlabel": 0.42, "title": 0.33}   # inches
+TOP_FONT = {"tick": 7, "label": 7, "title": 7.5, "note": 6.2, "legend": 6.2}
+N_MIXED_SHOWN = 4                      # mixed patterns in the top row, by size
+
+
+def _twin_panel(run):
+    """Opposite units of each causal network against its always-fuse twin,
+    from <run>/.../units/numbers.json (written by scripts/neuronal/run.py
+    units: `runs` and `twins`); dotted, the always-fuse control. None when
+    that file is missing."""
+    f = out_dir(run) / "units" / "numbers.json"
+    if not f.exists():
+        print(f"   (no {f}: twin panel skipped)")
+        return None
+    d = json.loads(f.read_text())
+    rows, twins = d.get("runs", []), d.get("twins", [])
+    pairs = [(r, tw) for r in rows for tw in twins if np.isclose(r["p_common"], tw["p_common"])]
+    if not pairs:
+        return None
+    ctrl1 = [r for r in rows if r["p_common"] == 1.0]
+
+    def pJ(ax=None):
+        ax = panel_axes(ax)
+        x = np.arange(len(pairs))
+        wdt = 0.36
+        ax.bar(x - wdt / 2, [r["n_opposite"] for r, _ in pairs], wdt, color=CLASS_COLORS["opposite"],
+               label="causal network")
+        ax.bar(x + wdt / 2, [tw["n_opposite"] for _, tw in pairs], wdt, color=CLASS_COLORS["opposite"],
+               alpha=0.35, label="always-fuse twin")
+        if ctrl1:
+            ax.axhline(ctrl1[0]["n_opposite"], ls=":", lw=0.8, color="gray")
+        ax.set_xticks(x)
+        ax.set_xticklabels([f"{r['p_common']:g}" for r, _ in pairs])
+        ax.set_ylim(0, 40)
+        return finish_panel(ax, "common-cause prior", "opposite units of 64",
+                            "causal vs twin", "upper right")
+    return pJ
+
+
+def units_paper_figure(run, u=None, label=None, numbers=None):
+    """fig10_units_seeds: six small tuning-pattern panels (7.5 in across) over
+    the three unit-class cells and, when units/numbers.json exists, the
+    causal-vs-twin opposite-unit counts (four cells of 1.875 x 2.5 in),
+    7.5 x 4.4 in in all.
+    `u` is the `units` aggregate of lesion_seeds/numbers.json; `numbers` the
+    mixed_patterns/numbers.json of the same run."""
+    from cmsi.viz.manuscript import CELL_SQUARE, PANEL_MARGIN, cell_axes
+    from cmsi.viz.style import exact_frame, label_panels
+    from matplotlib import pyplot as plt
+    if u is None:
+        u = json.loads((out_dir(run) / K_SEEDS / "numbers.json").read_text())["aggregate"]["units"]
+    label = label or f"{u['n']} seeds"
+    pat_file = out_dir(run) / K_PATTERNS / "numbers.json"
+    if numbers is None:
+        if not pat_file.exists():
+            print(f"   (no {pat_file}: run `seeds.py patterns` first; fig10_units_seeds not drawn)")
+            return None
+        numbers = json.loads(pat_file.read_text())
+    pos = np.asarray(numbers["positions"], float)
+    pats = numbers["patterns"][:N_MIXED_SHOWN]
+
+    W, H = CELL_SQUARE[0] * 3, CELL_SQUARE[1] + TOP_ROW["height"]
+    fig = plt.figure(figsize=(W, H))
+
+    # ---- top row: six small curve panels, same left/right margins as the cells
+    m = PANEL_MARGIN
+    n_top = 2 + len(pats)
+    avail = W - m["left"] - m["right"]
+    pw = (avail - (n_top - 1) * TOP_ROW["gap"]) / n_top
+    bottom = CELL_SQUARE[1] + TOP_ROW["xlabel"]
+    ph = TOP_ROW["height"] - TOP_ROW["xlabel"] - TOP_ROW["title"]
+    tops = []
+    for i in range(n_top):
+        left = m["left"] + i * (pw + TOP_ROW["gap"])
+        tops.append(fig.add_axes([left / W, bottom / H, pw / W, ph / H]))
+
+    def small_curves(ax, cv, title, note, legend=False, ylabel=False):
+        for key, lab in (("vis", "vision"), ("prop", "hand")):
+            mu, sd = np.asarray(cv[f"{key}_mean"]), np.asarray(cv[f"{key}_sd"])
+            ax.fill_between(pos, mu - sd, mu + sd, color=SWEEP_COLORS[key], alpha=0.18, lw=0)
+            ax.plot(pos, mu, "-", lw=1.0, color=SWEEP_COLORS[key], label=lab)
+        ax.axhline(0, lw=0.5, color="gray")
+        ax.axvline(0, lw=0.5, color="gray")
+        ax.set_xlim(pos[0], pos[-1])
+        ax.set_ylim(-0.85, 1.2)
+        ax.set_xticks([-20, 0, 20])
+        ax.set_yticks([-0.5, 0, 0.5])
+        ax.tick_params(labelsize=TOP_FONT["tick"], length=2, pad=1.5, labelleft=ylabel)
+        ax.text(0.04, 0.97, note, transform=ax.transAxes, ha="left", va="top", fontsize=TOP_FONT["note"],
+                linespacing=1.15)
+        ax.set_title(title, fontsize=TOP_FONT["title"], pad=3)
+        ax.set_xlabel("position (deg)", fontsize=TOP_FONT["label"], labelpad=1.5)
+        if ylabel:
+            ax.set_ylabel("response (normalised)", fontsize=TOP_FONT["label"], labelpad=2)
+        if legend:
+            ax.legend(fontsize=TOP_FONT["legend"], loc="lower left", handlelength=1.0,
+                      borderaxespad=0.2, labelspacing=0.2)
+        ax.spines[["top", "right"]].set_visible(False)
+
+    for i, c in enumerate(("congruent", "opposite")):
+        ref = numbers["reference"][c]
+        small_curves(tops[i], ref["curves"], c,
+                     f"n = {ref['n']}\nindex {ref['index_mean']:+.2f} ± {ref['index_sd']:.2f}",
+                     legend=(c == "congruent"), ylabel=(i == 0))
+    for i, pt in enumerate(pats):
+        small_curves(tops[2 + i], pt["curves"],
+                     f"mixed {pt['rank']} ({100 * pt['share_of_mixed']:.0f}% of mixed)",
+                     f"n = {pt['n']}\nindex {pt['index_mean']:+.2f} ± {pt['index_sd']:.2f}")
+
+    # ---- bottom row: the three unit-class cells of the same seeds, and the
+    # opposite-unit counts of the causal networks against their always-fuse
+    # twins (from the one-network analysis, units/numbers.json of the run)
+    twin_fn = _twin_panel(run)
+    draws = unit_class_panels(u, label, narrow=twin_fn is not None)
+    if twin_fn is not None:
+        draws.append(twin_fn)
+    cell = (W / len(draws), CELL_SQUARE[1])             # four cells across when the twin panel exists
+    bottoms = []
+    for i, fn in enumerate(draws):
+        ax = cell_axes(fig, cell, origin=(i * cell[0], 0))
+        fn(ax)
+        ax.spines[["top", "right"]].set_visible(False)
+        if len(draws) > 3:                              # narrow cells: slant the category labels
+            for lab in ax.get_xticklabels():
+                if not lab.get_text().replace(".", "").isdigit():
+                    lab.set_rotation(25)
+                    lab.set_ha("right")
+        bottoms.append(ax)
+
+    label_panels(tops, letters="ABCDEF", dx=-14, dy=9)
+    label_panels(bottoms, letters="GHIJ", dx=-34, dy=2)
+    exact_frame(fig)
+    save_figures({f"{PAPER_UNITS_FIG}/{PAPER_UNITS_FIG}": fig}, manuscript_dir(run), formats=FORMATS,
+                 close=False)
+    save_figures({f"{K_UNITS_PAPER}/{K_UNITS_PAPER}": fig}, out_dir(run), formats=FORMATS)
+    print(f"   -> {out_dir(run) / K_UNITS_PAPER}/ and {manuscript_dir(run) / PAPER_UNITS_FIG}/ (+ flat copies)")
+    return fig
+
+
+# --------------------------------------------------------------------------- #
 def main(argv=None):
     import argparse
     import warnings
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["train", "analyse", "figure", "all", "patterns"])
+    ap.add_argument("command", choices=["train", "analyse", "figure", "all", "patterns", "units"])
     ap.add_argument("--run", default="flagship", help="the configuration's run (seed 0)")
     ap.add_argument("--n", type=int, default=100, help="networks in all, the run included (train: seeds 1..n-1)")
     ap.add_argument("--runs", nargs="*", default=None, help="analyse these runs instead of the run's seeds")
@@ -1579,6 +1746,9 @@ def main(argv=None):
     apply_style()
     if args.command == "patterns":
         patterns(args.run, k=args.k, control=args.control, budget=args.budget)
+        return
+    if args.command == "units":                 # the paper's unit figure from the stored numbers
+        units_paper_figure(args.run)
         return
     if args.command in ("analyse", "all"):
         records, agg = analyse(args.run, runs=args.runs, n=None if args.runs else args.n, control=args.control,

@@ -87,7 +87,7 @@ src/cmsi/
                style.py        PLOS figure defaults, save_figures, exact_frame
   utils/       config.py  paths.py  seed.py  io.py
 scripts/       00_calibrate  01_generate_data  02_train  03_analyze  04_figures
-               05_prior_sweep  run_all.sh
+               05_prior_sweep  07_eye_sweep  run_all.sh
                06_implied_weight   the weight figures and the reliability analysis of a run;
                                    `train` runs a config through the pipeline with its control
   neuronal/    run.py          the neuronal-level analyses of a run: example congruent,
@@ -180,6 +180,24 @@ It trains one network per (prior, seed), changing only the Bernoulli constant,
 writes after every seed so an interrupted run leaves usable output, and keeps
 the per-trial arrays of the first seed in `curves.npz` so the weight curves can
 be re-binned without retraining.
+
+The eye-position sweep is built the same way (`scripts/07_eye_sweep.py`,
+GUIDE §8.4): the flagship with only `eye_sigma_sq` changed, the eyes spread
+with sd 1, 3, 9 (the flagship), 18 and 27 deg, three seeds each, to ask how
+much the reference-frame transformation changes the causal behaviour:
+
+```bash
+poetry run python scripts/07_eye_sweep.py --param eye_sd --levels 1 3 9 18 27 --seeds 0 1 2 --twin --control pcommon1
+poetry run python scripts/07_eye_sweep.py --param eye_mu --levels 0 10 20 30 40 --seeds 0 1 2 --twin --control pcommon1
+poetry run python scripts/07_eye_sweep.py --replot [--param eye_mu]   # = make eye_sweep SEEDS="0 1 2" [EYE_PARAM=eye_mu]
+```
+
+`--param eye_sd` varies the spread of the eye position (the size of the
+reference-frame transformation), `--param eye_mu` its mean (the eyes
+deviated from straight ahead, the spread kept at sd 9 deg). Each writes its
+own folder, `results/eye_sweep/` or `results/eye_mu_sweep/` (sweep.json,
+curves.npz, figures/), and its manuscript copy, `figS_eye_sweep` or
+`figS_eye_mu_sweep`; `--resume` keeps the networks already in sweep.json.
 
 Stage 0 is a gate, not a report: it exits non-zero if the config fails a design
 criterion, so `run_all.sh` stops before spending a training run on a dataset
@@ -452,6 +470,13 @@ results/prior_sweep/
   figures/           prior_sweep (A weight curves, B midpoints, C slopes) and
                      variance_hump_vs_prior
   manuscript/        the same sweep figure on the standard panel
+results/eye_sweep/   (results/eye_mu_sweep/ for the mean-eye-position lever)
+  sweep.json         per-(level, seed) rows and the per-level aggregate
+  curves.npz         weight curves per level, per-trial arrays of seed 0, RF gains
+  figures/eye_sweep/ the composed figure (A weight curves, B slopes on the
+                     posterior, C midpoints, D RF-shift gain, E unit classes,
+                     F fusion and segregation) and its panels; copied to
+                     results/manuscript/figS_eye_sweep
 ```
 
 Every figure is written as `.png`, `.tif` and `.svg` side by side, at its
