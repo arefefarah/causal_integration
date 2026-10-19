@@ -56,6 +56,8 @@ seeds:  ## the lesion analysis across N seeds of RUN: trains seeds 1..N-1 (hours
 	poetry run python scripts/neuronal/seeds.py train    --run $(RUN) --n $(N)
 	poetry run python scripts/neuronal/seeds.py all      --run $(RUN) --n $(N) --extras damage pairs clamp
 	poetry run python scripts/neuronal/seeds.py patterns --run $(RUN)
+	poetry run python scripts/neuronal/seeds.py units    --run $(RUN)
+	poetry run python scripts/neuronal/seeds.py lesion   --run $(RUN)
 
 all:  ## whole pipeline + control twin  (make all CONFIG=configs/wide_rf.yaml)
 	poetry run bash scripts/run_all.sh --config $(CONFIG)

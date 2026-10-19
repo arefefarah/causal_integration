@@ -11,7 +11,8 @@ across networks, or are they one network's accident?
                                                                         # the optional designs, resumable
     python scripts/neuronal/seeds.py figure  --run flagship             # redraw from numbers.json
     python scripts/neuronal/seeds.py all     --run flagship --n 100     # analyse + figure (no training)
-    python scripts/neuronal/seeds.py patterns --run flagship --k 5      # the mixed units' tuning patterns
+    python scripts/neuronal/seeds.py patterns --run flagship --k 5      # the intermediate units' tuning patterns
+    python scripts/neuronal/seeds.py si      --run flagship             # Figs. S1, S2 from numbers.json
 
 `train` trains seeds 1 .. n-1 of the run's configuration on the run's own
 dataset, as results/<run>_s<k>/ (02_train.py --seed k, which changes the
@@ -33,11 +34,14 @@ one-sample t statistic of the mean z against zero.
 
 Output: results/<run>/figures/model/neuronal_level_analysis/lesion_seeds/
 (the composed figure `lesion_seeds`, panels, per_seed/*.json, numbers.json,
-unit_counts_by_seed.csv), with a copy of the composed figure in the run's
-manuscript folder as figS_lesion_seeds (a supplementary candidate; not
-numbered in the paper). The unit classes of the same seeds get their own
+unit_counts_by_seed.csv). The manuscript folder gets the supplementary
+figure figS_lesion_seeds (Fig. S1), which keeps only the panels that the
+paper's lesion figure (fig11_lesion_seeds) and unit figure (fig10_units_seeds)
+do not show: the read-out error, the damage-matched null, the equal-dose
+reading and the refitted read-out as z-scores (si_lesion_figure; `si` redraws
+it, and the pair figure, from the stored numbers). The unit classes of the same seeds get their own
 figure, `unit_counts_seeds` (A the congruency index of every unit of every
-network, B the counts per class over networks with mean ± sd, C the mixed
+network, B the counts per class over networks with mean ± sd, C the intermediate
 class's sub-structure), copied as figS_unit_counts_seeds; the printed
 summary carries the counts table (mean, sd, median, range, 2.5-97.5 %).
 
@@ -45,10 +49,12 @@ summary carries the counts table (mean, sd, median, range, 2.5-97.5 %).
 makes any of this resumable from per_seed/): `damage`, the whole-class clamp
 against random lesions matched in size AND in RMSE; `pairs`, every single
 unit and every pair of units clamped (lesion_pairs_seeds: the change per
-class pair, the additivity of the effects, the worst pairs); `clamp`, the
+class pair, the additivity of the effects, the worst pairs; its manuscript
+copy figS_lesion_pairs_seeds, Fig. S2, leaves out the single-unit and
+class-additivity panels, which are Fig. 10E and F); `clamp`, the
 whole-class clamp with the units set to 0 and to 1 instead of their mean
 (lesion_clamp_seeds). `patterns` collects the tuning curves of every unit
-of every network and partitions the mixed units' curves by k-means
+of every network and partitions the intermediate units' curves by k-means
 (mixed_patterns, figS_mixed_patterns). `units` draws the manuscript's unit
 figure from the stored numbers (units_seeds, copied as fig10_units_seeds:
 the patterns row over the unit-class row; see units_paper_figure).
@@ -62,7 +68,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import (CLASS_COLORS, CLASSES, COLORS, PANEL_FONT, PANEL_LW,  # noqa: E402
+from common import (CLASS_COLORS, CLASS_LABEL, CLASSES, COLORS, PANEL_FONT, PANEL_LW,  # noqa: E402
                     ROOT, Bundle, apply_style, binned_weight, finish_panel,
                     fusion_segregation, hybrid_reads, manuscript_dir, manuscript_grid,
                     out_dir, panel_axes, position_regression, save_figures, save_json)
@@ -74,12 +80,14 @@ K_UNITS = "unit_counts_seeds"          # the unit-class figure of the same seeds
 PAPER_UNITS = "figS_unit_counts_seeds"
 K_PAIRS = "lesion_pairs_seeds"         # the pair-lesion figure of the same seeds (--extras pairs)
 PAPER_PAIRS = "figS_lesion_pairs_seeds"
-K_PATTERNS = "mixed_patterns"           # the tuning-curve patterns of the mixed units over the seeds
+K_PATTERNS = "mixed_patterns"           # the tuning-curve patterns of the intermediate units over the seeds
 PAPER_PATTERNS = "figS_mixed_patterns"
 K_CLAMP = "lesion_clamp_seeds"          # the whole-class clamp with the units set to 0 / 1 (--extras clamp)
 PAPER_CLAMP = "figS_lesion_clamp_seeds"
 K_UNITS_PAPER = "units_seeds"           # the paper's unit figure: patterns row over the unit-class row
 PAPER_UNITS_FIG = "fig10_units_seeds"   # replaces fig10_units (one network) as the manuscript's unit figure
+K_LESION_PAPER = "lesion_paper"         # the paper's lesion figure: six panels from the 100-seed designs
+PAPER_LESION_FIG = "fig11_lesion_seeds" # replaces fig11_lesion_behaviour (two networks) as the manuscript's lesion figure
 STATS = ("fusion", "segregation", "rmse")
 MIN_NETWORKS = 5                       # a mean cumulative curve is drawn where this many networks reach that k
 WEAK = 0.1                             # a sweep that moves a unit by less than this: one-cue unit
@@ -235,7 +243,7 @@ def cumulative(b, n_random=30, seed=0):
         if len(ix) == 0:
             continue
         # most typical first: largest |index| for congruent and opposite units,
-        # index closest to zero for mixed units
+        # index closest to zero for intermediate units
         order = ix[np.argsort(idx_all[ix] if c == "mixed" else -idx_all[ix])]
         keep = np.ones(64, bool)
         F, S = [], []
@@ -329,7 +337,7 @@ def refit(b, n_random=20, seed=0, alpha=1e-3):
 
 def unit_classes(b):
     """The congruency index and class of every multisensory unit of one
-    network, the class counts, and the mixed class's sub-structure (units a
+    network, the class counts, and the intermediate class's sub-structure (units a
     sweep of one cue moves by less than WEAK are unimodal within the sweep)."""
     c = b.cong
     idx = np.asarray(c["index"], float)
@@ -347,7 +355,7 @@ def unit_classes(b):
                                    "both_cues": int((mixed & ~weak).sum())}}
 
 
-RECORD_VERSION = 2          # 2: mixed units removed nearest-zero first in the cumulative design
+RECORD_VERSION = 2          # 2: intermediate units removed nearest-zero first in the cumulative design
 PAIR_GROUPS = ("congruent+congruent", "congruent+opposite", "congruent+mixed",
                "opposite+opposite", "opposite+mixed", "mixed+mixed")
 
@@ -537,7 +545,7 @@ def analyse(run, runs=None, n=None, control="pcommon1", extras=(), budget=None):
 def aggregate_units(records):
     """Across-seed distribution of the unit classes: counts per class (with
     percentiles), the share of networks with more opposite than congruent
-    units, the mixed sub-structure, and the congruency index pooled over
+    units, the intermediate sub-structure, and the congruency index pooled over
     every unit of every network, binned."""
     n = len(records)
     out = {"n": n, "counts": {}, "mixed_substructure": {}}
@@ -828,7 +836,7 @@ def print_summary(agg, n):
                       f"dS {e['dS_mean']['mean']:+.4f} ± {e['dS_mean']['sd']:.4f}  synergy F {e['synF_mean']['mean']:+.4f}  "
                       f"S {e['synS_mean']['mean']:+.4f}")
         print("    single units, mean dF / dS per class: " + "; ".join(
-            f"{c} {pr['single'][c]['dF']['mean']:+.4f} / {pr['single'][c]['dS']['mean']:+.4f}" for c in CLASSES if c in pr["single"]))
+            f"{CLASS_LABEL[c]} {pr['single'][c]['dF']['mean']:+.4f} / {pr['single'][c]['dS']['mean']:+.4f}" for c in CLASSES if c in pr["single"]))
         print("    class composition of the 10 worst pairs per network: segregation", pr["top10_segregation_loss_composition"],
               "fusion", pr["top10_fusion_loss_composition"])
     u = agg.get("units")
@@ -842,15 +850,15 @@ def print_summary(agg, n):
         print(f"  opposite > congruent in {100 * u['share_opposite_gt_congruent']:.0f}% of networks "
               f"(opposite − congruent {u['opposite_minus_congruent']['mean']:+.1f} ± {u['opposite_minus_congruent']['sd']:.1f})")
         ms = u["mixed_substructure"]
-        print(f"  mixed sub-structure: one-cue-only {ms['one_cue_only']['mean']:.1f} ± {ms['one_cue_only']['sd']:.1f} "
+        print(f"  intermediate sub-structure: one-cue-only {ms['one_cue_only']['mean']:.1f} ± {ms['one_cue_only']['sd']:.1f} "
               f"(hand-only {ms['hand_only']['mean']:.1f}, vision-only {ms['vision_only']['mean']:.1f}), "
               f"both cues {ms['both_cues']['mean']:.1f} ± {ms['both_cues']['sd']:.1f}")
         ip = u["index_pooled"]
         print(f"  congruency index pooled over {ip['n_units']} units: mean {ip['mean']:+.2f}, sd {ip['sd']:.2f}; "
               f"shares congruent {100 * ip['share_congruent']:.0f}%, opposite {100 * ip['share_opposite']:.0f}%, "
-              f"mixed {100 * ip['share_mixed']:.0f}%")
+              f"intermediate {100 * ip['share_mixed']:.0f}%")
     else:
-        print("  unit counts, mean ± sd: " + ", ".join(f"{c} {agg['counts'][c]['mean']:.1f} ± {agg['counts'][c]['sd']:.1f}"
+        print("  unit counts, mean ± sd: " + ", ".join(f"{CLASS_LABEL[c]} {agg['counts'][c]['mean']:.1f} ± {agg['counts'][c]['sd']:.1f}"
                                                      for c in CLASSES))
 
 
@@ -864,7 +872,7 @@ def figure(run, agg=None, numbers=None):
         agg = numbers["aggregate"]
     n = agg["n"]
     grid = np.asarray(numbers["grid"] if numbers else json.loads((out / "numbers.json").read_text())["grid"], float)
-    label = f"{n} seeds" if n > 1 else "1 network"
+    label = f"{n} networks" if n > 1 else "1 network"
 
     def band(ax, x, m, s, color, lw=PANEL_LW, label_=None, alpha=0.18, ls="-"):
         m, s = np.asarray(m, float), np.asarray(s, float)
@@ -879,7 +887,7 @@ def figure(run, agg=None, numbers=None):
         for c in CLASSES:
             if c in wc["classes"]:
                 band(ax, grid, wc["classes"][c]["curve"]["mean"], wc["classes"][c]["curve"]["sd"], CLASS_COLORS[c],
-                     label_=f"−{c}")
+                     label_=f"−{CLASS_LABEL[c]}")
         # the size-matched random mean of each class (its own k), dotted in
         # the class colour, so no class is held to another class's null
         for c in CLASSES:
@@ -933,7 +941,7 @@ def figure(run, agg=None, numbers=None):
         fig = zbox(ax, lambda c: agg["whole_class"]["classes"].get(c), ("fusion", "segregation", "rmse"),
                    ("fusion", "segregation", "RMSE"), "frozen: whole-class clamp", headroom=1.4)
         for i, c in enumerate(CLASSES):
-            ax.plot([], [], "o", ms=3, color=CLASS_COLORS[c], label=f"−{c}")
+            ax.plot([], [], "o", ms=3, color=CLASS_COLORS[c], label=f"−{CLASS_LABEL[c]}")
         ax.legend(fontsize=7, loc="upper left", ncol=3, handlelength=1.0, columnspacing=0.6, borderaxespad=0.2)
         return fig
 
@@ -981,7 +989,7 @@ def figure(run, agg=None, numbers=None):
                 m, s, cnt = (np.asarray(cs[key], float) for key in ("mean", "sd", "n_at_k"))
                 keep = cnt >= min(MIN_NETWORKS, cnt.max())
                 k = np.arange(1, len(m) + 1)
-                band(ax, k[keep], m[keep], s[keep], CLASS_COLORS[c], label_=f"{c} first")
+                band(ax, k[keep], m[keep], s[keep], CLASS_COLORS[c], label_=f"{CLASS_LABEL[c]} first")
         rnd = cu["random"]["segregation"]
         rm = np.asarray(rnd["mean"], float)
         cnt = np.asarray(rnd.get("n_at_k", np.full(len(rm), n)), float)
@@ -1005,7 +1013,7 @@ def figure(run, agg=None, numbers=None):
             jitter = np.random.default_rng(2).uniform(-0.18, 0.18, len(v)) if len(v) > 1 else [0.0]
             ax.plot(i + jitter, v, "o", ms=2.2, color=CLASS_COLORS[c], alpha=0.6)
         ax.set_xticks(x)
-        ax.set_xticklabels(CLASSES)
+        ax.set_xticklabels([CLASS_LABEL[c] for c in CLASSES])
         ax.set_ylim(0, 64)
         return finish_panel(ax, "", "units of 64", f"unit classes ({label})", None)
 
@@ -1014,10 +1022,11 @@ def figure(run, agg=None, numbers=None):
     for key, fn in zip(("A_whole_class_curves", "B_whole_class_z", "C_damage_matched_z", "D_equal_k_z",
                         "E_cumulative_z", "F_refit_z", "G_cumulative_curves", "H_unit_counts"), draws):
         figs[f"{K_SEEDS}/{key}"] = fn()
-    save_figures({f"{PAPER}/{PAPER}": figs[f"{K_SEEDS}/{K_SEEDS}"]}, manuscript_dir(run), formats=FORMATS,
-                 close=False)
+    # the eight-panel diagnostic stays beside the analysis; the manuscript gets
+    # the supplementary figure without the panels of Figs. 9 and 10
     save_figures(figs, out_dir(run), formats=FORMATS)
-    print(f"   -> {out}/ and {manuscript_dir(run) / PAPER}/ (+ flat copies)")
+    print(f"   -> {out}/")
+    si_lesion_figure(run, agg, label)
     if agg.get("units"):
         unit_figure(run, agg["units"], label)
     if agg.get("pairs"):
@@ -1041,7 +1050,7 @@ def unit_class_panels(u, label, narrow=False):
     (shared by `unit_figure` and `units_paper_figure`): A the congruency index
     pooled over every unit of every network, coloured by class; B the counts
     per class, one point per network, box over seeds, mean ± sd written above;
-    C the mixed class's sub-structure per network. `narrow`: the panels sit in
+    C the intermediate class's sub-structure per network. `narrow`: the panels sit in
     1.875-in cells (the paper figure), so titles are short and A's per-class
     labels, which B repeats, are left off."""
     n = u["n"]
@@ -1075,7 +1084,7 @@ def unit_class_panels(u, label, narrow=False):
             ax.text(i, 61, f"{d['mean']:.1f}\n± {d['sd']:.1f}", ha="center", va="top", fontsize=7,
                     color=CLASS_COLORS[c])
         ax.set_xticks(range(len(CLASSES)))
-        ax.set_xticklabels(CLASSES)
+        ax.set_xticklabels([CLASS_LABEL[c] for c in CLASSES])
         ax.set_xlim(-0.7, len(CLASSES) - 0.3)
         ax.set_ylim(0, 64)
         share = u["share_opposite_gt_congruent"]
@@ -1095,8 +1104,8 @@ def unit_class_panels(u, label, narrow=False):
         ax.set_xticklabels([lab for _, lab in keys])
         ax.set_xlim(-0.7, len(keys) - 0.3)
         ax.set_ylim(0, 64)
-        return finish_panel(ax, "", "mixed units of 64",
-                            "mixed sub-structure" if narrow else "mixed class sub-structure", None)
+        return finish_panel(ax, "", "intermediate units of 64",
+                            "intermediate sub-structure" if narrow else "intermediate class sub-structure", None)
 
     return [pA, pB, pC]
 
@@ -1116,8 +1125,8 @@ def unit_figure(run, u, label):
 
 
 PAIR_LABELS = {"congruent+congruent": "con\n+con", "congruent+opposite": "con\n+opp",
-               "congruent+mixed": "con\n+mix", "opposite+opposite": "opp\n+opp",
-               "opposite+mixed": "opp\n+mix", "mixed+mixed": "mix\n+mix"}
+               "congruent+mixed": "con\n+int", "opposite+opposite": "opp\n+opp",
+               "opposite+mixed": "opp\n+int", "mixed+mixed": "int\n+int"}
 STAT_STYLE = {"fusion": ("o", "#111111"), "segregation": ("^", "#8c8c8c")}
 
 
@@ -1153,7 +1162,7 @@ def pairs_figure(run, pr, label):
 
     def class_legend(ax, loc="lower left"):
         for c in CLASSES:
-            ax.plot([], [], "o", ms=3, color=CLASS_COLORS[c], label=c)
+            ax.plot([], [], "o", ms=3, color=CLASS_COLORS[c], label=CLASS_LABEL[c])
         ax.legend(fontsize=7, loc=loc, ncol=3, handlelength=1.0, columnspacing=0.6, borderaxespad=0.2)
 
     def pA(ax=None):
@@ -1218,7 +1227,7 @@ def pairs_figure(run, pr, label):
         ax.set_ylim(lo, 0.02)
         ax.set_aspect("equal")
         fig = finish_panel(ax, "sum of the two single-unit effects", "effect of the pair",
-                           f"additivity ({run}, {len(U)} pairs)", None)
+                           f"additivity ({'main network' if run == 'flagship' else run}, {len(U)} pairs)", None)
         ax.legend(fontsize=7, loc="upper left", markerscale=2.5, handlelength=1.4, borderaxespad=0.2)
         return fig
 
@@ -1269,8 +1278,9 @@ def pairs_figure(run, pr, label):
     for key, fn in zip(("A_single_unit_by_class", "B_pairs_fusion", "C_pairs_segregation", "D_additivity_pairs",
                         "E_additivity_class", "F_worst_pairs_composition"), draws):
         figs[f"{K_PAIRS}/{key}"] = fn()
-    save_figures({f"{PAPER_PAIRS}/{PAPER_PAIRS}": figs[f"{K_PAIRS}/{K_PAIRS}"]}, manuscript_dir(run),
-                 formats=FORMATS, close=False)
+    # Fig. S2: the pair panels only; A and E are Fig. 10E and F of the paper
+    paper = manuscript_grid([pB, pC, pD, pF], ncols=2)
+    save_figures({f"{PAPER_PAIRS}/{PAPER_PAIRS}": paper}, manuscript_dir(run), formats=FORMATS)
     save_figures(figs, out_dir(run), formats=FORMATS)
     print(f"   -> {out_dir(run) / K_PAIRS}/ and {manuscript_dir(run) / PAPER_PAIRS}/ (+ flat copies)")
 
@@ -1312,6 +1322,71 @@ def _zbox_groups(ax, groups, title, ylabel="z vs random lesions", headroom=0.3):
     return finish_panel(ax, "", ylabel, title, None)
 
 
+def si_lesion_figure(run, agg=None, label=None):
+    """figS_lesion_seeds (Fig. S1): the lesion statistics of the 100 seeds that
+    the paper's lesion figure (fig11_lesion_seeds) does not show, four z-score
+    panels, two by two. A the read-out error (RMSE) after each whole-class
+    lesion, with the read-out as trained and refitted, each against random
+    lesions of the class's size; B fusion and segregation against the
+    damage-matched null (random lesions of the same size whose RMSE is within
+    5 % of the class lesion's); C the unit-by-unit removal read at an equal
+    dose, the smallest class of each network, against random orders at that
+    number of units; D the refitted read-out as z-scores against 20 random
+    refits, for fusion, segregation and the two position slopes. One point per
+    network, box over networks, dotted lines at +-2. The panels left out are
+    Fig. 10A to C (the whole-class curves, the fusion and segregation z, the
+    unit-by-unit curves) and Fig. 9H (the unit counts)."""
+    if agg is None:
+        agg = json.loads((out_dir(run) / K_SEEDS / "numbers.json").read_text())["aggregate"]
+    n = agg["n"]
+    label = label or (f"{n} networks" if n > 1 else "1 network")
+    wc, rf = agg["whole_class"]["classes"], agg["refit"]
+
+    def legend(ax):
+        for c in CLASSES:
+            ax.plot([], [], "o", ms=3, color=CLASS_COLORS[c], label=f"−{CLASS_LABEL[c]}")
+        ax.legend(fontsize=7, loc="upper left", ncol=3, handlelength=1.0, columnspacing=0.5,
+                  borderaxespad=0.2, handletextpad=0.2)
+
+    def pA(ax=None):
+        ax = panel_axes(ax)
+        groups = [("as trained", {c: wc[c]["rmse"]["z"]["values"] for c in CLASSES if c in wc}),
+                  ("refitted", {c: rf[c]["rmse"]["z"]["values"] for c in CLASSES if c in rf})]
+        fig = _zbox_groups(ax, groups, f"read-out error ({label})", ylabel="z of RMSE vs random lesions",
+                           headroom=1.6)
+        legend(ax)
+        return fig
+
+    def pB(ax=None):
+        ax = panel_axes(ax)
+        dm = (agg.get("damage_matched") or {}).get("classes", {})
+        groups = [(lab, {c: dm[c][s_]["z"]["values"] for c in CLASSES if c in dm})
+                  for s_, lab in (("fusion", "fusion"), ("segregation", "segregation"))]
+        return _zbox_groups(ax, groups, "damage-matched null", ylabel="z vs RMSE-matched lesions")
+
+    def pC(ax=None):
+        ax = panel_axes(ax)
+        eq = (agg["cumulative"].get("equal_k") or {}).get("k_min_class") or {"classes": {}, "k": {}}
+        k_ = eq.get("k") or {}
+        groups = [(lab, {c: eq["classes"][c][s_]["z"]["values"] for c in CLASSES if c in eq["classes"]})
+                  for s_, lab in (("fusion", "fusion"), ("segregation", "segregation"))]
+        title = "equal dose" + (f" ({k_['mean']:.0f} ± {k_['sd']:.0f} units)" if k_ else "")
+        return _zbox_groups(ax, groups, title, ylabel="z vs random orders")
+
+    def pD(ax=None):
+        ax = panel_axes(ax)
+        groups = [(lab, {c: rf[c][s_]["z"]["values"] for c in CLASSES if c in rf})
+                  for s_, lab in (("fusion", "fusion"), ("segregation", "segre-\ngation"),
+                                  ("posreg_vis", "slope\nvis"), ("posreg_prop", "slope\nhand"))]
+        return _zbox_groups(ax, groups, "read-out refitted, z", ylabel="z vs random refits")
+
+    draws = [pA, pB, pC, pD]
+    fig = manuscript_grid(draws, ncols=2)
+    save_figures({f"{PAPER}/{PAPER}": fig}, manuscript_dir(run), formats=FORMATS)
+    print(f"   -> {manuscript_dir(run) / PAPER}/ (+ flat copy)")
+    return fig
+
+
 def clamp_figure(run, agg, label, grid):
     """The whole-class clamp of lesion_seeds B repeated with the lesioned
     units set to 0 (A, B) and to 1 (D, E) instead of their mean activation,
@@ -1332,7 +1407,7 @@ def clamp_figure(run, agg, label, grid):
             if c in wc["classes"]:
                 m, sd = (np.asarray(wc["classes"][c]["curve"][k_], float) for k_ in ("mean", "sd"))
                 ax.fill_between(x, m - sd, m + sd, color=CLASS_COLORS[c], alpha=0.18, lw=0)
-                ax.plot(x, m, "-", lw=PANEL_LW, color=CLASS_COLORS[c], label=f"−{c}")
+                ax.plot(x, m, "-", lw=PANEL_LW, color=CLASS_COLORS[c], label=f"−{CLASS_LABEL[c]}")
             if c in wc["random_curve"]:
                 ax.plot(x, wc["random_curve"][c]["mean"], ":", lw=1.0, color=CLASS_COLORS[c])
         ax.plot([], [], ":", lw=1.0, color="gray", label="random, same k")
@@ -1352,7 +1427,7 @@ def clamp_figure(run, agg, label, grid):
         fig = _zbox_groups(ax, groups, f"frozen read-out, units {CLAMPS[mode].split(' (')[0]}",
                            ylabel="z vs random lesions, same clamp", headroom=1.4)
         for c in CLASSES:
-            ax.plot([], [], "o", ms=3, color=CLASS_COLORS[c], label=f"−{c}")
+            ax.plot([], [], "o", ms=3, color=CLASS_COLORS[c], label=f"−{CLASS_LABEL[c]}")
         ax.legend(fontsize=7, loc="upper left", ncol=3, handlelength=1.0, columnspacing=0.6, borderaxespad=0.2)
         return fig
 
@@ -1392,7 +1467,7 @@ def clamp_figure(run, agg, label, grid):
 
 
 # --------------------------------------------------------------------------- #
-# the tuning-curve patterns of the mixed units over the seeds
+# the tuning-curve patterns of the intermediate units over the seeds
 SWEEP_COLORS = {"vis": COLORS["visual"], "prop": COLORS["prop"]}
 
 
@@ -1425,10 +1500,10 @@ def canonical_curves(rv, rp, positions, orient="dominant"):
 
 
 def patterns(run, k=5, control="pcommon1", budget=None, k_range=range(2, 11)):
-    """The most common tuning patterns of the mixed units over the seeds: the
-    canonical curves of every mixed unit of every network (82 values: the two
+    """The most common tuning patterns of the intermediate units over the seeds: the
+    canonical curves of every intermediate unit of every network (82 values: the two
     sweeps, see canonical_curves) are partitioned by k-means into k patterns
-    (10 restarts, seed 0), which are reported by size: share of the mixed
+    (10 restarts, seed 0), which are reported by size: share of the intermediate
     units, mean congruency index, mean sweep ranges, the share of networks
     with at least one unit of the pattern and the units per network, and the
     pattern's mean ± sd curves. The silhouette of the partition for every k in
@@ -1501,7 +1576,7 @@ def patterns(run, k=5, control="pcommon1", budget=None, k_range=range(2, 11)):
 
 def patterns_figure(run, numbers=None):
     """A, B the congruent and opposite classes (mean ± sd canonical curves,
-    for reference); C.. the mixed patterns by size; the last panel the units
+    for reference); C.. the intermediate patterns by size; the last panel the units
     of each pattern per network."""
     out = out_dir(run) / K_PATTERNS
     numbers = numbers or json.loads((out / "numbers.json").read_text())
@@ -1531,7 +1606,7 @@ def patterns_figure(run, numbers=None):
 
         def p_ref(ax=None, c=c, ref=ref):
             ax = panel_axes(ax)
-            return curve_panel(ax, ref["curves"], f"{c} units ({label})",
+            return curve_panel(ax, ref["curves"], f"{CLASS_LABEL[c]} units ({label})",
                                f"n = {ref['n']}, index {ref['index_mean']:+.2f} ± {ref['index_sd']:.2f}", legend=(c == "congruent"))
         draws.append(p_ref)
         keys.append(f"{c}_reference")
@@ -1539,7 +1614,7 @@ def patterns_figure(run, numbers=None):
 
         def p_pat(ax=None, pt=pt):
             ax = panel_axes(ax)
-            return curve_panel(ax, pt["curves"], f"mixed pattern {pt['rank']}: {100 * pt['share_of_mixed']:.0f}% of mixed",
+            return curve_panel(ax, pt["curves"], f"intermediate pattern {pt['rank']} ({100 * pt['share_of_mixed']:.0f}%)",
                                f"n = {pt['n']}, index {pt['index_mean']:+.2f} ± {pt['index_sd']:.2f}\n"
                                f"in {pt['networks_with_pattern']}/{n_net} networks, "
                                f"{pt['units_per_network_mean']:.1f} ± {pt['units_per_network_sd']:.1f} each")
@@ -1561,7 +1636,7 @@ def patterns_figure(run, numbers=None):
         ax.set_xticklabels([str(pt["rank"]) for pt in pats])
         ax.set_xlim(-0.7, len(pats) - 0.3)
         ax.set_ylim(0, max(1.15 * max(max(pt["units_per_network"]) for pt in pats), 5))
-        return finish_panel(ax, "mixed pattern", "units per network", f"patterns per network ({label})", None)
+        return finish_panel(ax, "intermediate pattern", "units per network", f"patterns per network ({label})", None)
     draws.append(p_counts)
     keys.append("patterns_per_network")
     letters = "ABCDEFGHIJKLMNOP"[:len(draws)]
@@ -1577,7 +1652,7 @@ def patterns_figure(run, numbers=None):
 # --------------------------------------------------------------------------- #
 # The manuscript's unit figure (18 Oct 2026): the tuning patterns of the 100
 # seeds in one row of small panels (A, B the congruent and opposite classes,
-# C-F the four largest mixed patterns) over the unit classes of the same seeds
+# C-F the four largest intermediate patterns) over the unit classes of the same seeds
 # (G-I, the three panels of `unit_class_panels`; J, opposite units of the
 # causal networks against their always-fuse twins). It replaces fig10_units, the
 # one-network figure (three example units; counts per network, per prior and
@@ -1585,7 +1660,7 @@ def patterns_figure(run, numbers=None):
 # --------------------------------------------------------------------------- #
 TOP_ROW = {"height": 1.9, "gap": 0.2, "xlabel": 0.42, "title": 0.33}   # inches
 TOP_FONT = {"tick": 7, "label": 7, "title": 7.5, "note": 6.2, "legend": 6.2}
-N_MIXED_SHOWN = 4                      # mixed patterns in the top row, by size
+N_MIXED_SHOWN = 4                      # intermediate patterns in the top row, by size
 
 
 def _twin_panel(run):
@@ -1689,7 +1764,7 @@ def units_paper_figure(run, u=None, label=None, numbers=None):
                      legend=(c == "congruent"), ylabel=(i == 0))
     for i, pt in enumerate(pats):
         small_curves(tops[2 + i], pt["curves"],
-                     f"mixed {pt['rank']} ({100 * pt['share_of_mixed']:.0f}% of mixed)",
+                     f"intermediate {pt['rank']} ({100 * pt['share_of_mixed']:.0f}%)",
                      f"n = {pt['n']}\nindex {pt['index_mean']:+.2f} ± {pt['index_sd']:.2f}")
 
     # ---- bottom row: the three unit-class cells of the same seeds, and the
@@ -1722,12 +1797,237 @@ def units_paper_figure(run, u=None, label=None, numbers=None):
     return fig
 
 
+def lesion_paper_figure(run, agg=None, numbers=None, band="sd"):
+    """fig11_lesion_seeds: the lesion result of the 100 seeds in seven panels,
+    7.5 x 5 in: three standard cells on top (A-C) and four cells of
+    1.875 x 2.5 in below (D-G, as the bottom row of Fig. 9). A the whole-class
+    clamp with the read-out as trained, implied weight against |d|, mean
+    over networks (band: +-1 sd across networks), each class against random lesions of its
+    own size (dotted); B the within-network z of fusion and segregation
+    against those size-matched random lesions, one point per network; C the
+    cumulative removal of one class, most typical first, against random
+    orders; D the read-out refitted after each whole-class lesion: fusion and
+    segregation per network, against the intact network refitted (dashed) and
+    random lesions of the class's size refitted (grey ticks); E the decision
+    read-out (decision_weights.py): per network, the mean weight of each class
+    towards 'segregated' in a logistic read-out of the network's own
+    fused/segregated label; F the single-unit lesions, the class mean change
+    per unit removed; G additivity: the whole-class effect against the sum of
+    the class's single-unit effects. (18 Oct: A-F with D the refit; 19 Oct
+    morning: D the decision read-out, refit in the SI; 19 Oct: both, A-G.) Needs numbers.json with the pairs design
+    (`analyse --extras pairs`). `band` sets the band of A and C: "sd" (the
+    paper's choice, 2026-10-18), the spread across networks, or "sem", the
+    standard error of the mean over networks (ten times narrower at n = 100)."""
+    out = out_dir(run) / K_SEEDS
+    if agg is None:
+        numbers = numbers or json.loads((out / "numbers.json").read_text())
+        agg = numbers["aggregate"]
+    grid = np.asarray(numbers["grid"] if numbers else json.loads((out / "numbers.json").read_text())["grid"], float)
+    n = agg["n"]
+    label = f"{n} networks"
+    pr = agg.get("pairs")
+    if not pr:
+        print("   (no pairs design in numbers.json: run `seeds.py analyse --extras pairs`; fig11_lesion_seeds not drawn)")
+        return None
+
+    def sem_band(ax, x, m, sd, count, color, lw=PANEL_LW, label_=None, ls="-"):
+        m, sd, count = np.asarray(m, float), np.asarray(sd, float), np.asarray(count, float)
+        half = sd if band == "sd" else sd / np.sqrt(np.maximum(count, 1))
+        ax.fill_between(x, m - half, m + half, color=color, alpha=0.13 if band == "sd" else 0.22, lw=0)
+        ax.plot(x, m, ls, lw=lw, color=color, label=label_)
+
+    def pA(ax=None):
+        ax = panel_axes(ax)
+        wc = agg["whole_class"]
+        sem_band(ax, grid, wc["intact"]["curve"]["mean"], wc["intact"]["curve"]["sd"], n, "k", lw=PANEL_LW + 0.4,
+                 label_="intact")
+        for c in CLASSES:
+            if c in wc["classes"]:
+                e = wc["classes"][c]
+                sem_band(ax, grid, e["curve"]["mean"], e["curve"]["sd"], e["n"], CLASS_COLORS[c],
+                         label_=f"−{CLASS_LABEL[c]} ({e['k']['mean']:.0f})")
+                ax.plot(grid, wc["random_curve"][c]["mean"], ":", lw=1.0, color=CLASS_COLORS[c])
+        ax.plot([], [], ":", lw=1.0, color="gray", label="random, same size")
+        ax.set_ylim(-0.1, 2.0)
+        ax.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
+        fig = finish_panel(ax, "|disparity| (deg)", "weight on fused estimate",
+                           f"whole class clamped ({label})", None)
+        ax.legend(fontsize=7, loc="upper center", ncol=2, handlelength=1.2, columnspacing=0.8,
+                  borderaxespad=0.2, handletextpad=0.4, labelspacing=0.3)
+        return fig
+
+    def pB(ax=None):
+        ax = panel_axes(ax)
+        wc = agg["whole_class"]["classes"]
+        groups = [(lab, {c: wc[c][s_]["z"]["values"] for c in CLASSES if c in wc})
+                  for s_, lab in (("fusion", "fusion"), ("segregation", "segregation"))]
+        fig = _zbox_groups(ax, groups, f"class vs random lesions ({label})",
+                           ylabel="z (class vs size-matched random)", headroom=1.3)
+        for c in CLASSES:
+            ax.plot([], [], "o", ms=3, color=CLASS_COLORS[c], label=f"−{CLASS_LABEL[c]}")
+        ax.legend(fontsize=6.5, loc="upper left", ncol=3, handlelength=0.6, columnspacing=0.4,
+                  handletextpad=0.15, borderaxespad=0.2)
+        return fig
+
+    def pC(ax=None):
+        ax = panel_axes(ax)
+        cu = agg["cumulative"]
+        for c in CLASSES:
+            if c in cu:
+                cs = cu[c]["curves"]["segregation"]
+                m, sd, cnt = (np.asarray(cs[key], float) for key in ("mean", "sd", "n_at_k"))
+                keep = cnt >= min(MIN_NETWORKS, cnt.max())
+                k = np.arange(1, len(m) + 1)
+                sem_band(ax, k[keep], m[keep], sd[keep], cnt[keep], CLASS_COLORS[c], label_=f"{CLASS_LABEL[c]} first")
+        rnd = cu["random"]["segregation"]
+        rm = np.asarray(rnd["mean"], float)
+        cnt = np.asarray(rnd.get("n_at_k", np.full(len(rm), n)), float)
+        keep = cnt >= min(MIN_NETWORKS, cnt.max())
+        ax.plot(np.arange(1, len(rm) + 1)[keep], rm[keep], ":", lw=1.0, color="gray", label="random order")
+        ax.set_ylim(-0.05, 1.05)
+        return finish_panel(ax, "units removed (most typical first)", "segregation at |d| ≥ 15°",
+                            f"removed unit by unit ({label})", "lower left")
+
+    def pD(ax=None, narrow=False):
+        # the read-out refitted after the class lesion (agg["refit"]): does the
+        # information survive the loss of a class?
+        ax = panel_axes(ax)
+        rf = agg["refit"]
+        x0, ticks, allv = 0, [], []
+        for s_ in ("fusion", "segregation"):
+            intact = rf["intact"][s_]["mean"]
+            ax.plot([x0 - 0.7, x0 + 2.7], [intact, intact], "--", lw=0.9, color="k", zorder=1)
+            for i, c in enumerate(CLASSES):
+                if c not in rf:
+                    continue
+                allv.extend(_box_strip(ax, x0 + i, rf[c][s_]["value"]["values"], CLASS_COLORS[c], 51 + i).tolist())
+                nm = rf[c][s_]["null_mean"]["mean"]
+                ax.plot([x0 + i - 0.3, x0 + i + 0.3], [nm, nm], "-", lw=1.4, color="#8c8c8c", zorder=4)
+            ticks.append(x0 + 1)
+            x0 += 4
+        ax.plot([], [], "--", lw=0.9, color="k", label="intact, refitted")
+        ax.plot([], [], "-", lw=1.4, color="#8c8c8c", label="random, refitted")
+        ax.set_xticks(ticks)
+        ax.set_xticklabels(["fusion", "segregation"])
+        ax.set_xlim(-1, x0 - 1)
+        lo = min(allv) if allv else 0.7
+        ax.set_ylim(min(0.7, lo - 0.02), 1.06)
+        fig = finish_panel(ax, "", "value after the class lesion",
+                           "read-out refitted" if narrow else f"read-out refitted ({label})", None)
+        ax.legend(fontsize=6.5 if narrow else 7, loc="lower left", ncol=1, handlelength=1.4,
+                  borderaxespad=0.2, labelspacing=0.3)
+        return fig
+
+    def pE(ax=None, narrow=False):
+        # the decision read-out (scripts/neuronal/decision_weights.py): a
+        # logistic read-out of the network's own fused/segregated label from
+        # the z-scored MSL; per network, the mean weight of each class
+        # towards 'segregated', one point per network, box over networks
+        ax = panel_axes(ax)
+        files = sorted((out_dir(run) / "decision_weights" / "per_network").glob("*.json"))
+        recs = [json.loads(f.read_text()) for f in files]
+        if not recs:
+            ax.text(0.5, 0.5, "run decision_weights.py --runs ...", ha="center", transform=ax.transAxes)
+            return finish_panel(ax, "", "", "decision read-out", None)
+        allv = []
+        for i, c in enumerate(CLASSES):
+            v = np.array([-r["summary"]["w_fused_all"][c]["mean"] for r in recs], float)
+            allv.extend(_box_strip(ax, i, v, CLASS_COLORS[c], 61 + i).tolist())
+        ax.axhline(0, lw=0.5, color="gray")
+        ax.set_xticks(range(len(CLASSES)))
+        ax.set_xticklabels([CLASS_LABEL[c] for c in CLASSES], fontsize=7.5)
+        ax.set_xlim(-0.7, len(CLASSES) - 0.3)
+        lim = 1.15 * max(abs(min(allv)), abs(max(allv)))
+        ax.set_ylim(-lim, lim)
+        acc = np.mean([r["acc_all"] for r in recs])
+        ax.text(0.03, 0.04, f"decoding accuracy {acc:.2f}", transform=ax.transAxes, fontsize=7, va="bottom")
+        return finish_panel(ax, "", "weight towards 'segregated'",
+                            "decision read-out" if narrow else f"decision read-out ({len(recs)} networks)", None)
+
+    def pF(ax=None, narrow=False):
+        ax = panel_axes(ax)
+        x0, ticks, allv = 0, [], []
+        for key in ("dF", "dS"):
+            for i, c in enumerate(CLASSES):
+                d = pr["single"][c].get("per_network_mean")
+                if d:
+                    allv.extend(_box_strip(ax, x0 + i, d[key]["values"], CLASS_COLORS[c], 11 + i).tolist())
+            ticks.append(x0 + 1)
+            x0 += 4
+        ax.axhline(0, lw=0.5, color="gray")
+        ax.set_xticks(ticks)
+        ax.set_xticklabels(["fusion", "segregation"])
+        ax.set_xlim(-1, x0 - 1)
+        lo = min(allv) if allv else -0.03
+        ax.set_ylim(min(lo, -0.03) * 1.15, 0.012)
+        return finish_panel(ax, "", "change per unit removed",
+                            "single units clamped" if narrow else f"single units clamped ({label})", None)
+
+    def pG(ax=None, narrow=False):
+        ax = panel_axes(ax)
+        lo = 0.0
+        for c in CLASSES:
+            sv = pr["single"][c].get("sum_vs_whole")
+            if not sv:
+                continue
+            for lab, xs, ys in (("fusion", sv["sum_dF"], sv["whole_dF"]), ("segregation", sv["sum_dS"], sv["whole_dS"])):
+                mk, _ = STAT_STYLE[lab]
+                ax.plot(xs, ys, mk, ms=2.6, alpha=0.6, color=CLASS_COLORS[c], mew=0)
+                lo = min(lo, float(np.min(xs)), float(np.min(ys)))
+        lo = 1.1 * lo
+        ax.plot([lo, 0.05], [lo, 0.05], "--", lw=0.8, color="k")
+        ax.set_xlim(lo, 0.05)
+        ax.set_ylim(lo, 0.05)
+        # narrow cell: keep the cell's frame and stretch the data limits instead
+        ax.set_aspect("equal", adjustable="datalim" if narrow else "box")
+        for lab in ("fusion", "segregation"):
+            mk, _ = STAT_STYLE[lab]
+            ax.plot([], [], mk, ms=3, color="#555555", mew=0, label=lab)
+        return finish_panel(ax, "sum of single-unit effects", "whole-class effect",
+                            "additivity" if narrow else f"additivity ({label})",
+                            "lower right" if narrow else "upper left")
+
+    # three standard cells on top, four narrow cells below (as Fig. 9)
+    from cmsi.viz.manuscript import CELL_SQUARE, cell_axes, letter
+    from cmsi.viz.style import exact_frame
+    from matplotlib import pyplot as plt
+    top, bottom = [pA, pB, pC], [pD, pE, pF, pG]
+    W, ch = CELL_SQUARE[0] * 3, CELL_SQUARE[1]
+    fig = plt.figure(figsize=(W, 2 * ch))
+    axes = []
+    for i, fn in enumerate(top):
+        ax = cell_axes(fig, CELL_SQUARE, origin=(i * CELL_SQUARE[0], ch))
+        fn(ax)
+        axes.append(ax)
+    narrow_cell = (W / len(bottom), ch)
+    for i, fn in enumerate(bottom):
+        ax = cell_axes(fig, narrow_cell, origin=(i * narrow_cell[0], 0))
+        fn(ax, narrow=True)
+        if fn is pE:                                  # class names: slant them in the narrow cell
+            for lab in ax.get_xticklabels():
+                lab.set_rotation(25)
+                lab.set_ha("right")
+        axes.append(ax)
+    letter(axes, "ABCDEFG")
+    exact_frame(fig)
+    figs = {f"{K_LESION_PAPER}/{K_LESION_PAPER}": fig}
+    for key, fn in zip(("A_whole_class_curves", "B_z_vs_random", "C_cumulative", "D_refit",
+                        "E_decision_readout", "F_per_unit", "G_additivity"), top + bottom):
+        figs[f"{K_LESION_PAPER}/{key}"] = fn()
+    save_figures({f"{PAPER_LESION_FIG}/{PAPER_LESION_FIG}": fig}, manuscript_dir(run), formats=FORMATS,
+                 close=False)
+    save_figures(figs, out_dir(run), formats=FORMATS)
+    print(f"   -> {out_dir(run) / K_LESION_PAPER}/ and {manuscript_dir(run) / PAPER_LESION_FIG}/ (+ flat copies)")
+    return fig
+
+
 # --------------------------------------------------------------------------- #
 def main(argv=None):
     import argparse
     import warnings
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["train", "analyse", "figure", "all", "patterns", "units"])
+    ap.add_argument("command", choices=["train", "analyse", "figure", "all", "patterns", "units", "lesion",
+                                            "si"])
     ap.add_argument("--run", default="flagship", help="the configuration's run (seed 0)")
     ap.add_argument("--n", type=int, default=100, help="networks in all, the run included (train: seeds 1..n-1)")
     ap.add_argument("--runs", nargs="*", default=None, help="analyse these runs instead of the run's seeds")
@@ -1737,7 +2037,9 @@ def main(argv=None):
                          "clamp (the whole-class clamp with the units set to 0 and to 1 instead of their mean)")
     ap.add_argument("--budget", type=float, default=None,
                     help="seconds of computation per call; the rest is left for the next call")
-    ap.add_argument("--k", type=int, default=5, help="patterns: number of k-means patterns of the mixed units")
+    ap.add_argument("--k", type=int, default=5, help="patterns: number of k-means patterns of the intermediate units")
+    ap.add_argument("--band", choices=["sem", "sd"], default="sd",
+                    help="lesion: the band of panels A and C, the SEM over networks or the sd across networks")
     args = ap.parse_args(argv)
     warnings.filterwarnings("ignore", category=RuntimeWarning)
     if args.command == "train":
@@ -1749,6 +2051,16 @@ def main(argv=None):
         return
     if args.command == "units":                 # the paper's unit figure from the stored numbers
         units_paper_figure(args.run)
+        return
+    if args.command == "lesion":                # the paper's lesion figure from the stored numbers
+        lesion_paper_figure(args.run, band=args.band)
+        return
+    if args.command == "si":                    # Figs. S1 and S2 (lesions) from the stored numbers
+        agg = json.loads((out_dir(args.run) / K_SEEDS / "numbers.json").read_text())["aggregate"]
+        label = f"{agg['n']} networks"
+        si_lesion_figure(args.run, agg, label)
+        if agg.get("pairs"):
+            pairs_figure(args.run, agg["pairs"], label)
         return
     if args.command in ("analyse", "all"):
         records, agg = analyse(args.run, runs=args.runs, n=None if args.runs else args.n, control=args.control,

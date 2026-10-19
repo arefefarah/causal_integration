@@ -10,7 +10,7 @@ written to the run's manuscript folder under their paper names
 fig5_decision_bias, fig10_units, fig11_lesion_behaviour. Torch-free
 (npmodel.py); house style (cmsi.viz.style / manuscript); png, tif and svg.
 
-    python scripts/neuronal/run.py units            example congruent, opposite and mixed unit of the run,
+    python scripts/neuronal/run.py units            example congruent, opposite and intermediate unit of the run,
                                                     unit counts by network, against the prior, against the twin
     python scripts/neuronal/run.py r6               decision-conditioned bias at the run's transition midpoint
     python scripts/neuronal/run.py r5               lesion on causal behaviour, four designs, the run and a
@@ -32,7 +32,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import (CLASS_COLORS, CLASSES, COLORS, FIG_BIAS, FIG_LESION,      # noqa: E402
+from common import (CLASS_COLORS, CLASS_LABEL, CLASSES, COLORS, FIG_BIAS, FIG_LESION,      # noqa: E402
                     FIG_UNITS, PANEL_FONT, PANEL_LW, PANEL_MS, RUN_LABEL,
                     RUN_PRIOR, TWIN_RUNS, Bundle,
                     apply_style, behaviour_stats, binned_weight, bootstrap_ci,
@@ -108,13 +108,13 @@ def units():
     idx = c["index"]
     u_con = int(np.argmax(np.where(c["classes"] == "congruent", idx, -np.inf)))
     u_opp = int(np.argmin(np.where(c["classes"] == "opposite", idx, np.inf)))
-    # example mixed unit: the mixed unit with the index closest to zero among
+    # example intermediate unit: the intermediate unit with the index closest to zero among
     # those clearly tuned to both cues (response range >= 0.5 on each sweep)
     rng_v = c["resp_vis"].max(0) - c["resp_vis"].min(0)
     rng_p = c["resp_prop"].max(0) - c["resp_prop"].min(0)
     both = (c["classes"] == "mixed") & (rng_v >= 0.5) & (rng_p >= 0.5)
     u_mix = int(np.argmin(np.where(both, np.abs(idx), np.inf)))
-    # sub-structure of the mixed class: units modulated by less than 0.1 by one cue
+    # sub-structure of the intermediate class: units modulated by less than 0.1 by one cue
     weak = np.minimum(rng_v, rng_p) < 0.1
     mixed_sub = {"n_mixed": int((c["classes"] == "mixed").sum()),
                  "one_cue_only": int(((c["classes"] == "mixed") & weak).sum()),
@@ -195,7 +195,7 @@ def units():
         return finish_panel(ax, "prior on a common cause", "opposite units of 64",
                             "opposite units: causal vs twin", "upper right")
 
-    draws = [example(u_con, "congruent unit"), example(u_opp, "opposite unit"), example(u_mix, "mixed unit"),
+    draws = [example(u_con, "congruent unit"), example(u_opp, "opposite unit"), example(u_mix, "intermediate unit"),
              pC, pD, pE]
     figs = {f"{K_UNITS}/{K_UNITS}": manuscript_grid(draws, ncols=3)}
     for key, fn in zip(("A_congruent_unit", "B_opposite_unit", "C_mixed_unit", "D_classes_by_network",
@@ -440,7 +440,7 @@ def r5_v3(b, n_random=30, seed=0):
         if len(ix) == 0:
             continue
         # most typical first: largest |index| for congruent and opposite units,
-        # index closest to zero for mixed units
+        # index closest to zero for intermediate units
         order = ix[np.argsort(idx_all[ix] if c == "mixed" else -idx_all[ix])]
         F, S = [], []
         keep = np.ones(64, bool)
@@ -580,7 +580,7 @@ def r5(runs=None):
                     rc = cv["random"][k_c]
                     ax.plot(rc["c"], rc["mean"], ":", lw=1.0, color=CLASS_COLORS[c])
                     ax.plot(cv[c]["c"], cv[c]["m"], "-", lw=PANEL_LW, color=CLASS_COLORS[c],
-                            label=f"−{c} ({k_c})")
+                            label=f"−{CLASS_LABEL[c]} ({k_c})")
             ax.plot([], [], ":", lw=1.0, color="gray", label="random, same k")
             ax.set_ylim(-0.1, 1.8)
             ax.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
@@ -600,7 +600,7 @@ def r5(runs=None):
                 m = cl == c
                 if m.any():
                     ax.plot(idx[m], dS[m], "o", ms=PANEL_MS + 0.5, color=CLASS_COLORS[c], alpha=0.8,
-                            label=f"{c} ({m.sum()})")
+                            label=f"{CLASS_LABEL[c]} ({m.sum()})")
             ax.axhline(0, lw=0.5, color="gray")
             ax.axvline(0.5, ls=":", lw=0.6, color="gray")
             ax.axvline(-0.5, ls=":", lw=0.6, color="gray")
@@ -612,8 +612,8 @@ def r5(runs=None):
             ax.set_xlim(-1.08, 1.08)
             fig = finish_panel(ax, "congruency index", "Δ segregation, one unit clamped",
                                f"single-unit lesions (r = {r['corr_index_dS']:+.2f})", None)
-            ax.legend(fontsize=7, loc="upper center", ncol=3, handlelength=1.0, columnspacing=0.8,
-                      borderaxespad=0.2, handletextpad=0.4, frameon=False, title="all 64 units, one at a time",
+            ax.legend(fontsize=6.5, loc="upper center", ncol=3, handlelength=0.6, columnspacing=0.35,
+                      borderaxespad=0.2, handletextpad=0.1, frameon=False, title="all 64 units, one at a time",
                       title_fontsize=7)
             return fig
         return draw
@@ -631,7 +631,7 @@ def r5(runs=None):
             for c in CLASSES:
                 if c in r["classes"]:
                     S = np.array(r["classes"][c][stat])
-                    ax.plot(k[:len(S)], S, "-", lw=PANEL_LW, color=CLASS_COLORS[c], label=f"{c} first")
+                    ax.plot(k[:len(S)], S, "-", lw=PANEL_LW, color=CLASS_COLORS[c], label=f"{CLASS_LABEL[c]} first")
             ax.set_ylim(-0.05, 1.05)
             return finish_panel(ax, "units removed (most typical first)", ylab,
                                 f"{RUN_LABEL[run]}: cumulative lesion", "lower left")
@@ -652,7 +652,7 @@ def r5(runs=None):
                 vals = [r["lesions"][c][s]["value"] for s in stats_]
                 nul = [r["lesions"][c][s]["null_mean"] for s in stats_]
                 ax.bar(x + (i - 0.5) * wdt, vals, wdt, color=CLASS_COLORS[c], alpha=0.85,
-                       label=f"−{c}, refit")
+                       label=f"−{CLASS_LABEL[c]}, refit")
                 ax.plot(x + (i - 0.5) * wdt, nul, "_", ms=8, mew=1.4, color="k")
             ax.axhline(1, ls=":", lw=0.6, color="gray")
             ax.set_xticks(x)
@@ -660,8 +660,8 @@ def r5(runs=None):
             ax.set_ylim(0, 1.55)
             fig = finish_panel(ax, "", "value, read-out refitted",
                                "refit; ticks = random lesions", None)
-            ax.legend(fontsize=7, loc="upper right", ncol=2, handlelength=1.2, columnspacing=0.7,
-                      borderaxespad=0.2)
+            ax.legend(fontsize=6.5, loc="upper right", ncol=2, handlelength=0.8, columnspacing=0.4,
+                      handletextpad=0.25, borderaxespad=0.2)
             return fig
         return draw
 

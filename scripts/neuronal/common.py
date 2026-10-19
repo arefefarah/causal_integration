@@ -33,8 +33,12 @@ def out_dir(run="flagship"):
     return ROOT / "results" / run / "figures" / "model" / "neuronal_level_analysis"
 
 
-CLASS_COLORS = {"congruent": "#1f77b4", "opposite": "#d62728", "mixed": "#ccbb44"}  # mixed: rgb(204,187,68), never the grey of the random bands or the intact bars
+CLASS_COLORS = {"congruent": "#1f77b4", "opposite": "#d62728", "mixed": "#ccbb44"}  # intermediate: rgb(204,187,68), never the grey of the random bands or the intact bars
 CLASSES = ("congruent", "opposite", "mixed")
+# what the reader sees: the class key "mixed" is shown as "intermediate", the
+# name Rideaux et al. (2021) give to units that are neither congruent nor
+# opposite; the key itself stays "mixed" so that stored results stay readable
+CLASS_LABEL = {"congruent": "congruent", "opposite": "opposite", "mixed": "intermediate", "untuned": "untuned"}
 OUTPUT_NAMES = ("mu_vis", "var_vis", "mu_prop", "var_prop")
 OUTPUT_LABELS = ("μ vis", "σ² vis", "μ hand", "σ² hand")
 RUN_PRIOR = {"pcommon0": 0.0, "pcommon03": 0.3, "flagship": 0.5, "pcommon07": 0.7, "pcommon1": 1.0}

@@ -105,7 +105,7 @@ reaches training.
 
 **The neuronal-level analyses** (`scripts/neuronal/run.py`, added 2026-10-04)
 sit beside the stages rather than in them. They take a trained run and ask
-what its multisensory units do: example congruent, opposite and mixed units
+what its multisensory units do: example congruent, opposite and intermediate units
 and the class counts against the prior and against the always-fuse twins
 (Fig. 10), the decision-conditioned bias at the transition midpoint (Fig. 5),
 and four lesion designs on the causal behaviour (Fig. 11). Output goes to
@@ -1306,7 +1306,7 @@ correlates each MSL unit's two tuning curves.
 congruency index = corr( response to visual sweep, response to prop sweep )
 > +0.5  -> congruent   (same preferred direction for both cues)
 < -0.5  -> opposite    (opposite preferred directions)
-otherwise -> mixed;  no measurable tuning -> untuned
+otherwise -> intermediate;  no measurable tuning -> untuned
 ```
 
 This follows the congruency logic of Rideaux et al. (2021). The hypothesis is
@@ -1315,7 +1315,7 @@ causal inference needs.
 
 **Your counts (64 MSL units):**
 
-| run | congruent | opposite | mixed | untuned |
+| run | congruent | opposite | intermediate | untuned |
 |---|---|---|---|---|
 | pcommon028 | 12 | **31** | 21 | 0 |
 | pcommon03 | 17 | **31** | 16 | 0 |
@@ -1339,7 +1339,7 @@ network that reports each cue separately has a use for both signs.)
 cited: its prior is too close to 0.3 to add anything, and the manuscript
 reports the main network with the satellites at 0.3 and 0.7.
 
-### The twins, the example units, and what the mixed class contains (Fig. 9)
+### The twins, the example units, and what the intermediate class contains (Fig. 9)
 
 The p_common = 1 control differs from the flagship in its inputs as well as
 in its targets (every trial has one cause), so it cannot by itself say
@@ -1349,7 +1349,7 @@ of its causal network and was trained on fused targets only. The same
 congruency index on the twins (`scripts/neuronal/run.py units`,
 `units/numbers.json`):
 
-| world | causal network (con / opp / mixed) | always-fuse twin | opposite units added by the causal targets |
+| world | causal network (con / opp / intermediate) | always-fuse twin | opposite units added by the causal targets |
 |---|---|---|---|
 | p = 0.3 | 17 / 31 / 16 | 36 / 17 / 11 | 14 |
 | p = 0.5 | 15 / 21 / 28 | 43 / 13 / 8 | 8 |
@@ -1369,11 +1369,11 @@ The index is a correlation and says nothing about the shape of the tuning.
 Fig. 9A–C show three units of the flagship: the most congruent (unit 30,
 index +0.99) has the same tuning for either cue (a dip at zero); the most
 opposite (unit 31, −0.92) rises with the visual cue and falls with the hand
-cue; the mixed example (unit 47, −0.13; chosen by a rule, the mixed unit with
+cue; the intermediate example (unit 47, −0.13; chosen by a rule, the intermediate unit with
 the index closest to zero among those whose response spans at least 0.5 on
 both sweeps) has a dip at zero for the hand and a low-to-high step for
-vision, neither matched nor mirrored. The mixed class is also heterogeneous
-in a way the index hides: of the flagship's 28 mixed units, 10 are modulated
+vision, neither matched nor mirrored. The intermediate class is also heterogeneous
+in a way the index hides: of the flagship's 28 intermediate units, 10 are modulated
 by less than 0.1 by one cue over the ±20° sweep (9 hand-only, 1 vision-only),
 so they are unimodal within the sweep rather than mixed in the sense of
 combining the cues, and the other 18 combine the cues with tuning of neither
@@ -1446,7 +1446,7 @@ in that null distribution as a z-score and a percentile.
 |---|---|---|---|---|---|
 | congruent | 15 | 2.276 | 2.035 ± 0.293 | +0.82 | 79% |
 | opposite | 21 | 2.366 | 2.669 ± 0.308 | −0.98 | 16% |
-| mixed | 28 | 3.021 | 3.356 ± 0.347 | −0.97 | 17% |
+| intermediate | 28 | 3.021 | 3.356 ± 0.347 | −0.97 | 17% |
 
 The stored block also carries `rmse_per_output` for each lesion (2.70 / 0.44 /
 3.62 / 0.37 for the congruent lesion, in the order mu_vis, var_vis, mu_prop,
@@ -1454,7 +1454,7 @@ var_prop, against 0.44 intact), but not a per-output null.
 
 And the same three z-scores on the other runs:
 
-| run | congruent z (k) | opposite z (k) | mixed z (k) |
+| run | congruent z (k) | opposite z (k) | intermediate z (k) |
 |---|---|---|---|
 | pcommon028 | +0.12 (12) | +0.13 (31) | +0.03 (21) |
 | pcommon03 | **+2.58** (17) | +0.67 (31) | −1.31 (16) |
@@ -1469,7 +1469,7 @@ Removing any 15–28 of 64 units costs a lot (RMSE 0.44 → 2.3–3.0), but remo
 congruent lesion is the only one that is ever reliably worse than random, and
 it is so on `pcommon03`, `pcommon07` and both controls (z 2.1–2.9) but not on
 the flagship or `pcommon028`; the opposite lesion is never worse than random
-(z −3.0 to +1.6), and the mixed lesion never. On the wide flagship the
+(z −3.0 to +1.6), and the intermediate lesion never. On the wide flagship the
 congruent lesion had z = +6.99, concentrated in the mean channels, and the
 opposite lesion z = −3.96; the first of those does not carry over.
 
@@ -1502,9 +1502,9 @@ numbers are in `lesion_behaviour/numbers_<run>.json`:
 
 | design | what it does | flagship | p = 0.3 | verdict |
 |---|---|---|---|---|
-| v1 whole-class clamp, read-out frozen (A, E) | the class clamped; weight curve, the two summaries and the other statistics against 100 size-matched random lesions | fusion z −0.20 / −1.34 / +1.22, segregation z +1.66 / −0.99 / −0.44 (con / opp / mixed); no \|z\| > 2 | the opposite lesion overshoots to w = 1.07 at 5° and stays at 0.5–0.65 far out (hand slope 2.51 vs 0.43 ± 0.74, z +2.8); 3 of 54 comparisons beyond 2 sd over both networks, which is chance | no power: the random band spans 0–1 because any large lesion breaks the calibration |
+| v1 whole-class clamp, read-out frozen (A, E) | the class clamped; weight curve, the two summaries and the other statistics against 100 size-matched random lesions | fusion z −0.20 / −1.34 / +1.22, segregation z +1.66 / −0.99 / −0.44 (con / opp / intermediate); no \|z\| > 2 | the opposite lesion overshoots to w = 1.07 at 5° and stays at 0.5–0.65 far out (hand slope 2.51 vs 0.43 ± 0.74, z +2.8); 3 of 54 comparisons beyond 2 sd over both networks, which is chance | no power: the random band spans 0–1 because any large lesion breaks the calibration |
 | v2 single-unit lesions (B, F) | each of 64 units clamped alone; Δ summary against the unit's index; class means against 5,000 random subsets | \|Δ segregation\| ≤ 0.08; class means p 0.12–0.81; r(index, Δ) = +0.27 | ≤ 0.13; p 0.16–0.78; r = +0.11 | no single unit matters; cannot rank the classes |
-| v3 cumulative lesion, class order vs 30 random orders (C, G) | units of one class removed one at a time, most typical first; summaries after each step against random orders over all 64 | after the class: congruent, segregation 0.96 (random 15: 0.75 ± 0.12, z +1.9), fusion 0.67 (0.69 ± 0.08); opposite, segregation 0.57 (0.66 ± 0.12), fusion 0.54 (0.63 ± 0.08, z −1.2); mixed, fusion 0.68 (0.57 ± 0.09, z +1.3), segregation 0.52 (0.58 ± 0.16) | opposite, fusion 0.54 (0.36 ± 0.13, z +1.5), segregation 0.37 (0.55 ± 0.16, z −1.2); congruent, fusion 0.34 (0.49 ± 0.10, z −1.5), segregation 0.82 (0.76 ± 0.11) | the classes push in different directions, none beyond 2 sd of random |
+| v3 cumulative lesion, class order vs 30 random orders (C, G) | units of one class removed one at a time, most typical first; summaries after each step against random orders over all 64 | after the class: congruent, segregation 0.96 (random 15: 0.75 ± 0.12, z +1.9), fusion 0.67 (0.69 ± 0.08); opposite, segregation 0.57 (0.66 ± 0.12), fusion 0.54 (0.63 ± 0.08, z −1.2); intermediate, fusion 0.68 (0.57 ± 0.09, z +1.3), segregation 0.52 (0.58 ± 0.16) | opposite, fusion 0.54 (0.36 ± 0.13, z +1.5), segregation 0.37 (0.55 ± 0.16, z −1.2); congruent, fusion 0.34 (0.49 ± 0.10, z −1.5), segregation 0.82 (0.76 ± 0.11) | the classes push in different directions, none beyond 2 sd of random |
 | v4 whole-class clamp, read-out refitted (D, H) | ridge read-out (α = 10⁻³) refitted on the training split from the remaining units; against 20 random lesions, each refitted | fusion 0.81 / 0.81 / 0.81, segregation 0.99 / 0.99 / 0.99, slopes 0.80–1.01; one deficit, visual slope 0.80 vs 0.92 ± 0.05 without opposite units (z −2.5) | fusion 0.64 / 0.585 / 0.65 (intact 0.647; random-31 refits 0.628 ± 0.010, z −4.4 for the opposite lesion); RMSE 0.84° vs 0.65 ± 0.05 without the congruent units (z +3.9), its causal statistics intact | the behaviour recovers: what any class carries is also carried elsewhere |
 
 **How to read it.** No class of units is necessary for the causal behaviour:
@@ -1546,15 +1546,17 @@ single-unit and pair lesion. The numbers are in
 `mixed_patterns`, copied to `results/manuscript/` as `figS_…` (§9.6). Seed 0
 is the flagship itself.
 
+> **Terminology (18 Oct 2026).** Units that are neither congruent nor opposite are called *intermediate*, as in Rideaux et al. (2021). The congruency index is unchanged: the Pearson r between a unit's visual and hand tuning curves (41 positions, ±20°), with congruent r > 0.5 and opposite r < −0.5. This is the form Rideaux et al. use in their causal-inference analysis (r between the visual and vestibular responses), with a fixed cut instead of their p < 0.05, which on noise-free tuning curves depends only on how many positions are sampled; their Eq. 11 (product of the two slopes' r) is a different quantity. Code keys, stored results and file names keep `mixed` (`CLASS_LABEL` in scripts/neuronal/common.py maps it to what figures show).
+
 **Unit classes over seeds.** Congruent 15.0 ± 3.1 units (median 15, range
 8–23, 95 % of networks within 10–21), opposite 22.4 ± 3.6 (22, 15–32, 16–30),
-mixed 26.6 ± 3.9 (26, 18–38, 19–34), untuned 0.0 ± 0.1 (one unit in one
+intermediate 26.6 ± 3.9 (26, 18–38, 19–34), untuned 0.0 ± 0.1 (one unit in one
 network of the hundred). Opposite outnumber congruent in 88 % of the networks
-(opposite − congruent = +7.4 ± 5.4). Of the mixed units, 5.4 ± 2.4 per
+(opposite − congruent = +7.4 ± 5.4). Of the intermediate units, 5.4 ± 2.4 per
 network move by less than 0.1 under one of the two sweeps (hand-only 4.3,
 vision-only 1.5) and 21.2 ± 3.9 respond to both cues. The index pooled over
 all 6,400 units has mean −0.11 and sd 0.59 (23 % congruent, 35 % opposite,
-42 % mixed). The retrained flagship (seed 0) has 16 / 17 / 31: its opposite
+42 % intermediate). The retrained flagship (seed 0) has 16 / 17 / 31: its opposite
 count is 1.5 sd below the seed mean, so the paper's one network is a low draw
 for opposite units; the old flagship's 15 / 21 / 28 was a typical one. The
 across-seed sd of 3.6 opposite units is also the yardstick for B8: the
@@ -1569,7 +1571,7 @@ zero (mean / se) and the share of networks beyond |z| = 2. Fusion is the
 mean implied visual weight on test trials with |Δ| ≤ 2°, segregation 1 minus
 the mean weight at |Δ| ≥ 15°, as in Fig. 11.
 
-| design | statistic | −congruent (k 15.0) | −opposite (k 22.4) | −mixed (k 26.6) |
+| design | statistic | −congruent (k 15.0) | −opposite (k 22.4) | −intermediate (k 26.6) |
 |---|---|---|---|---|
 | whole-class clamp, frozen | fusion | −0.60 ± 0.98 (t −6.1; 9 %) | −1.61 ± 1.01 (t −16.0; 32 %) | +1.92 ± 0.60 (t +31.9; 49 %) |
 | | segregation | +0.95 ± 0.54 (t +17.7; 3 %) | −0.33 ± 0.88 (t −3.8; 2 %) | −0.50 ± 0.88 (t −5.7; 3 %) |
@@ -1585,12 +1587,12 @@ the mean weight at |Δ| ≥ 15°, as in Fig. 11.
 The raw means behind the frozen clamp: intact fusion 0.81, segregation
 0.992, RMSE 0.448°; without the congruent units 0.643 / 0.899 / 2.50° against
 random lesions of 15 units 0.692 / 0.773 / 2.06°; without the opposite units
-0.485 / 0.616 / 2.67° against 0.634 / 0.665 / 2.80°; without the mixed units
+0.485 / 0.616 / 2.67° against 0.634 / 0.665 / 2.80°; without the intermediate units
 0.787 / 0.521 / 3.06° against 0.600 / 0.599 / 3.24°. After the refit every
 class lesion returns to fusion 0.80–0.81 and segregation 0.97–0.99 (intact
 0.811 / 0.993); the residuals are the read-out error without the congruent
-units (0.604° against 0.564° for random refits) and without the mixed units
-(0.814° against 0.748°), and segregation without the mixed units (0.971
+units (0.604° against 0.564° for random refits) and without the intermediate units
+(0.814° against 0.748°), and segregation without the intermediate units (0.971
 against 0.984).
 
 **How to read it.** Within any one network the effects are small — most
@@ -1604,11 +1606,11 @@ after a refit) and are irrelevant to segregation, which their removal spares
 (+0.95); opposite units carry fusion when the cues agree (−1.61, the largest
 loss of any class; the opposite class is the layer's "no disagreement"
 signal) and segregation only slightly more than random units do (−0.33);
-mixed units are dispensable for fusion (removing them spares it, +1.92,
+intermediate units are dispensable for fusion (removing them spares it, +1.92,
 because fusion then rests on the opposite and congruent units that remain)
 and cost segregation a little more than random (−0.50). The refit repairs
 all of it but the small residuals above. The cumulative design now removes
-the mixed units nearest the index zero first (the least congruent-or-
+the intermediate units nearest the index zero first (the least congruent-or-
 opposite ones; before 2026-10-10 it took the largest |index| first); the end
 points do not depend on the order.
 
@@ -1629,13 +1631,13 @@ stored, and they answer different questions:
   cumulative curves read at one k for every class, against random orders at
   that k. At k = the smallest class of each network (14.8 ± 2.8, nearly
   always the congruent count) fusion z is −0.63 / −1.04 / +0.57 (congruent /
-  opposite / mixed) and segregation z +0.95 / +0.18 / +0.20; at k = 10,
+  opposite / intermediate) and segregation z +0.95 / +0.18 / +0.20; at k = 10,
   fusion −0.84 / −0.26 / +0.36 and segregation +0.74 / +0.51 / +0.39. At
   equal dose, then, congruent and opposite units both cost fusion (the
   first ten opposite units — the most opposite, removed first — cost less
-  than the first ten congruent ones, the first fifteen more), mixed units
+  than the first ten congruent ones, the first fifteen more), intermediate units
   cost none, and no class costs more segregation than random orders do: the
-  −0.50 of the whole mixed class is a dose effect of its 27 units.
+  −0.50 of the whole intermediate class is a dose effect of its 27 units.
 - *Damage-matched* (`damage_matched`, panel C): random lesions of the
   class's size kept only if their RMSE is within 5 % of the class lesion's
   (53–59 matched draws of up to 1,200 tried per class and network; in 7
@@ -1644,11 +1646,11 @@ stored, and they answer different questions:
   formed). This removes the other confound, that a class
   lesion might act through how much it damages the read-out. The z-scores
   are the same or larger: −congruent fusion −0.86 ± 1.00, segregation
-  +1.12 ± 0.64; −opposite −1.62 ± 1.14, −0.43 ± 0.90; −mixed +2.05 ± 0.59,
+  +1.12 ± 0.64; −opposite −1.62 ± 1.14, −0.43 ± 0.90; −intermediate +2.05 ± 0.59,
   −0.66 ± 0.90.
 - *Per unit* (the single-unit lesions of `lesion_pairs_seeds`, panel A):
   Δfusion per unit removed, class mean over the 100 networks, is −0.011
-  (congruent), −0.014 (opposite), −0.001 (mixed); Δsegregation −0.006,
+  (congruent), −0.014 (opposite), −0.001 (intermediate); Δsegregation −0.006,
   −0.017, −0.018. Because the effects are additive (next paragraph), the
   per-unit effect times the class count reproduces the whole-class effect,
   so these four numbers are the complete, size-free comparison of the
@@ -1671,7 +1673,7 @@ same value (`whole_class_zero`, `whole_class_one` in the records;
 `lesion_clamp_seeds`, copied as `figS_lesion_clamp_seeds`). Over the 100
 networks:
 
-| clamp | statistic | −congruent | −opposite | −mixed |
+| clamp | statistic | −congruent | −opposite | −intermediate |
 |---|---|---|---|---|
 | mean | fusion | 0.643 vs 0.692, z −0.60 ± 0.98 | 0.485 vs 0.634, z −1.61 ± 1.01 | 0.787 vs 0.600, z +1.92 ± 0.60 |
 | 0 | fusion | 1.010 vs 0.998, z +0.06 ± 0.77 | 1.095 vs 1.087, z +0.06 ± 1.04 | 1.128 vs 1.133, z −0.05 ± 0.98 |
@@ -1700,9 +1702,9 @@ cancel, and the 0 and 1 clamps push the outputs so far off calibration
 (RMSE 3.6–5.7° against 2.1–3.2° for the mean clamp) that the "weight" leaves
 [0, 1]: with the units silenced every lesion and every random lesion reads
 a fusion of 1.0–1.1 and no class differs from random (z ≈ 0); with the
-units saturated the opposite lesion reads −1.07 and the mixed lesion 1.10
+units saturated the opposite lesion reads −1.07 and the intermediate lesion 1.10
 against nulls of 0.13 and 0.02, which reproduce the signs of the mean
-clamp (opposite −1.64, mixed +1.40) on a statistic that no longer means a
+clamp (opposite −1.64, intermediate +1.40) on a statistic that no longer means a
 weight. So the mean clamp is the only one of the three on which fusion can
 be read, which is why the manuscript uses it; the segregation result and
 the congruent class's RMSE cost (z +1.50 / +0.66 / +0.33) are the same
@@ -1718,18 +1720,18 @@ each class pair and then over networks (mean ± sd over networks):
 |---|---|---|---|
 | congruent + congruent | 109 | −0.021 ± 0.010 | −0.013 ± 0.009 |
 | congruent + opposite | 332 | −0.025 ± 0.004 | −0.023 ± 0.007 |
-| congruent + mixed | 393 | −0.011 ± 0.005 | −0.024 ± 0.006 |
+| congruent + intermediate | 393 | −0.011 ± 0.005 | −0.024 ± 0.006 |
 | opposite + opposite | 246 | −0.028 ± 0.008 | −0.034 ± 0.012 |
-| opposite + mixed | 587 | −0.015 ± 0.004 | −0.035 ± 0.004 |
-| mixed + mixed | 348 | −0.001 ± 0.005 | −0.036 ± 0.011 |
+| opposite + intermediate | 587 | −0.015 ± 0.004 | −0.035 ± 0.004 |
+| intermediate + intermediate | 348 | −0.001 ± 0.005 | −0.036 ± 0.011 |
 
-The pair that costs the most segregation is mixed + mixed (−0.036), with
-opposite + mixed (−0.035) and opposite + opposite (−0.034) beside it;
+The pair that costs the most segregation is intermediate + intermediate (−0.036), with
+opposite + intermediate (−0.035) and opposite + opposite (−0.034) beside it;
 congruent + congruent costs the least (−0.013). The pair that costs the most
 fusion is opposite + opposite (−0.028), then congruent + opposite (−0.025)
-and congruent + congruent (−0.021); mixed + mixed costs none (−0.001). Of
+and congruent + congruent (−0.021); intermediate + intermediate costs none (−0.001). Of
 the ten worst pairs for segregation in each network, pooled over the
-hundred, 50 % are opposite + mixed, 31 % mixed + mixed and 17 % opposite +
+hundred, 50 % are opposite + intermediate, 31 % intermediate + intermediate and 17 % opposite +
 opposite; of the ten worst for fusion, 43 % are opposite + opposite and 34 %
 congruent + opposite. The synergy of a pair (its effect minus the sum of its
 two single-unit effects) is zero: |synergy| ≤ 1e-5 for segregation and
@@ -1747,8 +1749,8 @@ combination of units can be found that does more than its parts; a pair or
 group design would only become informative upstream of the linear read-out
 (lesions in the SIL) or with a nonlinear read-out.
 
-**What the mixed units look like.** `seeds.py patterns` takes the two
-tuning curves of every mixed unit of every network (2,661 units; the visual
+**What the intermediate units look like.** `seeds.py patterns` takes the two
+tuning curves of every intermediate unit of every network (2,661 units; the visual
 sweep with the hand at 0 and the hand sweep with vision at 0, ±20°, 41
 points, the curves behind the congruency index), puts them on one footing
 (each unit's pair of curves shifted by its mean and scaled by its range over
@@ -1759,7 +1761,7 @@ pattern) and partitions them by k-means (k = 5, 10 restarts). The silhouette
 falls smoothly with k (0.41 at k = 2, 0.37 at k = 5, 0.29 at k = 10): the
 variation is continuous and the partition is descriptive, which is why the
 figure reports the patterns by size rather than claiming clusters. The five
-patterns (`mixed_patterns`, panels C–G; share of the mixed units; units per
+patterns (`mixed_patterns`, panels C–G; share of the intermediate units; units per
 network; networks that have at least one):
 
 | pattern | share | per network | networks | dominant cue | shape |
@@ -1774,13 +1776,75 @@ For reference (panels A and B, visual sweep fixed to rise) the congruent
 class (1,498 units, index +0.81 ± 0.14) is two matched curves, a shallow U
 with a rise, and the opposite class (2,240 units, −0.67 ± 0.12) is two
 sigmoids of opposite sign centred at 0 — the shape of a disparity detector.
-The mixed class is therefore not a continuum between those two: 92 % of it
+The intermediate class is therefore not a continuum between those two: 92 % of it
 (patterns 1–4) is units dominated by one cue whose weaker cue produces a
 non-monotonic response (a trough or a plateau) that a correlation with a
 ramp cannot register — the congruency index is a correlation and measures
 only the shared linear trend. Three quarters of the one-cue-only units of
 §7.9 are in patterns 2 and 3 (hand ramp or hand step with vision flat), the
 rest mostly in pattern 4 (vision-only).
+
+**The paper's lesion figure (18 October).** `seeds.py lesion` draws
+`fig11_lesion_seeds` (`lesion_paper/` in the flagship's folder) from
+`lesion_seeds/numbers.json` without recomputing anything, and since
+2026-10-18 it is the paper's Fig. 10; the two-network
+`fig11_lesion_behaviour` (old ±85° flagship and p = 0.3) moved to Fig. S3.
+Six panels: A the whole-class weight curves, mean ± sd across the 100
+networks, each class's size-matched random mean dotted in its colour; B the
+within-network z of fusion and segregation against that null; C the
+cumulative segregation curves (± sd, drawn where ≥ 5 networks reach k)
+against 30 random orders; D the refitted fusion and segregation (box over
+networks, the intact refit dashed, random refits as grey ticks); E the
+per-unit effects; F additivity (whole-class effect against the sum of the
+class's single-unit effects). Why these: A is the behavioural reading — the
+weight-versus-disparity curve of Fig. 4A, the quantity behavioural
+causal-inference studies fit — and shows the over-fusion Rideaux et al.
+(2021) predict for the loss of opposite units; B is the necessity test
+against a fair null; C is the dose–response; D the redundancy test (does the
+information survive?); E the only class-versus-class comparison free of
+class size; F why pairs and groups add nothing (the read-out is linear).
+Left to S1/S2: the damage-matched null (S1C), the equal dose (S1D), the
+cumulative end point and refit z (S1E, F), the counts (S1H, Fig. 9H) and the
+pair designs (S2B–D, F). Not in the paper: the 0 / 1 clamps
+(`figS_lesion_clamp_seeds`). Numbers checked for the text: the largest
+single-unit change in any network is 0.16 (fusion) / 0.17 (segregation), the
+per-network maximum 0.08 / 0.11 at the median; after the refit, intermediate-class
+segregation is 0.971 on average but 0.914 in the worst network (53 % of
+networks within 0.02 of the intact refit), every other class and statistic
+within 0.02 in ≥ 89 % of networks; of the ten costliest pairs per network,
+78 % are opposite + opposite or congruent + opposite for fusion and 81 %
+opposite + intermediate or intermediate + intermediate for segregation.
+
+
+### Decision read-out by unit class (2026-10-18)
+
+`scripts/neuronal/decision_weights.py` asks which units a read-out of the
+network's own causal decision leans on, in the manner of the causal-inference
+units of Rideaux et al. (2021, Fig. 4B), which our network does not have. Each
+test trial is labelled as in Fig. 5: *fused* when the implied visual weight is
+above 0.5 (the observer's posterior where the weight cannot be computed),
+*segregated* otherwise (58% fused). A logistic read-out (L2, C = 1, balanced
+classes, 5-fold balanced accuracy) is fitted from the z-scored MSL to that
+label, on all test trials and on the transition band 2–10° only. Because
+decoder weights of correlated units cannot be read one by one (Haufe et al.,
+2014), the figure also shows the activation pattern Cov(Z) w and the plain
+difference in mean z-activity between segregated and fused trials.
+
+    python scripts/neuronal/decision_weights.py                       # main network
+    python scripts/neuronal/decision_weights.py --runs flagship flagship_s1 ... flagship_s99
+    python scripts/neuronal/decision_weights.py --redraw [--runs ...] # from per_network/*.json
+
+Output: `results/flagship/figures/model/neuronal_level_analysis/decision_weights/`
+(`decision_weights` for the main network, `decision_weights_100_networks`
+pooled, `per_network/<run>.json`, `network_level_tests_100.json`). Over the
+100 networks (accuracy 0.945, 0.877 in the band), the decoder weight towards
+*segregated* is larger for opposite than for congruent units (class means
++0.156 ± 0.145 against +0.081 ± 0.153, paired t = 3.3, p = 0.001, opposite
+above congruent in 69% of networks; intermediate +0.046), but every class is
+on average more active on segregated trials, the congruent class the most
+(Δz +0.38 congruent, +0.30 opposite, +0.31 intermediate; opposite − congruent
+t = −4.5), and no class leans towards *fused*. On the main network alone none
+of these class differences is significant. Since 19 Oct 2026 the class means towards *segregated* are Fig. 10E (`seeds.py lesion` reads `decision_weights/per_network/*.json`), beside the refitted read-out, which is Fig. 10D again (the supporting lesion figures S1–S3 were taken out of the manuscript the same day); the earlier Fig. 10 files are in `results/_to_delete/fig10_refit_panel_2026-10-19/` (six panels, D the refit) and `results/_to_delete/fig10_six_panel_decision_2026-10-19/` (six panels, D the decision read-out).
 
 ### Reference-frame (RF) shift and gain fields
 
@@ -2255,8 +2319,8 @@ minutes each on two CPU cores. Containment rejection is 0 % up to sd 9,
 | eye position decoded, SIL / MSL (R²) | 0.14 / 0.07 | 0.67 / 0.57 | 0.91 / 0.90 | 0.93 / 0.92 | 0.95 / 0.95 |
 | spatial visual position decoded, SIL / MSL (R²) | 0.98 / 0.98 | 0.96 / 0.97 | 0.95 / 0.96 | 0.94 / 0.95 | 0.93 / 0.95 |
 | RF-shift gain, median, probe ±9° / own ±sd | −0.06 / −0.01 | −0.07 / −0.06 | −0.05 / −0.05 | −0.03 / −0.02 | −0.005 / −0.006 |
-| MSL units, congruent / opposite / mixed | 19.3 / 16.3 / 28.3 | 21.3 / 11.7 / 31.0 | 15.7 / 20.3 / 28.0 | 15.0 / 24.7 / 24.3 | 12.0 / 27.7 / 24.3 |
-| always-fuse twin, congruent / opposite / mixed | 40.7 / 14.0 / 9.3 | 40.0 / 12.0 / 12.0 | 41.0 / 12.0 / 11.0 | 41.3 / 8.7 / 14.0 | 41.7 / 8.3 / 14.0 |
+| MSL units, congruent / opposite / intermediate | 19.3 / 16.3 / 28.3 | 21.3 / 11.7 / 31.0 | 15.7 / 20.3 / 28.0 | 15.0 / 24.7 / 24.3 | 12.0 / 27.7 / 24.3 |
+| always-fuse twin, congruent / opposite / intermediate | 40.7 / 14.0 / 9.3 | 40.0 / 12.0 / 12.0 | 41.0 / 12.0 / 11.0 | 41.3 / 8.7 / 14.0 | 41.7 / 8.3 / 14.0 |
 | opposite units, causal − twin (per seed) | −2, 5, 4 | 0, 1, −2 | 9, 5, 11 | 16, 19, 13 | 19, 19, 20 |
 | best epoch (of 300) | 160 | 202 | 215 | 248 | 288 |
 
@@ -2294,7 +2358,7 @@ causal computation needs are there in every case.
 
 **What changes a lot: the unit classes.** The opposite class grows with
 the eye spread — 16, 12, 20, 25, 28 units at sd 1, 3, 9, 18, 27 — while the
-congruent class shrinks (19, 21, 16, 15, 12) and the mixed class a little
+congruent class shrinks (19, 21, 16, 15, 12) and the intermediate class a little
 (28, 31, 28, 24, 24). The always-fuse twins do the opposite: 14, 12, 12,
 9, 8 opposite units, 40–42 congruent at every level. So the causal-minus-
 twin excess of opposite units, the quantity B8 rests on, is 0 ± 3 with
@@ -2363,8 +2427,8 @@ around its own mean (eye_mu ± 9 deg) and around straight ahead (0 ± 9 deg).
 | read-out RMSE, μ_vis / μ_hand (deg) | 0.59 / 0.59 | 0.66 / 0.62 | 0.62 / 0.55 | 0.72 / 0.61 | 0.80 / 0.65 |
 | p(C=1\|x) / eye / spatial vision decoded from the MSL (R²) | 0.98 / 0.90 / 0.96 | 0.98 / 0.89 / 0.96 | 0.98 / 0.89 / 0.96 | 0.97 / 0.88 / 0.95 | 0.96 / 0.89 / 0.95 |
 | RF-shift gain, median, probe own mean ± 9° / probe 0 ± 9° | −0.05 / −0.05 | −0.10 / −0.03 | −0.05 / +0.01 | −0.07 / −0.07 | −0.05 / −0.63 (one seed; two give no preferred positions) |
-| MSL units, congruent / opposite / mixed | 15.7 / 20.3 / 28.0 | 17.3 / 20.7 / 25.7 | 17.0 / 18.0 / 28.7 | 18.0 / 21.0 / 25.0 | 16.7 / 23.7 / 23.7 |
-| always-fuse twin, congruent / opposite / mixed | 41.0 / 12.0 / 11.0 | 41.3 / 13.3 / 9.3 | 39.7 / 10.3 / 14.0 | 42.3 / 8.7 / 13.0 | 37.7 / 15.0 / 11.3 |
+| MSL units, congruent / opposite / intermediate | 15.7 / 20.3 / 28.0 | 17.3 / 20.7 / 25.7 | 17.0 / 18.0 / 28.7 | 18.0 / 21.0 / 25.0 | 16.7 / 23.7 / 23.7 |
+| always-fuse twin, congruent / opposite / intermediate | 41.0 / 12.0 / 11.0 | 41.3 / 13.3 / 9.3 | 39.7 / 10.3 / 14.0 | 42.3 / 8.7 / 13.0 | 37.7 / 15.0 / 11.3 |
 | opposite units, causal − twin (per seed) | 9, 5, 11 | 2, 10, 10 | 9, 5, 9 | 16, 12, 9 | 10, 8, 8 |
 
 **What it shows.** Where the eyes rest, as opposed to how much they move,
@@ -2610,7 +2674,7 @@ across MSL units, with the ±0.5 classification thresholds marked. Right: scatte
 of the congruent-minus-opposite activity balance against the analytical
 posterior, titled with the correlation.
 
-Your flagship: the index histogram has 15 congruent, 21 opposite and 28 mixed
+Your flagship: the index histogram has 15 congruent, 21 opposite and 28 intermediate
 units — less cleanly bimodal than the wide flagship's — and the balance
 correlates **−0.373** with the posterior. The other three causal runs give
 −0.44, −0.37 and −0.73; the wide configuration gave +0.50. See §7.9 before
@@ -2675,7 +2739,7 @@ one set of margins:
 | full (`CELL_FULL`) | 7.5 × 2.5 | 6.84 × 1.75 | one panel across the page |
 
 A figure is an arrangement of cells (`manuscript_grid` for uniform grids,
-`cell_axes` for mixed layouts), so its size follows from its layout: 1 × 3
+`cell_axes` for intermediate layouts), so its size follows from its layout: 1 × 3
 squares, 1 × 2 wides or one full = 7.5 × 2.5 in; 2 × 2 squares = 5.0 × 5.0 in;
 a full over two wides = 7.5 × 5.0 in. Because the margins are absolute, every
 axes in every figure starts at the same offset inside its cell and has the
@@ -2862,7 +2926,7 @@ flagship's folder explains every panel.
 
 | folder | composed figure (paper name) | panels | layout | numbers |
 |---|---|---|---|---|
-| `units/` | `units` (`fig10_units`) | `A_congruent_unit`, `B_opposite_unit`, `C_mixed_unit` (the two tuning curves of each), `D_classes_by_network` (this run, its twin, the two controls), `E_counts_vs_prior` (the five causal networks), `F_opposite_causal_vs_twin` | 2 × 3 squares, 7.5 × 5.0 in | `numbers.json`: index and class of every unit, sweep ranges, example units, mixed sub-structure, counts of every run and twin |
+| `units/` | `units` (`fig10_units`) | `A_congruent_unit`, `B_opposite_unit`, `C_mixed_unit` (the two tuning curves of each), `D_classes_by_network` (this run, its twin, the two controls), `E_counts_vs_prior` (the five causal networks), `F_opposite_causal_vs_twin` | 2 × 3 squares, 7.5 × 5.0 in | `numbers.json`: index and class of every unit, sweep ranges, example units, intermediate sub-structure, counts of every run and twin |
 | `decision_bias/` | `decision_bias` (`fig5_decision_bias`) | A pull histograms by inferred cause at the midpoint, B measured disparity behind each decision, C pull by inferred cause at three disparities, network and observer | 1 × 3 squares, 7.5 × 2.5 in | `numbers.json`: per disparity, per group: n, pull with bootstrap CI, observer's pull, measured disparity, mean posterior |
 | `lesion_behaviour/` | `lesion_behaviour` (`fig11_lesion_behaviour`) | 2 × 4: the run (top) and the comparison network (bottom) × the four designs; singles `<run>_v1_whole_class`, `_v2_single_unit`, `_v3_cumulative`, `_v3_cumulative_fusion`, `_v4_refit`; `recommended_ABC` (the run alone: cumulative fusion, cumulative segregation, refit) | 2 × 4 squares, 10 × 5 in (wider than the PLOS limit; `save_figures` warns) | `numbers_<run>.json`: every design's values, nulls and z-scores |
 
@@ -2870,19 +2934,24 @@ The seed study (`scripts/neuronal/seeds.py`, §7.9 "The seed study") adds
 five folders to the flagship's, each with its composed figure, panels and
 numbers, and a copy of the composed figure in `results/manuscript/` under a
 `figS_` name (supplementary candidates, not numbered in the paper; the
-8-panel ones are 10 × 5 in like Fig. 11):
+8-panel ones are 10 × 5 in like Fig. 11). Two more folders hold the
+paper's own seed figures, drawn from the stored numbers (`seeds.py units`,
+`seeds.py lesion`) and copied under `fig10_` / `fig11_` names; since
+2026-10-18 they are the paper's Figs. 9 and 10:
 
 | folder (manuscript copy) | panels |
 |---|---|
-| `lesion_seeds/` (`figS_lesion_seeds`) | A the whole-class clamp weight curves, mean ± sd over seeds, each class with the random mean of its own size dotted in its colour; B the within-network z of every class lesion against 100 size-matched random lesions (fusion, segregation, RMSE), box over seeds, one point per network; C the same fusion and segregation against the damage-matched null (same size and RMSE within 5 %); D the cumulative design read at equal k (the smallest class of each network) against random orders at that k; E the cumulative end point against 30 random orders; F the refitted read-out against 20 random refits (fusion, segregation, the two slopes); G the cumulative segregation curves, mean ± sd, drawn where at least 5 networks reach that k; H the unit counts per class over seeds. `per_seed/<network>.json` caches every network's record (`version` 2: units, whole_class, cumulative, refit, damage_matched, pairs), `numbers.json` the aggregate, `unit_counts_by_seed.csv` the counts |
-| `unit_counts_seeds/` (`figS_unit_counts_seeds`) | A the congruency index of every unit of every network, pooled and coloured by class, each class's mean ± sd count above its region; B the counts per class, one point per network, box over seeds, the share of networks with more opposite than congruent units in the title; C the mixed sub-structure (both cues, hand only, vision only) per network |
-| `lesion_pairs_seeds/` (`figS_lesion_pairs_seeds`) | A the single-unit lesions: class mean of Δfusion and Δsegregation per unit, one point per network; B, C every pair of units clamped, the mean Δfusion and Δsegregation per class pair (same-class pairs in the class colour, cross-class pairs dark grey), one point per network; D additivity on the flagship: each of the 2,016 pairs' effect against the sum of its two single-unit effects; E additivity up to the class: the whole-class clamp against the sum of the class's single-unit effects, one point per network and class; F the class composition of the ten pairs that cost the most fusion (black) and the most segregation (grey) per network, pooled |
+| `lesion_seeds/` (diagnostic, eight panels; the manuscript's `figS_lesion_seeds` = Fig. S1 keeps only what Fig. 10 and Fig. 9H do not show: A the RMSE z with the read-out as trained and refitted, B the damage-matched null, C the equal-dose reading, D the refitted read-out as z incl. the two slopes; `si_lesion_figure`, redrawn by `seeds.py si`, 18 Oct 2026) | A the whole-class clamp weight curves, mean ± sd over seeds, each class with the random mean of its own size dotted in its colour; B the within-network z of every class lesion against 100 size-matched random lesions (fusion, segregation, RMSE), box over seeds, one point per network; C the same fusion and segregation against the damage-matched null (same size and RMSE within 5 %); D the cumulative design read at equal k (the smallest class of each network) against random orders at that k; E the cumulative end point against 30 random orders; F the refitted read-out against 20 random refits (fusion, segregation, the two slopes); G the cumulative segregation curves, mean ± sd, drawn where at least 5 networks reach that k; H the unit counts per class over seeds. `per_seed/<network>.json` caches every network's record (`version` 2: units, whole_class, cumulative, refit, damage_matched, pairs), `numbers.json` the aggregate, `unit_counts_by_seed.csv` the counts |
+| `unit_counts_seeds/` (`figS_unit_counts_seeds`) | A the congruency index of every unit of every network, pooled and coloured by class, each class's mean ± sd count above its region; B the counts per class, one point per network, box over seeds, the share of networks with more opposite than congruent units in the title; C the intermediate sub-structure (both cues, hand only, vision only) per network |
+| `lesion_pairs_seeds/` (six panels; the manuscript's `figS_lesion_pairs_seeds` = Fig. S2 keeps B, C, D, F as A–D, since A and E are Fig. 10E and F; 18 Oct 2026) | A the single-unit lesions: class mean of Δfusion and Δsegregation per unit, one point per network; B, C every pair of units clamped, the mean Δfusion and Δsegregation per class pair (same-class pairs in the class colour, cross-class pairs dark grey), one point per network; D additivity on the flagship: each of the 2,016 pairs' effect against the sum of its two single-unit effects; E additivity up to the class: the whole-class clamp against the sum of the class's single-unit effects, one point per network and class; F the class composition of the ten pairs that cost the most fusion (black) and the most segregation (grey) per network, pooled |
 | `lesion_clamp_seeds/` (`figS_lesion_clamp_seeds`) | the whole-class clamp with the removed units set to 0 (A the weight curves, B the z of fusion, segregation and RMSE against 100 random lesions of the class's size held at 0) and to 1 (D, E), and the fusion (C) and segregation (F) z under the three clamp values side by side; records `whole_class_zero`, `whole_class_one` (`--extras clamp`) |
-| `mixed_patterns/` (`figS_mixed_patterns`) | A, B the congruent and opposite classes' canonical curves (mean ± sd; visual sweep red, hand sweep green, the visual sweep fixed to rise); C–G the five k-means patterns of the mixed units by size (mean ± sd canonical curves, the dominant sweep fixed to rise; n, index, networks that have the pattern and units per network in each panel); H the units of each pattern per network. `per_seed/<network>.npz` caches the tuning curves, `labels.npz` the pattern of every unit, `numbers.json` the patterns and the silhouette for k = 2–10 |
+| `units_seeds/` (`fig10_units_seeds`, the paper's Fig. 9) | six small tuning-pattern panels (congruent, opposite, the four largest intermediate patterns) over the three unit-class cells and, when `units/numbers.json` exists, the causal-vs-twin opposite-unit counts; 7.5 × 4.4 in; from `lesion_seeds/numbers.json` (`units`) and `mixed_patterns/numbers.json` |
+| `lesion_paper/` (`fig11_lesion_seeds`, the paper's Fig. 10) | A `A_whole_class_curves` (mean ± sd across networks, size-matched random means dotted), B `B_z_vs_random` (fusion and segregation z, one point per network), C `C_cumulative` (segregation, class first against random orders), D `D_refit` (refitted fusion and segregation; intact refit dashed, random refits grey ticks), E `E_decision_readout` (decision read-out, the class means towards *segregated*, one point per network), F `F_per_unit` (Δ per unit removed), G `G_additivity` (whole class against the sum of single units); three squares on top and four 1.875 × 2.5 in cells below (as Fig. 9), 7.5 × 5.0 in (19 Oct 2026); from `lesion_seeds/numbers.json`, nothing recomputed |
+| `mixed_patterns/` (`figS_mixed_patterns`) | A, B the congruent and opposite classes' canonical curves (mean ± sd; visual sweep red, hand sweep green, the visual sweep fixed to rise); C–G the five k-means patterns of the intermediate units by size (mean ± sd canonical curves, the dominant sweep fixed to rise; n, index, networks that have the pattern and units per network in each panel); H the units of each pattern per network. `per_seed/<network>.npz` caches the tuning curves, `labels.npz` the pattern of every unit, `numbers.json` the patterns and the silhouette for k = 2–10 |
 
 Class colours are fixed in `scripts/neuronal/common.py` (`CLASS_COLORS`):
-congruent blue `#1f77b4`, opposite red `#d62728`, mixed yellow `#ccbb44`
-(rgb 204, 187, 68, chosen so the mixed class is never confused with the grey
+congruent blue `#1f77b4`, opposite red `#d62728`, intermediate yellow `#ccbb44`
+(rgb 204, 187, 68, chosen so the intermediate class is never confused with the grey
 random bands or the black intact marks). The example-unit panels use the
 input colours (visual red, hand green) of the rest of the guide.
 
@@ -2917,7 +2986,10 @@ python scripts/neuronal/seeds.py analyse --run flagship --extras damage pairs cl
                                                 # and the 0 / 1 clamps (~35 s per network); --budget
                                                 # stops after that many seconds and resumes
                                                 # from per_seed/ on the next call
-python scripts/neuronal/seeds.py patterns --run flagship --k 5   # the mixed-unit patterns
+python scripts/neuronal/seeds.py patterns --run flagship --k 5   # the intermediate-unit patterns
+python scripts/neuronal/seeds.py units   --run flagship   # the paper's Fig. 9 (fig10_units_seeds), from the stored numbers
+python scripts/neuronal/seeds.py lesion  --run flagship   # the paper's Fig. 10 (fig11_lesion_seeds), from lesion_seeds/numbers.json;
+                                                # bands of A and C ± 1 sd across networks (--band sem for the SEM)
 python scripts/07_eye_sweep.py --param eye_sd --levels 1 3 9 18 27 --seeds 0 1 2 --twin --control pcommon1
 python scripts/07_eye_sweep.py --param eye_mu --levels 0 10 20 30 40 --seeds 0 1 2 --twin --control pcommon1
                                                 # the eye sweeps (§8.4, §8.5): 15 networks
@@ -3136,7 +3208,7 @@ lesion fix, and no table in Parts 5–9 and 12 that describes `flagship_wide`
 (its numbers survive in `CROSS_PRIOR_RESULT.md`, labelled as such, and in
 `IMPLIED_WEIGHT_RESULT.md`, where the two configurations are compared).
 
-The neuronal-level numbers of §7.9 (twins, example units, mixed
+The neuronal-level numbers of §7.9 (twins, example units, intermediate
 sub-structure, the four lesion designs) and §7.10 (the midpoint split) are
 from 2026-10-04/05, on the same runs, and live in
 `results/flagship/figures/model/neuronal_level_analysis/*/numbers*.json`;
@@ -3148,7 +3220,7 @@ from 2026-10-04/05, on the same runs, and live in
 "change disparity range", does not contain it), and `data/flagship.npz`,
 `data/flagship_twin.npz`, `results/flagship/` and `results/flagship_twin/`
 were regenerated with it on 2026-10-09 21:29. The retrained flagship has
-16 / 17 / 31 congruent / opposite / mixed units (the old one 15 / 21 / 28)
+16 / 17 / 31 congruent / opposite / intermediate units (the old one 15 / 21 / 28)
 and an intact RMSE of 0.459° (0.441°). Three consequences:
 
 1. The family is no longer one family. `pcommon0`, `pcommon03`, `pcommon07`,
@@ -3171,7 +3243,11 @@ and an intact RMSE of 0.459° (0.441°). Three consequences:
    regenerates them (~4 min; Fig. 11's second row needs a `pcommon03` of
    the same encoding), after which the manuscript text has to be re-read
    against the new `numbers*.json`. Until then the paper's neuronal figures
-   and its other figures describe different networks.
+   and its other figures describe different networks. Since 2026-10-18 the
+   paper's unit and lesion figures (Figs. 9 and 10) are the 100-seed ones
+   (`fig10_units_seeds`, `fig11_lesion_seeds`, ±75° networks), so of the
+   three only `fig5_decision_bias` and Fig. S3 (`fig11_lesion_behaviour`)
+   still show the old flagship.
 3. The seed study of §7.9 (100 seeds, 2026-10-10) was trained from the
    new `data/flagship.npz` and analysed with `pcommon1`'s `residual_std`
    as σ_out (the seeds have no `metrics.json` of their own), so it belongs
@@ -3330,7 +3406,7 @@ previous result before adding anything causal, which is what licenses the
 comparison.
 
 **B4. Congruent/opposite units emerge at all, and more of them when the task
-needs them.** §7.9: 15 congruent / 21 opposite / 28 mixed on the flagship,
+needs them.** §7.9: 15 congruent / 21 opposite / 28 intermediate on the flagship,
 31 opposite at the two low priors, against 42 congruent / 11 opposite on the
 always-fuse control. Descriptive, and the link to Rideaux et al. (2021). The
 *balance* analysis built on it is D1 — the classification is fine, the
@@ -3383,8 +3459,8 @@ however, a systematic tendency: over 100 seeds (§7.9, "The seed study")
 every direction has the same sign in nearly every network (t of 4 to 32
 on the within-network z-scores, which themselves stay mostly within ±2),
 it survives a damage-matched null, and per unit removed the opposite units
-cost the most fusion (−0.014), the mixed and opposite units the most
-segregation (−0.018, −0.017), the mixed units no fusion at all. The effects
+cost the most fusion (−0.014), the intermediate and opposite units the most
+segregation (−0.018, −0.017), the intermediate units no fusion at all. The effects
 of units are additive because the read-out is linear in the layer, so no
 pair or group of units does more than its parts.
 

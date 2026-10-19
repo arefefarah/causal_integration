@@ -143,6 +143,8 @@ poetry run python scripts/neuronal/seeds.py   all   --run flagship --n 100 --ext
                                               # analyse + figure (~35 s per network with the
                                               # extras; --budget 150 to do it in several calls)
 poetry run python scripts/neuronal/seeds.py   patterns --run flagship      # the mixed-unit patterns
+poetry run python scripts/neuronal/seeds.py   units    --run flagship      # paper Fig. 9 (fig10_units_seeds)
+poetry run python scripts/neuronal/seeds.py   lesion   --run flagship      # paper Fig. 10 (fig11_lesion_seeds)
                                               # the three together = make seeds N=100
 ```
 

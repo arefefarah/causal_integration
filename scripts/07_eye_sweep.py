@@ -378,8 +378,9 @@ def draw(out, agg, curves, rows=None, param="eye_sd"):
     def pE(ax=None):
         ax = panel_axes(ax)
         from_common = {"congruent": "#1f77b4", "opposite": "#d62728", "mixed": "#ccbb44"}
+        shown = {"congruent": "congruent", "opposite": "opposite", "mixed": "intermediate"}
         for key, c in (("n_congruent", "congruent"), ("n_opposite", "opposite"), ("n_mixed", "mixed")):
-            series(ax, key, from_common[c], c)
+            series(ax, key, from_common[c], shown[c])
         if all(np.isfinite(a.get("twin_n_opposite", np.nan)) for a in agg):
             for key, c in (("twin_n_congruent", "congruent"), ("twin_n_opposite", "opposite"),
                            ("twin_n_mixed", "mixed")):
