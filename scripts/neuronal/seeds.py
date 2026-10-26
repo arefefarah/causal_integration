@@ -1664,10 +1664,13 @@ N_MIXED_SHOWN = 4                      # intermediate patterns in the top row, b
 
 
 def _twin_panel(run):
-    """Opposite units of each causal network against its always-fuse twin,
-    from <run>/.../units/numbers.json (written by scripts/neuronal/run.py
-    units: `runs` and `twins`); dotted, the always-fuse control. None when
-    that file is missing."""
+    """Opposite and congruent units of each causal network against its
+    always-fuse twin, from <run>/.../units/numbers.json (written by
+    scripts/neuronal/run.py units: `runs` and `twins`): per prior, four bars,
+    opposite (red) and congruent (blue), the causal network dark and its twin
+    light; dotted in the class colour, the always-fuse control. None when that
+    file is missing. (Until 20 Oct 2026 the opposite units only.)"""
+    from matplotlib.patches import Patch
     f = out_dir(run) / "units" / "numbers.json"
     if not f.exists():
         print(f"   (no {f}: twin panel skipped)")
@@ -1682,18 +1685,26 @@ def _twin_panel(run):
     def pJ(ax=None):
         ax = panel_axes(ax)
         x = np.arange(len(pairs))
-        wdt = 0.36
-        ax.bar(x - wdt / 2, [r["n_opposite"] for r, _ in pairs], wdt, color=CLASS_COLORS["opposite"],
-               label="causal network")
-        ax.bar(x + wdt / 2, [tw["n_opposite"] for _, tw in pairs], wdt, color=CLASS_COLORS["opposite"],
-               alpha=0.35, label="always-fuse twin")
-        if ctrl1:
-            ax.axhline(ctrl1[0]["n_opposite"], ls=":", lw=0.8, color="gray")
+        wdt = 0.2
+        for j, c in enumerate(("opposite", "congruent")):
+            key = f"n_{c}"
+            off = (2 * j - 1.5) * wdt                   # opposite left, congruent right
+            ax.bar(x + off, [r[key] for r, _ in pairs], wdt, color=CLASS_COLORS[c])
+            ax.bar(x + off + wdt, [tw[key] for _, tw in pairs], wdt, color=CLASS_COLORS[c], alpha=0.35)
+            if ctrl1:
+                ax.axhline(ctrl1[0][key], ls=":", lw=0.8, color=CLASS_COLORS[c])
         ax.set_xticks(x)
         ax.set_xticklabels([f"{r['p_common']:g}" for r, _ in pairs])
-        ax.set_ylim(0, 40)
-        return finish_panel(ax, "common-cause prior", "opposite units of 64",
-                            "causal vs twin", "upper right")
+        ax.set_xlim(-0.6, len(pairs) - 0.4)
+        ax.set_ylim(0, 62)
+        fig = finish_panel(ax, "common-cause prior", "units of 64", "causal vs twin", None)
+        handles = [Patch(color=CLASS_COLORS["opposite"], label="opposite"),
+                   Patch(color=CLASS_COLORS["congruent"], label="congruent"),
+                   Patch(color="#555555", label="causal"),
+                   Patch(color="#555555", alpha=0.35, label="twin")]
+        ax.legend(handles=handles, fontsize=6, loc="upper left", ncol=2, handlelength=0.9,
+                  columnspacing=0.6, handletextpad=0.3, borderaxespad=0.2, labelspacing=0.25)
+        return fig
     return pJ
 
 
