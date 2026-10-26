@@ -3,9 +3,9 @@
 #
 #   bash scripts/run_all.sh                                    default config
 #   bash scripts/run_all.sh --quick                            small and fast
-#   bash scripts/run_all.sh --config configs/wide_rf.yaml      a variant
-#   bash scripts/run_all.sh --config configs/wide_rf.yaml --quick
-#   bash scripts/run_all.sh --config configs/wide_rf.yaml --name rf8 --epochs 500
+#   bash scripts/run_all.sh --config configs/pcommon03.yaml    a variant
+#   bash scripts/run_all.sh --config configs/pcommon03.yaml --quick
+#   bash scripts/run_all.sh --config configs/pcommon03.yaml --name p03 --epochs 500
 #
 # The run is named after the config file, so variants land in their own folders
 # and never overwrite each other. Encoding and generative parameters reach the

@@ -4,7 +4,7 @@
 # environment first.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup test lint format calibrate data train analyze figures neuronal seeds all quick sweep clean clean-runs
+.PHONY: help setup test lint format calibrate data train analyze figures neuronal seeds transformation all quick sweep eye_sweep clean clean-runs
 
 RUN    ?= baseline
 DATA   ?= main
@@ -49,17 +49,17 @@ analyze:  ## compare RUN against the analytical observer
 figures:  ## render every figure for RUN
 	poetry run python scripts/04_figures.py --run $(RUN)
 
-neuronal:  ## the neuronal-level analyses of RUN (Figs. 5, 10, 11), no torch needed  (make neuronal RUN=flagship)
+neuronal:  ## the neuronal-level analyses of RUN (Fig. 5, figS_units_network, figS_lesion_networks), no torch needed  (make neuronal RUN=flagship)
 	poetry run python scripts/neuronal/run.py --run $(RUN)
 
-seeds:  ## the lesion analysis across N seeds of RUN: trains seeds 1..N-1 (hours), then analyses and draws  (make seeds RUN=flagship N=100)
+seeds:  ## the unit and lesion analyses across N seeds of RUN (Figs. 9, 10, S1, S2): trains seeds 1..N-1 (hours), then analyses and draws  (make seeds RUN=flagship N=100)
 	poetry run python scripts/neuronal/seeds.py train    --run $(RUN) --n $(N)
 	poetry run python scripts/neuronal/seeds.py all      --run $(RUN) --n $(N) --extras damage pairs clamp
 	poetry run python scripts/neuronal/seeds.py patterns --run $(RUN)
 	poetry run python scripts/neuronal/seeds.py units    --run $(RUN)
 	poetry run python scripts/neuronal/seeds.py lesion   --run $(RUN)
 
-all:  ## whole pipeline + control twin  (make all CONFIG=configs/wide_rf.yaml)
+all:  ## whole pipeline + control twin  (make all CONFIG=configs/pcommon03.yaml)
 	poetry run bash scripts/run_all.sh --config $(CONFIG)
 
 quick:  ## whole pipeline, small and fast  (accepts CONFIG= too)
@@ -69,9 +69,16 @@ sweep:  ## SS9.3 cross-prior sweep, one network per prior per seed  (make sweep 
 	poetry run python scripts/05_prior_sweep.py \
 		--priors $(PRIORS) --seeds $(SEEDS) --control pcommon1
 
-eye_sweep:  ## the eye sweep: the flagship with one eye lever changed, per seed  (make eye_sweep SEEDS="0 1 2" [EYE_PARAM=eye_mu EYE_LEVELS="0 10 20 30 40"])
+eye_sweep:  ## the eye sweep (figS_eye_sweep): the flagship with one eye lever changed, per seed  (make eye_sweep SEEDS="0 1 2" [EYE_PARAM=eye_mu EYE_LEVELS="0 10 20 30 40"])
 	poetry run python scripts/07_eye_sweep.py \
 		--param $(EYE_PARAM) --levels $(EYE_LEVELS) --seeds $(SEEDS) --twin --control pcommon1
+
+transformation:  ## the transformation-to-decision analyses on the stored and level networks, and Fig. 11 (train the levels first: scripts/transformation/train_levels.py)
+	poetry run python scripts/transformation/run_stored.py
+	poetry run python scripts/transformation/run_levels.py
+	poetry run python scripts/transformation/frames_by_k.py
+	poetry run python scripts/transformation/report_tables.py
+	poetry run python scripts/transformation/manuscript_figures.py
 
 clean:  ## remove caches and compiled files
 	find . -name '__pycache__' -type d -prune -exec rm -rf {} +

@@ -7,7 +7,7 @@ one folder per figure (the composed figure named as its folder and copied flat
 beside it, its panels, a numbers.json), with the three composed figures also
 written to the run's manuscript folder under their paper names
 (results/manuscript/ for the flagship, results/manuscript_<run>/ otherwise):
-fig5_decision_bias, fig10_units, fig11_lesion_behaviour. Torch-free
+fig5_decision_bias, figS_units_network, figS_lesion_networks. Torch-free
 (npmodel.py); house style (cmsi.viz.style / manuscript); png, tif and svg.
 
     python scripts/neuronal/run.py units            example congruent, opposite and intermediate unit of the run,
@@ -32,8 +32,9 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import (CLASS_COLORS, CLASS_LABEL, CLASSES, COLORS, FIG_BIAS, FIG_LESION,      # noqa: E402
-                    FIG_UNITS, PANEL_FONT, PANEL_LW, PANEL_MS, RUN_LABEL,
+from common import (CLASS_COLORS, CLASS_LABEL, CLASSES, COLORS, FIG_BIAS,                  # noqa: E402
+                    FIG_S_LESION_NETWORKS, FIG_S_UNITS_NETWORK, PANEL_FONT, PANEL_LW,
+                    PANEL_MS, RUN_LABEL,
                     RUN_PRIOR, TWIN_RUNS, Bundle,
                     apply_style, behaviour_stats, binned_weight, bootstrap_ci,
                     congruency_np, finish_panel, fusion_segregation,
@@ -44,11 +45,14 @@ from cmsi.viz.style import FORMATS  # noqa: E402  (png, tif, svg)
 _BUNDLES, _TWINS = {}, {}
 
 # Per-run folders are named by content (like the run's other model figures);
-# the paper names (FIG_BIAS / FIG_UNITS / FIG_LESION in viz/manuscript.py)
-# are used only for the copies in the run's manuscript folder. The composed figure in each folder is named as the
+# the paper names (FIG_BIAS, FIG_S_UNITS_NETWORK, FIG_S_LESION_NETWORKS in
+# viz/manuscript.py) are used only for the copies in the run's manuscript
+# folder: the decision bias is Fig. 5; the one-network unit figure and the
+# two-network lesion designs are supporting figures (the paper's unit and
+# lesion figures come from seeds.py, over 100 networks). The composed figure in each folder is named as the
 # folder, so `save_figures` also drops a flat png copy beside it.
 K_BIAS, K_UNITS, K_LESION = "decision_bias", "units", "lesion_behaviour"
-PAPER = {K_BIAS: FIG_BIAS, K_UNITS: FIG_UNITS, K_LESION: FIG_LESION}
+PAPER = {K_BIAS: FIG_BIAS, K_UNITS: FIG_S_UNITS_NETWORK, K_LESION: FIG_S_LESION_NETWORKS}
 SHORT = {"flagship": "main", "pcommon03": "p = 0.3", "pcommon07": "p = 0.7",
          "pcommon1": "fuse\nctrl", "pcommon0": "segregate\nctrl"}
 
@@ -69,8 +73,7 @@ def configure(run="flagship", compare=None):
 def save_all(figs, key):
     """Every figure of one analysis -> OUT/<key>/ (panels, the composed
     figure named `key`, numbers alongside); the composed figure also -> the
-    run's manuscript folder under its paper name (FIG_BIAS / FIG_UNITS /
-    FIG_LESION), flat copy
+    run's manuscript folder under its paper name (PAPER), flat copy
     included, so the manuscript folder holds it like every other figure."""
     paper = PAPER[key]
     save_figures({f"{paper}/{paper}": figs[f"{key}/{key}"]}, MDIR, formats=FORMATS, close=False)

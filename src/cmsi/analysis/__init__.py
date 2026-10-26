@@ -7,7 +7,6 @@
     decoding   what the hidden layers carry, independent of the readout
     units      congruent/opposite classification, balance, lesion, RF shifts
     behavior   Kording-style bias curves and inferred-cause conditioning
-    todo       placeholders for the analyses not yet written
 """
 
 from cmsi.analysis.accuracy import accuracy, errors, generalization, print_accuracy

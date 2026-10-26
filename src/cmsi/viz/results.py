@@ -18,7 +18,6 @@ from cmsi.viz.manuscript import (  # noqa: F401  (re-exported for callers and te
     FIG_ERRORS,
     FIG_HUMP,
     FIG_LESION,
-    FIG_MODEL,
     FIG_SCATTER,
     FIG_SWEEP,
     FIG_TASK,
@@ -173,7 +172,7 @@ def _draw_decoding(ax, series, bar_width=0.2, gap=0.06, ylim_top=1.45,
     matplotlib's 0.4 for two series) and each carries its value, since the
     numbers (0.97 against 0.29) are the result; the y limit leaves room
     above a bar of 1.0 for its label and the legend. Shared by the model
-    figures 06/07 and the manuscript's figure 9A, so the three agree.
+    figures 06/07 and the manuscript's figure 8A, so the three agree.
     """
     present = {k for _, scores, _ in series for k in scores}
     layers = [k for k in LAYER_NAMES if k in present] or sorted(present)
@@ -211,7 +210,7 @@ def decoding_comparison(by_model, title="emergent vs imposed"):
 
     If p(C=1) is decodable from the twin -- which was never asked for it -- the
     latent emerges from the integration task rather than from the objective.
-    Drawn as the manuscript's figure 9A is (narrow bars carrying their values,
+    Drawn as the manuscript's figure 8A is (narrow bars carrying their values,
     the twin in grey), on the single-panel figure size.
     """
     series = [(label, scores, SERIES_COLOURS[i % len(SERIES_COLOURS)])
@@ -807,64 +806,6 @@ def panel_rf_shift(saved, ax=None, bin_width=0.1):
                          "upper left")
 
 
-STRATEGY_STYLE = {
-    # the strategies of SS7.4 beside the network; averaging IS the analytical
-    # observer's prediction, so it takes the analytical black dash
-    "averaging": dict(color=COLORS["analytical"], ls="--", label="model averaging"),
-    "selection": dict(color="#d62728", ls="--", label="model selection"),
-    "integration": dict(color="#ff7f0e", ls="--", label="full integration"),
-    "segregation": dict(color="#2ca02c", ls="--", label="full segregation"),
-    "fixed": dict(color="#9467bd", ls="--", label="best fixed weight"),
-}
-
-
-def panel_model_weight(mc, ax=None):
-    """11_model_comparison, left, on the WIDE cell: the implied weight on the
-    fused estimate within each decile of the analytical posterior, the network
-    beside the five strategies. Averaging tracks the posterior, selection
-    steps at 0.5, a fixed weight is flat."""
-    ax = _panel_axes(ax, cell=CELL_WIDE)
-    c = np.asarray(mc["bin_centres"])
-    for k, st in STRATEGY_STYLE.items():
-        ax.plot(c, mc["bin_weight"][k], st["ls"], lw=PANEL_LW, color=st["color"],
-                label=st["label"])
-    ax.plot(c, mc["bin_weight_net"], "o-", lw=PANEL_LW + 0.4, ms=PANEL_MS,
-            color=COLORS["network"], label="network", zorder=5)
-    ax.set_xlim(-0.03, 1.0)
-    # headroom above the integration line at 1 for the six-entry legend in
-    # two columns, as figure 4A keeps its legend above the curve's peak
-    ax.set_ylim(-0.1, 1.5)
-    ax.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
-    fig = _finish_panel(ax, "analytical p(C=1|x), decile centres",
-                        "weight on fused estimate", "weight by posterior decile")
-    ax.legend(fontsize=PANEL_FONT["legend"], loc="upper left", ncol=2, handlelength=1.6,
-              labelspacing=0.2, columnspacing=1.0, borderaxespad=0.3)
-    return fig
-
-
-def panel_model_rmse(mc, ax=None):
-    """11_model_comparison, right, on the WIDE cell: the RMSE of each strategy
-    against the network's own output within each posterior decile, on a log
-    axis because full integration misses by an order of magnitude where the
-    posterior is low while the others sit within a degree of each other."""
-    ax = _panel_axes(ax, cell=CELL_WIDE)
-    c = np.asarray(mc["bin_centres"])
-    for k, st in STRATEGY_STYLE.items():
-        ax.plot(c, mc["bin_rmse"][k], "o-", lw=PANEL_LW, ms=PANEL_MS, color=st["color"],
-                label=st["label"])
-    ax.set_yscale("log")
-    ax.set_xlim(-0.03, 1.0)
-    ax.set_ylim(0.2, 30)
-    ax.set_yticks([0.3, 1, 3, 10, 30])
-    ax.set_yticklabels(["0.3", "1", "3", "10", "30"])
-    ax.yaxis.set_minor_formatter(plt.NullFormatter())
-    fig = _finish_panel(ax, "analytical p(C=1|x), decile centres",
-                        "RMSE against network (deg)", "which strategy explains the network")
-    ax.legend(fontsize=PANEL_FONT["legend"], loc="upper right", handlelength=1.6,
-              labelspacing=0.2, borderaxespad=0.3)
-    return fig
-
-
 def manuscript_row(draw):
     """Three standard panels in one 7.5 x 2.5 in figure, lettered A-C."""
     return manuscript_grid(draw, ncols=3)
@@ -876,12 +817,12 @@ def manuscript_row(draw):
 # results/manuscript/fig4_fusion_weight/fig4_fusion_weight.png), the panels
 # are A_..., B_..., and `save_figures` drops a flat copy of the composed png
 # next to the folder (results/manuscript/fig4_fusion_weight.png) for upload.
-# This module renders FIG_SCATTER, FIG_ERRORS, FIG_WEIGHT, FIG_HUMP, FIG_MODEL
-# and FIG_DECODING; FIG_BIAS, FIG_UNITS and FIG_LESION are written by
-# scripts/neuronal/run.py (the neuronal-level analyses of a run, kept under
-# results/<run>/figures/model/neuronal_level_analysis/ and copied to the
-# run's manuscript folder under these names); FIG_SWEEP by
-# scripts/05_prior_sweep.py; FIG_TASK is a drawn schematic, not rendered.
+# This module renders FIG_SCATTER, FIG_ERRORS, FIG_WEIGHT, FIG_HUMP and
+# FIG_DECODING; the neuronal-level figures are written by scripts/neuronal/
+# (kept under results/<run>/figures/model/neuronal_level_analysis/ and copied
+# to the run's manuscript folder under their paper names), FIG_SWEEP by
+# scripts/05_prior_sweep.py, FIG_TRANSFORMATION by scripts/transformation/;
+# FIG_TASK is a drawn schematic, not rendered.
 
 
 def manuscript_panels(pred, d, names, analysis_cfg, w, w_prop, saved, metrics):
@@ -949,21 +890,9 @@ def manuscript_panels(pred, d, names, analysis_cfg, w, w_prop, saved, metrics):
         figs[f"{FIG_HUMP}/{FIG_HUMP}"] = manuscript_grid(vh, ncols=2, cell=CELL_WIDE)
     else:
         print("figure 6 skipped: no variance_signature in metrics.json")
-    # figure 8: model averaging against the four alternatives (11), the
-    # per-decile implied weight and the per-decile RMSE of each strategy
-    # against the network -- two WIDE cells, 7.5 x 2.5 in
-    if "model_comparison_vis" in metrics:
-        mc = metrics["model_comparison_vis"]
-        mw = [lambda ax=None: panel_model_weight(mc, ax=ax),
-              lambda ax=None: panel_model_rmse(mc, ax=ax)]
-        figs[f"{FIG_MODEL}/A_weight_by_decile"] = mw[0]()
-        figs[f"{FIG_MODEL}/B_rmse_by_decile"] = mw[1]()
-        figs[f"{FIG_MODEL}/{FIG_MODEL}"] = manuscript_grid(mw, ncols=2, cell=CELL_WIDE)
-    else:
-        print("figure 8 skipped: no model_comparison_vis in metrics.json")
-    # figure 9: the posterior decoded by layer (06/07), causal network beside
+    # figure 8: the posterior decoded by layer (06/07), causal network beside
     # its twin, and the RF shift gains of the MSL units (14) -- two WIDE
-    # cells, 7.5 x 2.5 in, the same outer size as figures 4, 6 and 8
+    # cells, 7.5 x 2.5 in, the same outer size as figures 4 and 6
     if "post_c1_decoding_r2" in metrics and "rf_shift_gain" in files:
         dec, twin = metrics["post_c1_decoding_r2"], metrics.get("twin_post_c1_decoding_r2")
 
@@ -977,6 +906,6 @@ def manuscript_panels(pred, d, names, analysis_cfg, w, w_prop, saved, metrics):
         figs[f"{FIG_DECODING}/B_rf_shift"] = rf()
         figs[f"{FIG_DECODING}/{FIG_DECODING}"] = manuscript_grid([dc, rf], ncols=2, cell=CELL_WIDE)
     else:
-        print("figure 9 skipped: needs post_c1_decoding_r2 in metrics.json and "
+        print("figure 8 skipped: needs post_c1_decoding_r2 in metrics.json and "
               "rf_shift_gain in analysis.npz")
     return figs

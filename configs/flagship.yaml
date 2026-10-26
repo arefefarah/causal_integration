@@ -1,49 +1,42 @@
-# FLAGSHIP config -- the p_common = 0.5 network (since 2026-10-02).
+# FLAGSHIP config -- the main network of the paper (p_common = 0.5).
 #
-# The configuration the implied-weight investigation of September 2026
-# converged on (IMPLIED_WEIGHT_RESULT.md, Parts I-IV; trained there as
-# exp2_64_mean). The previous flagship -- configs/flagship_wide.yaml:
-# sigma0_sq 425, eye_sigma_sq 325, wide noise ranges -- was Bayes-optimal only
-# to a position-regression slope of 0.86 with this 64 x 64 network; the
-# investigation traced that to the input domain relative to the sensory noise,
-# not to the network. What changed and why:
+# The input domain was chosen so that a 64 x 64 sigmoid network can learn the
+# reliability-dependent weighting the analytical observer uses. With a wider
+# domain (sigma0_sq 425, eye_sigma_sq 325, noise ranges [1.2, 6.6] /
+# [1.8, 9.6] / [3.3, 13.2] deg^2) the same network reached a position-regression
+# slope of only 0.86 against the observer, whatever its size; the limit is the
+# span of the inputs relative to the sensory noise, not the network. Here:
 #
-#   sigma0_sq 425 -> 100     the spread of hand positions (sd 20.6 -> 10 deg) and
-#   eye_sigma_sq 325 -> 81   of eye positions (sd 18 -> 9 deg): the domain the
-#                            populations have to cover, relative to the noise,
-#                            is what decides whether the network learns the
-#                            optimal weighting (Part I, section 4).
+#   sigma0_sq 100           hand positions spread sd 10 deg
+#   eye_sigma_sq 81         eye positions spread sd 9 deg
+#   narrow noise ranges     sigma2 [1, 1.2] / [4, 4.5] / [3.7, 4.2] deg^2 for
+#                           vision / hand / eye (sd 1.0-1.1, 2.0-2.1, 1.9-2.0
+#                           deg): the reliability-dependent weighting is easy
+#                           to learn, at the cost that reliability barely
+#                           varies from trial to trial (the reliability levels
+#                           of figure 05 differ by little; `06 reliability
+#                           --levels 5` splits what variation there is into
+#                           quantiles).
 #
-#   narrow noise ranges      sigma2 [1, 1.2] / [4, 4.5] / [3.7, 4.2] deg^2 for
-#                            vision / hand / eye (sd 1.0-1.1, 2.0-2.1, 1.9-2.0
-#                            deg): the reliability-dependent weighting is easy to
-#                            learn (slope +0.03 against the wide ranges). The
-#                            cost is that reliability barely varies, so figure
-#                            05's levels differ by little; `06 reliability
-#                            --levels 5` splits what variation there is into
-#                            quantiles.
+# The encoding (76 units per population, rf_width 6, gain_K 180, visual field
+# +-85 deg), the network (two sigmoid layers of 64) and the training are those
+# of the reference-frame study this work builds on.
 #
-# Everything else -- the encoding (76 units per population, rf_width 6, gain_K
-# 180, visual field +-85), the network and the training -- is unchanged from
-# flagship_wide.yaml, and so are the reasons given in its header.
-#
-# What it gives (the exp2_64_mean run, hybrid read of the weight, visual
-# channel): weight on the posterior slope 0.977 [0.967, 0.988], position
-# regression 0.952 (hand 0.939), variance regression 0.977, 0.1 % of per-trial
-# weights outside [-1, 2], transition midpoint 4.89 deg against 5.08
-# analytical, reliability-within-disparity slope 0.89 +- 0.02; sigma_out 0.39
-# deg on the control.
+# What it gives (hybrid read of the weight, visual channel): weight on the
+# posterior slope 0.977 [0.967, 0.988], position regression 0.952 (hand
+# 0.939), variance regression 0.977, 0.1 % of per-trial weights outside
+# [-1, 2], transition midpoint 4.89 deg against 5.08 analytical; sigma_out
+# 0.39 deg on the p_common = 1 control.
 #
 # The calibration gate WARNs on this configuration and does not stop: 49 % of
-# trials sit at intermediate posterior (SS8.1 asks for ~25 %) because two
+# trials sit at intermediate posterior (the gate asks for ~25 %) because two
 # independent sources drawn from a 10-deg prior are often as close as one
 # shared source, and the posterior at zero disparity is capped near 0.8. That
-# is the trade-off of the small domain (Part I, section 4.3); the hand
-# positions reach only +-30 deg, so the +-85 visual field rejects 0.0 % of
-# trials.
+# is the trade-off of the small domain; the hand positions reach only +-30
+# deg, so the +-85 visual field rejects 0.0 % of trials.
 #
 # Every satellite and control (configs/pcommon*.yaml) is this file with ONLY
-# the Bernoulli constant changed, per SS9.3.
+# the Bernoulli constant changed.
 #
 # Units: positions in degrees, variances in deg^2.
 

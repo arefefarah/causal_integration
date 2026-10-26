@@ -1,19 +1,16 @@
-# OPTIMAL_SWEEP -- the configuration the readability sweeps of 2026-09-20/21
-# converged on (IMPLIED_WEIGHT_RESULT.md, Parts I and II; the sweep code itself
-# was retired on 2026-09-29, its results stay under results/experiments/sweep/).
-# Since 2026-10-02 configs/flagship.yaml already has this file's domain and
-# noise ranges (sigma0_sq 100, eye_sigma_sq 81, narrow ranges); what still
-# differs is the training recipe -- relu 256 x 256 with std_floor 1.0, gain_K
-# 720, lr 3e-4, 600 epochs / patience 40, 100k trials -- each piece chosen
-# because a sweep showed it lowers the network's own error relative to the
-# sensory noise. What the combination gave in the cloud runs (one seed, 100k
-# trials, cpu), visual channel:
+# OPTIMAL_SWEEP -- an alternative training recipe, not used in the paper.
+# Same domain and noise ranges as configs/flagship.yaml (sigma0_sq 100,
+# eye_sigma_sq 81, narrow ranges); what differs is the recipe -- relu 256 x 256
+# with std_floor 1.0, gain_K 720, lr 3e-4, 600 epochs / patience 40, 100k
+# trials -- each piece chosen because a sweep showed it lowers the network's
+# own error relative to the sensory noise. What the combination gave (one
+# seed, 100k trials, cpu), visual channel:
 #
 #   sigma_out 0.18 deg (control)   own residual sd 0.19 (= 1.07 x sigma_out)
 #   position-regression slope 0.999 / 0.985 (mu_vis / mu_prop)
 #   variance read vs posterior: sd 0.032 over all trials
 #
-# Levers, each measured alone on the exp2_128_mean base (Part II, section 8):
+# Levers, each measured alone on a 128 x 128 base network:
 #   sigma0_sq 425 -> 100, eye_sigma_sq 325 -> 81   the input domain relative to
 #                         the noise: the lever for optimality (slope 0.86 -> 0.99)
 #   narrow noise ranges   the reliability-dependent weighting is easy to learn
@@ -46,7 +43,7 @@
 seed: 0
 
 # --------------------------------------------------------------------------- #
-# GENERATIVE MODEL -- the exp2_128_mean generative model (Part I, section 2)
+# GENERATIVE MODEL -- the flagship domain
 # --------------------------------------------------------------------------- #
 generative:
   p_common: 0.5

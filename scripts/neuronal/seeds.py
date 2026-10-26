@@ -1,7 +1,7 @@
 """Across-seed replication of the lesion analysis for one configuration.
 
-The lesion figure (fig10, scripts/neuronal/run.py r5) is one network per
-prior. This script asks what changes when the same configuration is trained
+The lesion designs of scripts/neuronal/run.py r5 (figS_lesion_networks) are
+one network per prior. This script asks what changes when the same configuration is trained
 many times with different seeds: are the class-lesion effects consistent
 across networks, or are they one network's accident?
 
@@ -36,7 +36,7 @@ Output: results/<run>/figures/model/neuronal_level_analysis/lesion_seeds/
 (the composed figure `lesion_seeds`, panels, per_seed/*.json, numbers.json,
 unit_counts_by_seed.csv). The manuscript folder gets the supplementary
 figure figS_lesion_seeds (Fig. S1), which keeps only the panels that the
-paper's lesion figure (fig11_lesion_seeds) and unit figure (fig10_units_seeds)
+paper's lesion figure (fig10_lesion_seeds) and unit figure (fig9_units_seeds)
 do not show: the read-out error, the damage-matched null, the equal-dose
 reading and the refitted read-out as z-scores (si_lesion_figure; `si` redraws
 it, and the pair figure, from the stored numbers). The unit classes of the same seeds get their own
@@ -51,12 +51,12 @@ against random lesions matched in size AND in RMSE; `pairs`, every single
 unit and every pair of units clamped (lesion_pairs_seeds: the change per
 class pair, the additivity of the effects, the worst pairs; its manuscript
 copy figS_lesion_pairs_seeds, Fig. S2, leaves out the single-unit and
-class-additivity panels, which are Fig. 10E and F); `clamp`, the
+class-additivity panels, which are Fig. 9E and F); `clamp`, the
 whole-class clamp with the units set to 0 and to 1 instead of their mean
 (lesion_clamp_seeds). `patterns` collects the tuning curves of every unit
 of every network and partitions the intermediate units' curves by k-means
 (mixed_patterns, figS_mixed_patterns). `units` draws the manuscript's unit
-figure from the stored numbers (units_seeds, copied as fig10_units_seeds:
+figure from the stored numbers (units_seeds, copied as fig9_units_seeds:
 the patterns row over the unit-class row; see units_paper_figure).
 """
 
@@ -68,26 +68,31 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import (CLASS_COLORS, CLASS_LABEL, CLASSES, COLORS, PANEL_FONT, PANEL_LW,  # noqa: E402
+from common import (CLASS_COLORS, CLASS_LABEL, CLASSES, COLORS, FIG_LESION,  # noqa: E402
+                    FIG_S_LESION_CLAMP, FIG_S_LESION_PAIRS, FIG_S_LESION_SEEDS,
+                    FIG_S_PATTERNS, FIG_S_UNIT_COUNTS, FIG_UNITS, PANEL_FONT, PANEL_LW,
                     ROOT, Bundle, apply_style, binned_weight, finish_panel,
                     fusion_segregation, hybrid_reads, manuscript_dir, manuscript_grid,
                     out_dir, panel_axes, position_regression, save_figures, save_json)
 from cmsi.viz.style import FORMATS  # noqa: E402
 
+# Per-run folders are named by content; the copies in the run's manuscript
+# folder carry the paper's names (FIG_* in cmsi.viz.manuscript, the one place
+# a figure is numbered).
 K_SEEDS = "lesion_seeds"
-PAPER = "figS_lesion_seeds"
+PAPER = FIG_S_LESION_SEEDS              # Fig. S1
 K_UNITS = "unit_counts_seeds"          # the unit-class figure of the same seeds, beside it
-PAPER_UNITS = "figS_unit_counts_seeds"
+PAPER_UNITS = FIG_S_UNIT_COUNTS
 K_PAIRS = "lesion_pairs_seeds"         # the pair-lesion figure of the same seeds (--extras pairs)
-PAPER_PAIRS = "figS_lesion_pairs_seeds"
+PAPER_PAIRS = FIG_S_LESION_PAIRS        # Fig. S2
 K_PATTERNS = "mixed_patterns"           # the tuning-curve patterns of the intermediate units over the seeds
-PAPER_PATTERNS = "figS_mixed_patterns"
+PAPER_PATTERNS = FIG_S_PATTERNS
 K_CLAMP = "lesion_clamp_seeds"          # the whole-class clamp with the units set to 0 / 1 (--extras clamp)
-PAPER_CLAMP = "figS_lesion_clamp_seeds"
+PAPER_CLAMP = FIG_S_LESION_CLAMP
 K_UNITS_PAPER = "units_seeds"           # the paper's unit figure: patterns row over the unit-class row
-PAPER_UNITS_FIG = "fig10_units_seeds"   # replaces fig10_units (one network) as the manuscript's unit figure
+PAPER_UNITS_FIG = FIG_UNITS             # Fig. 9 (one network's version: run.py units, figS_units_network)
 K_LESION_PAPER = "lesion_paper"         # the paper's lesion figure: six panels from the 100-seed designs
-PAPER_LESION_FIG = "fig11_lesion_seeds" # replaces fig11_lesion_behaviour (two networks) as the manuscript's lesion figure
+PAPER_LESION_FIG = FIG_LESION           # Fig. 10 (two networks' designs: run.py r5, figS_lesion_networks)
 STATS = ("fusion", "segregation", "rmse")
 MIN_NETWORKS = 5                       # a mean cumulative curve is drawn where this many networks reach that k
 WEAK = 0.1                             # a sweep that moves a unit by less than this: one-cue unit
@@ -1278,7 +1283,7 @@ def pairs_figure(run, pr, label):
     for key, fn in zip(("A_single_unit_by_class", "B_pairs_fusion", "C_pairs_segregation", "D_additivity_pairs",
                         "E_additivity_class", "F_worst_pairs_composition"), draws):
         figs[f"{K_PAIRS}/{key}"] = fn()
-    # Fig. S2: the pair panels only; A and E are Fig. 10E and F of the paper
+    # Fig. S2: the pair panels only; A and E are Fig. 9E and F of the paper
     paper = manuscript_grid([pB, pC, pD, pF], ncols=2)
     save_figures({f"{PAPER_PAIRS}/{PAPER_PAIRS}": paper}, manuscript_dir(run), formats=FORMATS)
     save_figures(figs, out_dir(run), formats=FORMATS)
@@ -1324,7 +1329,7 @@ def _zbox_groups(ax, groups, title, ylabel="z vs random lesions", headroom=0.3):
 
 def si_lesion_figure(run, agg=None, label=None):
     """figS_lesion_seeds (Fig. S1): the lesion statistics of the 100 seeds that
-    the paper's lesion figure (fig11_lesion_seeds) does not show, four z-score
+    the paper's lesion figure (fig10_lesion_seeds) does not show, four z-score
     panels, two by two. A the read-out error (RMSE) after each whole-class
     lesion, with the read-out as trained and refitted, each against random
     lesions of the class's size; B fusion and segregation against the
@@ -1654,9 +1659,9 @@ def patterns_figure(run, numbers=None):
 # seeds in one row of small panels (A, B the congruent and opposite classes,
 # C-F the four largest intermediate patterns) over the unit classes of the same seeds
 # (G-I, the three panels of `unit_class_panels`; J, opposite units of the
-# causal networks against their always-fuse twins). It replaces fig10_units, the
-# one-network figure (three example units; counts per network, per prior and
-# against the twin), whose files are in results/_to_delete/.
+# causal networks against their always-fuse twins). It replaces the one-network
+# figure of run.py units (three example units; counts per network, per prior
+# and against the twin), now the supporting figure figS_units_network.
 # --------------------------------------------------------------------------- #
 TOP_ROW = {"height": 1.9, "gap": 0.2, "xlabel": 0.42, "title": 0.33}   # inches
 TOP_FONT = {"tick": 7, "label": 7, "title": 7.5, "note": 6.2, "legend": 6.2}
@@ -1709,7 +1714,7 @@ def _twin_panel(run):
 
 
 def units_paper_figure(run, u=None, label=None, numbers=None):
-    """fig10_units_seeds: six small tuning-pattern panels (7.5 in across) over
+    """fig9_units_seeds: six small tuning-pattern panels (7.5 in across) over
     the three unit-class cells and, when units/numbers.json exists, the
     causal-vs-twin opposite-unit counts (four cells of 1.875 x 2.5 in),
     7.5 x 4.4 in in all.
@@ -1724,7 +1729,7 @@ def units_paper_figure(run, u=None, label=None, numbers=None):
     pat_file = out_dir(run) / K_PATTERNS / "numbers.json"
     if numbers is None:
         if not pat_file.exists():
-            print(f"   (no {pat_file}: run `seeds.py patterns` first; fig10_units_seeds not drawn)")
+            print(f"   (no {pat_file}: run `seeds.py patterns` first; fig9_units_seeds not drawn)")
             return None
         numbers = json.loads(pat_file.read_text())
     pos = np.asarray(numbers["positions"], float)
@@ -1809,7 +1814,7 @@ def units_paper_figure(run, u=None, label=None, numbers=None):
 
 
 def lesion_paper_figure(run, agg=None, numbers=None, band="sd"):
-    """fig11_lesion_seeds: the lesion result of the 100 seeds in seven panels,
+    """fig10_lesion_seeds: the lesion result of the 100 seeds in seven panels,
     7.5 x 5 in: three standard cells on top (A-C) and four cells of
     1.875 x 2.5 in below (D-G, as the bottom row of Fig. 9). A the whole-class
     clamp with the read-out as trained, implied weight against |d|, mean
@@ -1838,7 +1843,7 @@ def lesion_paper_figure(run, agg=None, numbers=None, band="sd"):
     label = f"{n} networks"
     pr = agg.get("pairs")
     if not pr:
-        print("   (no pairs design in numbers.json: run `seeds.py analyse --extras pairs`; fig11_lesion_seeds not drawn)")
+        print("   (no pairs design in numbers.json: run `seeds.py analyse --extras pairs`; fig10_lesion_seeds not drawn)")
         return None
 
     def sem_band(ax, x, m, sd, count, color, lw=PANEL_LW, label_=None, ls="-"):

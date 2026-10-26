@@ -19,9 +19,13 @@ from cmsi.analysis.causal import (binned_weight, hybrid_weight,     # noqa: E402
 from cmsi.analysis.decoding import decode                            # noqa: E402
 from cmsi.data.encoding import encode                                # noqa: E402
 from cmsi.viz.manuscript import (CELL_SQUARE, CELL_WIDE, FIG_BIAS,    # noqa: E402,F401
-                                 FIG_LESION, FIG_UNITS, PANEL_FONT,   # (FIG_*: paper names)
-                                 PANEL_LW, PANEL_MS, finish_panel,
-                                 manuscript_dir, manuscript_grid, panel_axes)
+                                 FIG_LESION, FIG_S_LESION_CLAMP,      # (FIG_*: the paper's
+                                 FIG_S_LESION_NETWORKS, FIG_S_LESION_PAIRS,  # figure names)
+                                 FIG_S_LESION_SEEDS, FIG_S_PATTERNS,
+                                 FIG_S_UNIT_COUNTS, FIG_S_UNITS_NETWORK,
+                                 FIG_UNITS, PANEL_FONT, PANEL_LW, PANEL_MS,
+                                 finish_panel, manuscript_dir, manuscript_grid,
+                                 panel_axes)
 from cmsi.viz.style import COLORS, apply_style, save_figures         # noqa: E402,F401
 
 

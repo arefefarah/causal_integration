@@ -56,15 +56,16 @@ from cmsi.data import make_dataset, subset
 from cmsi.models import hidden_activations, predict, train
 from cmsi.utils import load_config, load_json, run_dir, save_json, tweak
 from cmsi.utils.paths import CONFIGS, RESULTS
+from cmsi.viz.manuscript import FIG_S_EYE_MU, FIG_S_EYE_SD
 
 GRID = np.array([-30, -24, -19, -15, -12, -9, -6, -3.5, -1.5,
                  1.5, 3.5, 6, 9, 12, 15, 19, 24, 30], float)
 MIN_COUNT, MAX_SE = 25, 0.05
 PROBE_EYE = np.linspace(-9.0, 9.0, 5)     # the fixed RF-shift probe: the flagship's +-sd around straight ahead
 NEAR, FAR = 2.0, 15.0                     # fusion: |d| <= NEAR; segregation: |d| >= FAR
-PARAMS = {"eye_sd": {"out": "eye_sweep", "paper": "figS_eye_sweep", "label": "eye-position sd (deg)",
+PARAMS = {"eye_sd": {"out": "eye_sweep", "paper": FIG_S_EYE_SD, "label": "eye-position sd (deg)",
                      "legend": "eye sd {:g}°", "default": [1, 3, 9, 18, 27]},
-          "eye_mu": {"out": "eye_mu_sweep", "paper": "figS_eye_mu_sweep", "label": "mean eye position (deg)",
+          "eye_mu": {"out": "eye_mu_sweep", "paper": FIG_S_EYE_MU, "label": "mean eye position (deg)",
                      "legend": "eye mean {:g}°", "default": [0, 10, 20, 30, 40]}}
 
 

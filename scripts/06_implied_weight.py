@@ -23,9 +23,8 @@ sigma_out_source), falling back to pcommon1.
     # 3. a NEW configuration: run the whole pipeline on it, exactly as
     #    run_all.sh does, into results/<name>/ -- plus a p_common = 1 control
     #    of the same configuration in results/<name>_pcommon1/
-    python scripts/06_implied_weight.py train --config configs/exp_weight.yaml --name lownoise
     python scripts/06_implied_weight.py train --set 'sigma2_vis_range=[1.2,1.8]' --name lownoise
-    python scripts/06_implied_weight.py train --config configs/realistic.yaml --name real --quick
+    python scripts/06_implied_weight.py train --config configs/pcommon03.yaml --name p03 --quick
 
     # ... after which every analysis in the project applies to it:
     python scripts/06_implied_weight.py figures --run lownoise
