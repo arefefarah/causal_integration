@@ -328,7 +328,9 @@ def draw(out, agg, curves, rows=None, param="eye_sd"):
                            "weight vs disparity (seed 0)", None)
         ax.text(0.98, 0.42, "dashed:\nobserver p(C=1|x)", transform=ax.transAxes, ha="right", va="bottom",
                 fontsize=7, color="grey")
-        ax.legend(fontsize=7, loc="upper center", ncol=3, handlelength=1.2, columnspacing=0.6,
+        # two columns (1 Nov 2026): three ran past the axes with the longer
+        # eye-mean labels; three rows still fit the headroom above the curves
+        ax.legend(fontsize=7, loc="upper center", ncol=2, handlelength=1.2, columnspacing=0.8,
                   borderaxespad=0.2, handletextpad=0.4)
         return fig
 
@@ -343,8 +345,9 @@ def draw(out, agg, curves, rows=None, param="eye_sd"):
         xaxis(ax)
         fig = finish_panel(ax, spec["label"], "slope (Bayes-optimal: 1)",
                            f"Bayesian weighting ({label})", None)
-        ax.legend(fontsize=6.5, loc="lower left", ncol=2, handlelength=1.6, columnspacing=0.5,
-                  borderaxespad=0.2)
+        # one column (1 Nov 2026): two ran past the axes into panel C's label
+        ax.legend(fontsize=6.5, loc="lower left", ncol=1, handlelength=1.6, borderaxespad=0.2,
+                  labelspacing=0.3)
         return fig
 
     def pC(ax=None):
@@ -373,7 +376,12 @@ def draw(out, agg, curves, rows=None, param="eye_sd"):
         lo = np.nanmin([a["rf_gain_median_fixed"] for a in agg] + [a["rf_gain_median_own"] for a in agg] + [-0.3])
         ax.set_ylim(min(-0.3, lo - 0.1), 1.25)
         fig = finish_panel(ax, spec["label"], "median RF-shift gain, MSL",
-                           f"RF transformation ({label})", "center left")
+                           f"RF transformation ({label})", None)
+        # the legend is anchored between the two reference lines rather than
+        # at the axes' centre (1 Nov 2026): when the lower limit follows a
+        # negative gain, the centre drops onto the 'spatial code' label
+        ax.legend(fontsize=PANEL_FONT["legend"], loc="center left", bbox_to_anchor=(0.0, 0.6),
+                  handlelength=1.6, borderaxespad=0.4)
         return fig
 
     def pE(ax=None):

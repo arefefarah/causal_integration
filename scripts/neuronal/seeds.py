@@ -1350,8 +1350,9 @@ def si_lesion_figure(run, agg=None, label=None):
     def legend(ax):
         for c in CLASSES:
             ax.plot([], [], "o", ms=3, color=CLASS_COLORS[c], label=f"−{CLASS_LABEL[c]}")
-        ax.legend(fontsize=7, loc="upper left", ncol=3, handlelength=1.0, columnspacing=0.5,
-                  borderaxespad=0.2, handletextpad=0.2)
+        # one column (1 Nov 2026): three ran past the axes into panel B's label
+        ax.legend(fontsize=7, loc="upper left", ncol=1, handlelength=1.0,
+                  borderaxespad=0.2, handletextpad=0.2, labelspacing=0.3)
 
     def pA(ax=None):
         ax = panel_axes(ax)
@@ -1416,12 +1417,19 @@ def clamp_figure(run, agg, label, grid):
             if c in wc["random_curve"]:
                 ax.plot(x, wc["random_curve"][c]["mean"], ":", lw=1.0, color=CLASS_COLORS[c])
         ax.plot([], [], ":", lw=1.0, color="gray", label="random, same k")
+        # headroom above the bands for a three-row legend at the upper right
+        # (two columns since 1 Nov 2026: three columns ran past the axes, two
+        # rows sat on the bands, which are widest at zero disparity)
         lo = min(-0.1, np.nanmin([np.nanmin(wc["classes"][c]["curve"]["mean"]) for c in wc["classes"]]) - 0.1)
-        hi = max(1.8, np.nanmax([np.nanmax(wc["classes"][c]["curve"]["mean"]) for c in wc["classes"]]) + 0.6)
+        band_top = np.nanmax([np.nanmax(np.asarray(wc["classes"][c]["curve"]["mean"], float)
+                                        + np.asarray(wc["classes"][c]["curve"]["sd"], float))
+                              for c in wc["classes"]])
+        hi = max(2.5, band_top + 1.1)
         ax.set_ylim(lo, hi)
+        ax.set_yticks([t for t in ax.get_yticks() if lo <= t <= 1.5])   # ticks stop under the legend
         fig = finish_panel(ax, "|disparity| (deg)", "weight on fused estimate",
                            f"units {CLAMPS[mode].replace(' (', ', ').rstrip(')')} ({label})", None)
-        ax.legend(fontsize=7, loc="upper center", ncol=3, handlelength=1.2, columnspacing=0.6,
+        ax.legend(fontsize=7, loc="upper right", ncol=2, handlelength=1.2, columnspacing=0.8,
                   borderaxespad=0.2, handletextpad=0.4)
         return fig
 
@@ -1433,7 +1441,9 @@ def clamp_figure(run, agg, label, grid):
                            ylabel="z vs random lesions, same clamp", headroom=1.4)
         for c in CLASSES:
             ax.plot([], [], "o", ms=3, color=CLASS_COLORS[c], label=f"−{CLASS_LABEL[c]}")
-        ax.legend(fontsize=7, loc="upper left", ncol=3, handlelength=1.0, columnspacing=0.6, borderaxespad=0.2)
+        # one column (1 Nov 2026): three ran past the axes into the next panel
+        ax.legend(fontsize=7, loc="upper left", ncol=1, handlelength=1.0, borderaxespad=0.2,
+                  labelspacing=0.3)
         return fig
 
     def compare(ax, stat):
@@ -1758,7 +1768,9 @@ def units_paper_figure(run, u=None, label=None, numbers=None):
         ax.axhline(0, lw=0.5, color="gray")
         ax.axvline(0, lw=0.5, color="gray")
         ax.set_xlim(pos[0], pos[-1])
-        ax.set_ylim(-0.85, 1.2)
+        # room below the bands for the legend of panel A (1 Nov 2026): the
+        # congruent class dips to -0.5 at the left, where the legend sits
+        ax.set_ylim(-1.1, 1.2)
         ax.set_xticks([-20, 0, 20])
         ax.set_yticks([-0.5, 0, 0.5])
         ax.tick_params(labelsize=TOP_FONT["tick"], length=2, pad=1.5, labelleft=ylabel)
@@ -1868,8 +1880,10 @@ def lesion_paper_figure(run, agg=None, numbers=None, band="sd"):
         ax.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
         fig = finish_panel(ax, "|disparity| (deg)", "weight on fused estimate",
                            f"whole class clamped ({label})", None)
-        ax.legend(fontsize=7, loc="upper center", ncol=2, handlelength=1.2, columnspacing=0.8,
-                  borderaxespad=0.2, handletextpad=0.4, labelspacing=0.3)
+        # tighter handles and spacing (1 Nov 2026): the two columns ran a few
+        # points past the axes on either side
+        ax.legend(fontsize=7, loc="upper center", ncol=2, handlelength=1.0, columnspacing=0.5,
+                  borderaxespad=0.2, borderpad=0.2, handletextpad=0.3, labelspacing=0.3)
         return fig
 
     def pB(ax=None):

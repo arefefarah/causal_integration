@@ -297,6 +297,10 @@ def weight_regression_scatter(w, post, reg, flags=None, output_name="vis", ax=No
 HYBRID_SOURCES = {0: ("variance root (Delta^2 <= c)", COLORS["hybrid"]),
                   1: ("position ratio (Delta^2 > c)", COLORS["visual"]),
                   2: ("variance peak (no root)", "0.5")}
+# an opaque, edgeless white box under a legend that has to sit on a scatter
+# cloud (the style's legends are frameless; this one hides the stray points
+# under the text instead of printing the text over them)
+LEGEND_BOX = dict(frameon=True, facecolor="white", edgecolor="none", framealpha=1.0)
 
 
 def variance_regression_figure(var_out, fused_var, seg_var, delta, post, reg_var,
@@ -643,7 +647,10 @@ def panel_weight_regression(w, post, reg, flags=None, output_name="vis", ax=None
     Two legends, because one of five entries would cover the cloud on a
     2.5-in panel: the sources in the lower right, where a good network has
     almost no points (high posterior, low weight), and the two lines in the
-    upper left under the headroom the y limit leaves above the cloud.
+    upper left under the headroom the y limit leaves above the cloud. Both
+    legends sit on an opaque white box (1 Nov 2026): the cloud's stray
+    points reach every corner of the axes, and the box keeps the legend
+    text off them (a few of the 6000 drawn points are hidden under it).
     """
     from matplotlib.lines import Line2D
     ax = _panel_axes(ax)
@@ -680,15 +687,18 @@ def panel_weight_regression(w, post, reg, flags=None, output_name="vis", ax=None
     if handles:
         ax.add_artist(ax.legend(handles, labels, fontsize=PANEL_FONT["legend"],
                                 loc="lower right", handlelength=1.0,
-                                handletextpad=0.5, borderaxespad=0.4))
+                                handletextpad=0.5, borderaxespad=0.4, **LEGEND_BOX))
     # the same y range as panel A (04_fusion_weight), with its headroom for
     # the legend above the cloud; ticks stop at 1 so the headroom reads as such
     ax.set_xlim(0, 1)
     ax.set_ylim(-0.25, 1.4)
     ax.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
-    return _finish_panel(ax, "analytical posterior p(C=1|x)",
-                         f"implied weight, {output_name}",
-                         "implied weight vs posterior", "upper left")
+    fig = _finish_panel(ax, "analytical posterior p(C=1|x)",
+                        f"implied weight, {output_name}",
+                        "implied weight vs posterior", None)
+    ax.legend(fontsize=PANEL_FONT["legend"], loc="upper left", handlelength=1.6,
+              borderaxespad=0.4, **LEGEND_BOX)
+    return fig
 
 
 def panel_bias_vs_disparity(saved, ax=None):
@@ -701,6 +711,14 @@ def panel_bias_vs_disparity(saved, ax=None):
                 lw=PANEL_LW, ms=PANEL_MS, color=COLORS["analytical"],
                 label="Bayes-optimal")
     ax.axhline(0, lw=0.5, color="gray")
+    # the bias swings through most of the panel on both sides of zero, so the
+    # legend gets headroom above the peak rather than a corner of the data
+    # (1 Nov 2026): y from -1.1 to 1.65 times the largest |bias|
+    top = float(np.nanmax(np.abs(np.concatenate(
+        [np.asarray(saved["bias_net"], float),
+         np.asarray(saved.get("bias_opt", saved["bias_net"]), float)]))))
+    ax.set_ylim(-1.1 * top, 1.65 * top)
+    ax.set_yticks([t for t in ax.get_yticks() if abs(t) <= top])   # the headroom reads as such
     return _finish_panel(ax, "body-frame disparity (deg)",
                          "pull toward vision (deg)",
                          "bias vs disparity", "upper left")

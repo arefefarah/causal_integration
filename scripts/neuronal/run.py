@@ -161,7 +161,9 @@ def units():
                    color=CLASS_COLORS[cl], alpha=0.85, label=cl)
         ax.set_xticks(x)
         ax.set_xticklabels([o[2] for o in order])
-        ax.set_ylim(0, 58)
+        # headroom for the three-row legend above the tallest bar (the twin's
+        # congruent units; 1 Nov 2026)
+        ax.set_ylim(0, max(58, 1.55 * max(o[1][f"n_{cl}"] for o in order for cl in CLASSES)))
         return finish_panel(ax, "", "units of 64", "unit classes by network", "upper left")
 
     def pD(ax=None):
@@ -176,8 +178,9 @@ def units():
         ax.set_ylim(0, 66)
         fig = finish_panel(ax, "prior on a common cause", "units of 64",
                            "unit classes against the prior", None)
-        ax.legend(fontsize=PANEL_FONT["legend"], loc="upper left", ncol=3, handlelength=1.2,
-                  columnspacing=0.8, borderaxespad=0.2)
+        # one column (1 Nov 2026): three ran past the axes into the next panel
+        ax.legend(fontsize=PANEL_FONT["legend"], loc="upper left", ncol=1, handlelength=1.2,
+                  borderaxespad=0.2, labelspacing=0.3)
         return fig
 
     def pE(ax=None):
@@ -278,9 +281,15 @@ def r6(run=None, n=4000, seed=0):
         ax = panel_axes(ax)
         one = hist_data["one"]
         bins = np.linspace(-2, 3, 41)
-        ax.hist(hist_data["pull"][one], bins, color=COLORS["network"], alpha=0.6, label="inferred one cause")
-        ax.hist(hist_data["pull"][~one], bins, color=COLORS["visual"], alpha=0.6, label="inferred two causes")
-        ax.axvline(0, lw=0.8, color="k", ls=":")
+        n1, _, _ = ax.hist(hist_data["pull"][one], bins, color=COLORS["network"], alpha=0.6,
+                           label="inferred one cause")
+        n2, _, _ = ax.hist(hist_data["pull"][~one], bins, color=COLORS["visual"], alpha=0.6,
+                           label="inferred two causes")
+        # the legend is two thirds of the panel wide and the mode sits under
+        # it in every corner: headroom above the tallest bar, and the zero
+        # line stops below the legend (1 Nov 2026)
+        ax.set_ylim(0, 1.38 * max(n1.max(), n2.max()))
+        ax.axvline(0, ymax=1 / 1.38 + 0.03, lw=0.8, color="k", ls=":")
         return finish_panel(ax, "pull of hand estimate toward vision (deg)", "trials",
                             f"nominal disparity {d0:.2f}°", "upper right")
 
@@ -295,6 +304,10 @@ def r6(run=None, n=4000, seed=0):
             ax.errorbar(Ds, m, yerr=[np.subtract(m, lo), np.subtract(hi, m)], fmt="o-", lw=PANEL_LW,
                         ms=PANEL_MS, color=col, capsize=2, label=lab)
         ax.plot(Ds, Ds, ":", lw=0.8, color="gray", label="nominal")
+        # the two-cause line climbs through the upper left, the one-cause line
+        # through the lower right: the three-row legend gets headroom (1 Nov 2026)
+        lo, hi = ax.get_ylim()
+        ax.set_ylim(lo, lo + 1.3 * (hi - lo))
         return finish_panel(ax, "nominal disparity (deg)", "measured disparity (deg)",
                             "the input behind each decision", "upper left")
 
@@ -589,8 +602,10 @@ def r5(runs=None):
             ax.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
             fig = finish_panel(ax, "|disparity| (deg)", "weight on fused estimate",
                                f"{RUN_LABEL[run]}: whole-class clamp", None)
-            ax.legend(fontsize=7, loc="upper center", ncol=2, handlelength=1.3,
-                      columnspacing=0.7, borderaxespad=0.2, handletextpad=0.5)
+            # tighter handles and spacing (1 Nov 2026): the two columns ran a
+            # few points past the axes on either side
+            ax.legend(fontsize=7, loc="upper center", ncol=2, handlelength=1.0,
+                      columnspacing=0.5, borderaxespad=0.2, borderpad=0.2, handletextpad=0.3)
             return fig
         return draw
 
@@ -605,17 +620,20 @@ def r5(runs=None):
                     ax.plot(idx[m], dS[m], "o", ms=PANEL_MS + 0.5, color=CLASS_COLORS[c], alpha=0.8,
                             label=f"{CLASS_LABEL[c]} ({m.sum()})")
             ax.axhline(0, lw=0.5, color="gray")
-            ax.axvline(0.5, ls=":", lw=0.6, color="gray")
-            ax.axvline(-0.5, ls=":", lw=0.6, color="gray")
             # every one of the 64 units is drawn; the legend sits in headroom
             # above the data so that its markers cannot be read as points
+            # (two columns since 1 Nov 2026: three ran past the 1.84-in axes;
+            # the class boundaries stop below the legend for the same reason)
             top = float(np.abs(dS).max())
-            ax.set_ylim(-1.15 * top, 1.7 * top)
+            ax.set_ylim(-1.15 * top, 2.05 * top)
+            data_top = (1.15 + 1.0) / (1.15 + 2.05)        # the data's top as an axes fraction
+            ax.axvline(0.5, ymax=data_top + 0.02, ls=":", lw=0.6, color="gray")
+            ax.axvline(-0.5, ymax=data_top + 0.02, ls=":", lw=0.6, color="gray")
             ax.set_yticks([t for t in ax.get_yticks() if abs(t) <= 1.15 * top])
             ax.set_xlim(-1.08, 1.08)
             fig = finish_panel(ax, "congruency index", "Δ segregation, one unit clamped",
                                f"single-unit lesions (r = {r['corr_index_dS']:+.2f})", None)
-            ax.legend(fontsize=6.5, loc="upper center", ncol=3, handlelength=0.6, columnspacing=0.35,
+            ax.legend(fontsize=6.5, loc="upper center", ncol=2, handlelength=0.6, columnspacing=0.6,
                       borderaxespad=0.2, handletextpad=0.1, frameon=False, title="all 64 units, one at a time",
                       title_fontsize=7)
             return fig
@@ -635,7 +653,9 @@ def r5(runs=None):
                 if c in r["classes"]:
                     S = np.array(r["classes"][c][stat])
                     ax.plot(k[:len(S)], S, "-", lw=PANEL_LW, color=CLASS_COLORS[c], label=f"{CLASS_LABEL[c]} first")
-            ax.set_ylim(-0.05, 1.05)
+            # room under the random band for the four-row legend (1 Nov 2026)
+            ax.set_ylim(-0.14, 1.05)
+            ax.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
             return finish_panel(ax, "units removed (most typical first)", ylab,
                                 f"{RUN_LABEL[run]}: cumulative lesion", "lower left")
         return draw

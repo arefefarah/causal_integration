@@ -203,7 +203,10 @@ def manuscript_figure(rows, curves):
                              elinewidth=0.8, alpha=0.55, zorder=3)
             axA.plot(cn, wn, "o-", ms=PANEL_MS - 0.5, lw=PANEL_LW, color=col[p], zorder=4)
     axA.axhline(0.5, lw=0.6, ls=":", color="grey", zorder=1)
-    axA.set(ylim=(-0.06, 1.06), xlim=(-31, 31))
+    # headroom above the curves for the legend (1 Nov 2026): the rising flanks
+    # of the high-prior curves reach the upper-left corner, so the legend
+    # sits above 1 and the ticks stop at 1
+    axA.set(ylim=(-0.06, 1.32), xlim=(-31, 31), yticks=[0, 0.2, 0.4, 0.6, 0.8, 1.0])
     # short labels: in a wide cell with the colourbar reserve the axes are
     # 2.5 in across, and a longer legend would sit on the 0.9 curve
     handles = [plt.Line2D([], [], color="grey", lw=PANEL_LW, marker="o", ms=PANEL_MS,
