@@ -15,7 +15,6 @@ from cmsi.viz.manuscript import (  # noqa: F401  (re-exported for callers and te
     CELL_WIDE,
     FIG_BIAS,
     FIG_DECODING,
-    FIG_ERRORS,
     FIG_HUMP,
     FIG_LESION,
     FIG_SCATTER,
@@ -594,6 +593,10 @@ def panel_fusion_weight(disparity, w_network, p_analytical, grid, w_prop=None,
                         ax=None):
     """04_fusion_weight as a manuscript panel."""
     ax = _panel_axes(ax)
+    # --- shaded region and vertical lines at midpoint---
+    ax.axvspan(-4, 4, color="mediumturquoise", alpha=0.15, lw=0, zorder=0)
+    for x in (-4, 4):
+        ax.axvline(x, color="mediumturquoise", ls="--", lw=1, zorder=1)
     c_opt, m_opt, _ = mean_by_bin(disparity, p_analytical, grid)
     ax.plot(c_opt, m_opt, "--o", lw=PANEL_LW, ms=PANEL_MS,
             color=COLORS["analytical"], label="analytical p(C=1)")
@@ -724,27 +727,27 @@ def panel_bias_vs_disparity(saved, ax=None):
                          "bias vs disparity", "upper left")
 
 
+SCATTER_RANGE = {"mu": ((-40, 40), (-40, -20, 0, 20, 40)),
+                 "var": ((0, 10), (0, 2, 4, 6, 8, 10))}
+
+
 def panel_output_scatter(y, yhat, name, r2, rmse, ax=None):
-    """One output of 01_output_scatter on the standard panel."""
+    """One output of 01_output_scatter on the standard panel, x and y on the
+    range of its kind of output (SCATTER_RANGE, by the prefix of `name`)."""
     ax = _panel_axes(ax)
     ax.scatter(y, yhat, s=2, alpha=0.15, color=COLORS["network"], rasterized=True)
     lo, hi = np.percentile(y, [0.5, 99.5])
     ax.plot([lo, hi], [lo, hi], "--", lw=1, color=COLORS["analytical"])
+    kind = str(name).split("_")[0]
+    if kind in SCATTER_RANGE:
+        lim, ticks = SCATTER_RANGE[kind]
+        ax.set(xlim=lim, ylim=lim, xticks=ticks, yticks=ticks)
     # U+00B2 rather than mathtext $^2$: a mathtext superscript is set at 70 %
     # of the title size, which would add a 6.3-pt glyph to a 9-pt title. No
     # "=": with them the title is 2.03 in wide and touches the 2.5-in cell edge;
     # without, 1.82 in, with 0.11 in to spare (measured, not estimated).
     return _finish_panel(ax, "analytical", "network",
                          f"{name}   R\u00b2 {r2:.3f}   RMSE {rmse:.2f}")
-
-
-def panel_error_histogram(err, name, ax=None):
-    """One output of 02_error_histograms on the standard panel."""
-    ax = _panel_axes(ax)
-    ax.hist(err, bins=60, color=COLORS["network"])
-    ax.axvline(0, lw=1, color=COLORS["analytical"])
-    return _finish_panel(ax, "network - analytical", "trials",
-                         f"{name}   bias = {err.mean():.2f}")
 
 
 def panel_variance_hump(sig, output_name, legend=True, ax=None):
@@ -832,11 +835,11 @@ def manuscript_row(draw):
 # One folder per manuscript figure, named as the figure is numbered in the
 # paper (FIG_* in viz/manuscript.py -- the ONLY place a figure is numbered);
 # the composed figure inside it carries the SAME name (so
-# results/manuscript/fig4_fusion_weight/fig4_fusion_weight.png), the panels
+# results/manuscript/fig3_fusion_weight/fig3_fusion_weight.png), the panels
 # are A_..., B_..., and `save_figures` drops a flat copy of the composed png
-# next to the folder (results/manuscript/fig4_fusion_weight.png) for upload.
-# This module renders FIG_SCATTER, FIG_ERRORS, FIG_WEIGHT, FIG_HUMP and
-# FIG_DECODING; the neuronal-level figures are written by scripts/neuronal/
+# next to the folder (results/manuscript/fig3_fusion_weight.png) for upload.
+# This module renders FIG_SCATTER, FIG_WEIGHT, FIG_HUMP and FIG_DECODING;
+# the neuronal-level figures are written by scripts/neuronal/
 # (kept under results/<run>/figures/model/neuronal_level_analysis/ and copied
 # to the run's manuscript folder under their paper names), FIG_SWEEP by
 # scripts/05_prior_sweep.py, FIG_TRANSFORMATION by scripts/transformation/;
@@ -846,13 +849,14 @@ def manuscript_row(draw):
 def manuscript_panels(pred, d, names, analysis_cfg, w, w_prop, saved, metrics):
     """-> {folder/name: Figure} for manuscript_dir(run)/<folder>/ (results/manuscript/).
 
-    Three fixed-frame panels with identical size, axes rectangle and fonts,
-    plus the composed row. Returns {} when any input is missing, and says so.
+    Two fixed-frame panels with identical size, axes rectangle and fonts,
+    plus the composed figure (the bias curve, once panel C, is only the model
+    figure 12_behavioral_bias now). Returns {} when any input is missing, and
+    says so.
     """
     files = getattr(saved, "files", saved) if saved is not None else ()
     need = {"fusion weight": w is not None,
-            "weight regression": "weight_regression_vis" in metrics,
-            "bias curve": saved is not None and "bias_centres" in files}
+            "weight regression": "weight_regression_vis" in metrics}
     missing = [k for k, ok in need.items() if not ok]
     if missing:
         print(f"manuscript panels skipped, missing: {', '.join(missing)}")
@@ -869,12 +873,8 @@ def manuscript_panels(pred, d, names, analysis_cfg, w, w_prop, saved, metrics):
         return panel_weight_regression(w, d["post_c1"], reg, flags=flags,
                                        output_name="vis", ax=ax)
 
-    def bd(ax=None):
-        return panel_bias_vs_disparity(saved, ax=ax)
-
-    # 2 x 2 versions of 01_output_scatter and 02_error_histograms: same panel
-    # order (A B / C D) as the originals, every cell a standard panel, so each
-    # figure is 5.0 x 5.0 in
+    # 2 x 2 version of 01_output_scatter: same panel order (A B / C D) as the
+    # original, every cell a standard panel, so the figure is 5.0 x 5.0 in
     target = np.stack([d[k] for k in names], axis=1)
     acc = accuracy(pred, target, names)
 
@@ -882,22 +882,16 @@ def manuscript_panels(pred, d, names, analysis_cfg, w, w_prop, saved, metrics):
         return lambda ax=None: panel_output_scatter(
             target[:, j], pred[:, j], names[j], acc[j]["r2"], acc[j]["rmse"], ax=ax)
 
-    def eh(j):
-        return lambda ax=None: panel_error_histogram(
-            pred[:, j] - target[:, j], names[j], ax=ax)
-
-    # figure 6: 09/10_variance_hump side by side, two WIDE cells -> 7.5 x 2.5 in,
-    # the same outer size as figure 4; one legend, in A, since both panels
-    # draw the same four series
+    # figure 3: two standard cells, 5.0 x 2.5 in (the bias curve, once panel C,
+    # left on 8 Nov 2026). figure 6: 09/10_variance_hump side by side, two WIDE
+    # cells -> 7.5 x 2.5 in; one legend, in A, since both panels draw the same
+    # four series
     figs = {
         f"{FIG_WEIGHT}/A_fusion_weight": fw(),
         f"{FIG_WEIGHT}/B_weight_regression": wr(),
-        f"{FIG_WEIGHT}/C_bias_vs_disparity": bd(),
-        f"{FIG_WEIGHT}/{FIG_WEIGHT}": manuscript_row([fw, wr, bd]),
+        f"{FIG_WEIGHT}/{FIG_WEIGHT}": manuscript_grid([fw, wr], ncols=2),
         f"{FIG_SCATTER}/{FIG_SCATTER}": manuscript_grid([sc(j) for j in range(len(names))],
                                                         ncols=2),
-        f"{FIG_ERRORS}/{FIG_ERRORS}": manuscript_grid([eh(j) for j in range(len(names))],
-                                                      ncols=2),
     }
     if "variance_signature_vis" in metrics and "variance_signature_prop" in metrics:
         sv, sp = metrics["variance_signature_vis"], metrics["variance_signature_prop"]
@@ -910,7 +904,7 @@ def manuscript_panels(pred, d, names, analysis_cfg, w, w_prop, saved, metrics):
         print("figure 6 skipped: no variance_signature in metrics.json")
     # figure 8: the posterior decoded by layer (06/07), causal network beside
     # its twin, and the RF shift gains of the MSL units (14) -- two WIDE
-    # cells, 7.5 x 2.5 in, the same outer size as figures 4 and 6
+    # cells, 7.5 x 2.5 in, the same outer size as figure 6
     if "post_c1_decoding_r2" in metrics and "rf_shift_gain" in files:
         dec, twin = metrics["post_c1_decoding_r2"], metrics.get("twin_post_c1_decoding_r2")
 

@@ -142,8 +142,8 @@ def manuscript_dir(run="flagship"):
 #
 #   fig1   task, generative model, encoding, network  drawn by hand; not rendered
 #   fig2   read-out accuracy, 2 x 2                    04_figures.py (results.manuscript_panels)
-#   fig3   residual histograms, 2 x 2                  04_figures.py
-#   fig4   implied fusion weight, A-C                  04_figures.py
+#   fig3   implied fusion weight, A-B                  04_figures.py
+#   fig4   relative bias against true disparity        neuronal/run.py bias-disparity
 #   fig5   decision-conditioned bias                   neuronal/run.py r6
 #   fig6   variance signature                          04_figures.py
 #   fig7   prior sweep                                 05_prior_sweep.py
@@ -151,6 +151,12 @@ def manuscript_dir(run="flagship"):
 #   fig9   unit classes over 100 seeds                 neuronal/seeds.py units
 #   fig10  class lesions over 100 seeds                neuronal/seeds.py lesion
 #   fig11  the transformation and the causal decision  transformation/manuscript_figures
+#
+#   (The residual histograms were Fig. 3 until 8 Nov 2026 and are no longer a
+#   manuscript figure; the run's model figure 02_error_histograms keeps them.
+#   Later the same day the bias curve, panel C of fig3, left the figure (the
+#   model figure 12_behavioral_bias keeps it), the relative bias against true
+#   disparity became fig4, and fig4-fig10 became fig5-fig11.)
 #
 #   figS_lesion_seeds        lesion statistics of the seeds       neuronal/seeds.py si
 #   figS_lesion_pairs_seeds  single-unit and pair lesions         neuronal/seeds.py si
@@ -166,8 +172,8 @@ def manuscript_dir(run="flagship"):
 #   (all scripts under scripts/)
 FIG_TASK = "fig1_task_model_network"
 FIG_SCATTER = "fig2_output_scatter"
-FIG_ERRORS = "fig3_error_histograms"
-FIG_WEIGHT = "fig4_fusion_weight"
+FIG_WEIGHT = "fig3_fusion_weight"
+FIG_BIAS_DISPARITY = "fig4_bias_disparity"
 FIG_BIAS = "fig5_decision_bias"
 FIG_HUMP = "fig6_variance_hump"
 FIG_SWEEP = "fig7_prior_sweep"
@@ -175,7 +181,7 @@ FIG_DECODING = "fig8_decoding_rf_shift"
 FIG_UNITS = "fig9_units_seeds"
 FIG_LESION = "fig10_lesion_seeds"
 FIG_TRANSFORMATION = "fig11_transformation_decision"
-FIGURES = (FIG_TASK, FIG_SCATTER, FIG_ERRORS, FIG_WEIGHT, FIG_BIAS, FIG_HUMP,
+FIGURES = (FIG_TASK, FIG_SCATTER, FIG_WEIGHT, FIG_BIAS_DISPARITY, FIG_BIAS, FIG_HUMP,
            FIG_SWEEP, FIG_DECODING, FIG_UNITS, FIG_LESION, FIG_TRANSFORMATION)
 
 FIG_S_LESION_SEEDS = "figS_lesion_seeds"

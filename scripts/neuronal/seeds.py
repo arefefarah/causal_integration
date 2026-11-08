@@ -51,7 +51,7 @@ against random lesions matched in size AND in RMSE; `pairs`, every single
 unit and every pair of units clamped (lesion_pairs_seeds: the change per
 class pair, the additivity of the effects, the worst pairs; its manuscript
 copy figS_lesion_pairs_seeds, Fig. S2, leaves out the single-unit and
-class-additivity panels, which are Fig. 9E and F); `clamp`, the
+class-additivity panels, which are Fig. 10F and G); `clamp`, the
 whole-class clamp with the units set to 0 and to 1 instead of their mean
 (lesion_clamp_seeds). `patterns` collects the tuning curves of every unit
 of every network and partitions the intermediate units' curves by k-means
@@ -1283,7 +1283,7 @@ def pairs_figure(run, pr, label):
     for key, fn in zip(("A_single_unit_by_class", "B_pairs_fusion", "C_pairs_segregation", "D_additivity_pairs",
                         "E_additivity_class", "F_worst_pairs_composition"), draws):
         figs[f"{K_PAIRS}/{key}"] = fn()
-    # Fig. S2: the pair panels only; A and E are Fig. 9E and F of the paper
+    # Fig. S2: the pair panels only; A and E are Fig. 10F and G of the paper
     paper = manuscript_grid([pB, pC, pD, pF], ncols=2)
     save_figures({f"{PAPER_PAIRS}/{PAPER_PAIRS}": paper}, manuscript_dir(run), formats=FORMATS)
     save_figures(figs, out_dir(run), formats=FORMATS)
@@ -1739,7 +1739,7 @@ def units_paper_figure(run, u=None, label=None, numbers=None):
     pat_file = out_dir(run) / K_PATTERNS / "numbers.json"
     if numbers is None:
         if not pat_file.exists():
-            print(f"   (no {pat_file}: run `seeds.py patterns` first; fig9_units_seeds not drawn)")
+            print(f"   (no {pat_file}: run `seeds.py patterns` first; {PAPER_UNITS_FIG} not drawn)")
             return None
         numbers = json.loads(pat_file.read_text())
     pos = np.asarray(numbers["positions"], float)
@@ -1855,7 +1855,7 @@ def lesion_paper_figure(run, agg=None, numbers=None, band="sd"):
     label = f"{n} networks"
     pr = agg.get("pairs")
     if not pr:
-        print("   (no pairs design in numbers.json: run `seeds.py analyse --extras pairs`; fig10_lesion_seeds not drawn)")
+        print(f"   (no pairs design in numbers.json: run `seeds.py analyse --extras pairs`; {PAPER_LESION_FIG} not drawn)")
         return None
 
     def sem_band(ax, x, m, sd, count, color, lw=PANEL_LW, label_=None, ls="-"):

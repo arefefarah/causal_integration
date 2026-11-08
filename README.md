@@ -107,8 +107,8 @@ one place a figure is numbered (`FIG_*`).
 |---|---|---|
 | 1 | `fig1_task_model_network` | drawn by hand (task, generative model, encoding, network); stored here only |
 | 2 | `fig2_output_scatter` | `04_figures.py --run flagship --only manuscript` |
-| 3 | `fig3_error_histograms` | `04_figures.py` |
-| 4 | `fig4_fusion_weight` | `04_figures.py` |
+| 3 | `fig3_fusion_weight` | `04_figures.py` (panels A and B) |
+| 4 | `fig4_bias_disparity` | `scripts/neuronal/run.py bias-disparity` (relative bias against true disparity, as in Körding et al. 2007, Fig. 2e, on probe trials of fixed true positions; the main network and the satellites at p = 0.3 and 0.7) |
 | 5 | `fig5_decision_bias` | `scripts/neuronal/run.py r6` |
 | 6 | `fig6_variance_hump` | `04_figures.py` |
 | 7 | `fig7_prior_sweep` | `05_prior_sweep.py` (`--replot` redraws from the stored sweep) |

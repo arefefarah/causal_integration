@@ -171,7 +171,7 @@ def _trio(tmp_path):
 
 
 def test_weight_regression_panel_has_both_legends_and_the_shares(tmp_path):
-    """Figure 4B: the hybrid read against the posterior, sources in one legend
+    """Figure 3B: the hybrid read against the posterior, sources in one legend
     (lower right, with their shares of all trials), the two lines in the
     other (upper left), on the standard panel with panel A's y range."""
     from cmsi.viz import results
@@ -196,10 +196,24 @@ def test_weight_regression_panel_has_both_legends_and_the_shares(tmp_path):
     assert drawn == 500
 
 
-def test_manuscript_panels_figure_4_is_weight_regression(tmp_path):
-    """The manuscript's figure 4 is A fusion weight, B the hybrid read on the
-    posterior (08v panel B), C bias vs disparity; the position regression is
-    no longer a manuscript panel."""
+def test_output_scatter_panel_has_one_range_on_both_axes():
+    """Figure 2: x and y share one range and one set of ticks, +-40 deg for a
+    position output and 0-10 deg^2 for a variance output."""
+    from cmsi.viz import results
+    rng = np.random.default_rng(2)
+    for name, lim in (("mu_vis", (-40, 40)), ("var_prop", (0, 10))):
+        y = rng.normal(0, 10, 500) if name.startswith("mu") else rng.uniform(2, 7, 500)
+        fig = results.panel_output_scatter(y, y + rng.normal(0, 0.3, y.size), name, 0.99, 0.3)
+        ax = fig.axes[0]
+        assert ax.get_xlim() == lim and ax.get_ylim() == lim
+        assert list(ax.get_xticks()) == list(ax.get_yticks())
+        assert tuple(fig.get_size_inches()) == tuple(results.CELL_SQUARE)
+
+
+def test_manuscript_panels_figure_3_is_weight_regression(tmp_path):
+    """The manuscript's figure 3 is A fusion weight, B the hybrid read on the
+    posterior (08v panel B); the bias curve (panel C until 8 Nov 2026) and
+    the position regression are no longer manuscript panels."""
     from matplotlib import pyplot as plt
 
     from cmsi.viz import results
@@ -222,11 +236,10 @@ def test_manuscript_panels_figure_4_is_weight_regression(tmp_path):
                                      w, w, saved, metrics)
     F = results.FIG_WEIGHT
     keys = {k for k in figs if k.startswith(F)}
-    assert keys == {f"{F}/A_fusion_weight", f"{F}/B_weight_regression",
-                    f"{F}/C_bias_vs_disparity", f"{F}/{F}"}
+    assert keys == {f"{F}/A_fusion_weight", f"{F}/B_weight_regression", f"{F}/{F}"}
     row = figs[f"{results.FIG_WEIGHT}/{results.FIG_WEIGHT}"]
     assert [ax.get_title() for ax in row.axes] == [
-        "fusion-segregation transition", "implied weight vs posterior", "bias vs disparity"]
+        "fusion-segregation transition", "implied weight vs posterior"]
     for fig in figs.values():
         plt.close(fig)
 
@@ -427,7 +440,9 @@ def test_manuscript_grid_tiles_standard_panels(tmp_path):
 
     from cmsi.viz import results
     rng = np.random.default_rng(0)
-    draw = [lambda ax, k=k: results.panel_error_histogram(rng.normal(size=2000), f"o{k}", ax=ax)
+    y = rng.normal(size=2000)
+    draw = [lambda ax, k=k: results.panel_output_scatter(y, y + rng.normal(scale=0.3, size=y.size),
+                                                         f"o{k}", 0.99, 0.3, ax=ax)
             for k in range(4)]
     grid = results.manuscript_grid(draw, ncols=2)
     assert tuple(grid.get_size_inches()) == (5.0, 5.0)
@@ -551,9 +566,9 @@ def test_figure_registry_numbers_the_paper_once():
     assert len(set(names) | set(manuscript.SI_FIGURES)) == len(names) + len(manuscript.SI_FIGURES)
     assert names[0] == manuscript.FIG_TASK
     assert prior_sweep.FOLDER == manuscript.FIG_SWEEP
-    rendered = {results.FIG_SCATTER, results.FIG_ERRORS, results.FIG_WEIGHT, results.FIG_HUMP,
-                results.FIG_DECODING}
-    elsewhere = {manuscript.FIG_BIAS, manuscript.FIG_UNITS, manuscript.FIG_LESION,
+    rendered = {results.FIG_SCATTER, results.FIG_WEIGHT, results.FIG_HUMP, results.FIG_DECODING}
+    elsewhere = {manuscript.FIG_BIAS_DISPARITY, manuscript.FIG_BIAS, manuscript.FIG_UNITS,
+                 manuscript.FIG_LESION,
                  manuscript.FIG_SWEEP, manuscript.FIG_TRANSFORMATION, manuscript.FIG_TASK}
     assert rendered | elsewhere == set(names)
     # the figure name does not leak into the code except through the registry

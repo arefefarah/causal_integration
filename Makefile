@@ -49,7 +49,7 @@ analyze:  ## compare RUN against the analytical observer
 figures:  ## render every figure for RUN
 	poetry run python scripts/04_figures.py --run $(RUN)
 
-neuronal:  ## the neuronal-level analyses of RUN (Fig. 5, figS_units_network, figS_lesion_networks), no torch needed  (make neuronal RUN=flagship)
+neuronal:  ## the neuronal-level analyses of RUN (Figs. 4 and 5, figS_units_network, figS_lesion_networks), no torch needed  (make neuronal RUN=flagship)
 	poetry run python scripts/neuronal/run.py --run $(RUN)
 
 seeds:  ## the unit and lesion analyses across N seeds of RUN (Figs. 9, 10, S1, S2): trains seeds 1..N-1 (hours), then analyses and draws  (make seeds RUN=flagship N=100)
