@@ -71,7 +71,7 @@ training:
 # --------------------------------------------------------------------------- #
 analysis:
   # Bin centres of the disparity curves (figures 03/04/05/12, manuscript Fig. 3A/C,
-  # the conditioned-bias flag); trials go to the nearest centre. Since 2026-10-03:
+  # the conditioned-bias flag); trials go to the nearest centre.
   # 2-deg steps across the transition (|d| < 12 holds 80 % of the trials on this
   # domain, 99 % lie below 34 deg), ending at +-30 so no bin rests on a few dozen
   # trials. The analysis block is not a training parameter -- 03_analyze.py

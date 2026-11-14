@@ -212,8 +212,8 @@ def test_output_scatter_panel_has_one_range_on_both_axes():
 
 def test_manuscript_panels_figure_3_is_weight_regression(tmp_path):
     """The manuscript's figure 3 is A fusion weight, B the hybrid read on the
-    posterior (08v panel B); the bias curve (panel C until 8 Nov 2026) and
-    the position regression are no longer manuscript panels."""
+    posterior (08v panel B); the bias curve and the position regression are
+    not manuscript panels."""
     from matplotlib import pyplot as plt
 
     from cmsi.viz import results
@@ -334,7 +334,7 @@ def test_rf_shift_panel_marks_both_reference_frames():
 
 
 def test_manuscript_panels_figure_8_is_decoding_and_rf_shift(tmp_path):
-    """The manuscript's figure 8 is A the posterior decoded by layer, B the RF
+    """The manuscript's figure 7 is A the posterior decoded by layer, B the RF
     shift gains, two wide cells in one 7.5 x 2.5 in row; it is skipped
     cleanly when the run has no decoding or no RF sweep."""
     from matplotlib import pyplot as plt
@@ -377,7 +377,7 @@ def test_manuscript_panels_figure_8_is_decoding_and_rf_shift(tmp_path):
     assert tuple(sorted(set(re.findall(r"font-size: ?([\d.]+)px", text)))) == ("12", "8", "9")
     for fig in figs.values():
         plt.close(fig)
-    # no decoding in metrics -> no figure 8, nothing else lost
+    # no decoding in metrics -> no figure 7, nothing else lost
     metrics.pop("post_c1_decoding_r2")
     figs = results.manuscript_panels(pred, d, names, {"disparity_grid": centres.tolist()},
                                      w, w, saved, metrics)
@@ -551,7 +551,7 @@ def test_manuscript_dir_protects_the_flagship_figures():
 
 def test_figure_registry_numbers_the_paper_once():
     """viz/manuscript.py is the one place a figure is numbered: the main
-    figures run fig1..fig11 without a gap, in the paper's order, the
+    figures run fig1..fig10 without a gap, in the paper's order, the
     supporting figures are figS_<content>, and every writer (the per-run
     panels, the sweep, the neuronal scripts, the transformation figures)
     takes its name from there. Figure 1 is the drawn schematic, which the
@@ -567,7 +567,7 @@ def test_figure_registry_numbers_the_paper_once():
     assert names[0] == manuscript.FIG_TASK
     assert prior_sweep.FOLDER == manuscript.FIG_SWEEP
     rendered = {results.FIG_SCATTER, results.FIG_WEIGHT, results.FIG_HUMP, results.FIG_DECODING}
-    elsewhere = {manuscript.FIG_BIAS_DISPARITY, manuscript.FIG_BIAS, manuscript.FIG_UNITS,
+    elsewhere = {manuscript.FIG_BIAS_DISPARITY, manuscript.FIG_UNITS,
                  manuscript.FIG_LESION,
                  manuscript.FIG_SWEEP, manuscript.FIG_TRANSFORMATION, manuscript.FIG_TASK}
     assert rendered | elsewhere == set(names)

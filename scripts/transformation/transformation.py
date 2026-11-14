@@ -1,8 +1,7 @@
 """The transformation -> causal inference statistics, one network at a time.
 
 `analyse(b)` takes a bundle from inv_common.load_run (a causal network) and
-returns one nested dict: the channels of the investigation plan
-(claude/investigation_plan_transformation_to_causality_2026-10-13.md):
+returns one nested dict, one entry per channel:
 
     R0        the network against its own observer (the repo's statistics)
     R1        the transformation-free observer (true eye) on the same trials

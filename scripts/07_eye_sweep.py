@@ -328,8 +328,8 @@ def draw(out, agg, curves, rows=None, param="eye_sd"):
                            "weight vs disparity (seed 0)", None)
         ax.text(0.98, 0.42, "dashed:\nobserver p(C=1|x)", transform=ax.transAxes, ha="right", va="bottom",
                 fontsize=7, color="grey")
-        # two columns (1 Nov 2026): three ran past the axes with the longer
-        # eye-mean labels; three rows still fit the headroom above the curves
+        # two columns: three would run past the axes with the longer
+        # eye-mean labels; three rows fit the headroom above the curves
         ax.legend(fontsize=7, loc="upper center", ncol=2, handlelength=1.2, columnspacing=0.8,
                   borderaxespad=0.2, handletextpad=0.4)
         return fig
@@ -345,7 +345,7 @@ def draw(out, agg, curves, rows=None, param="eye_sd"):
         xaxis(ax)
         fig = finish_panel(ax, spec["label"], "slope (Bayes-optimal: 1)",
                            f"Bayesian weighting ({label})", None)
-        # one column (1 Nov 2026): two ran past the axes into panel C's label
+        # one column: two would run past the axes into panel C's label
         ax.legend(fontsize=6.5, loc="lower left", ncol=1, handlelength=1.6, borderaxespad=0.2,
                   labelspacing=0.3)
         return fig
@@ -378,7 +378,7 @@ def draw(out, agg, curves, rows=None, param="eye_sd"):
         fig = finish_panel(ax, spec["label"], "median RF-shift gain, MSL",
                            f"RF transformation ({label})", None)
         # the legend is anchored between the two reference lines rather than
-        # at the axes' centre (1 Nov 2026): when the lower limit follows a
+        # at the axes' centre: when the lower limit follows a
         # negative gain, the centre drops onto the 'spatial code' label
         ax.legend(fontsize=PANEL_FONT["legend"], loc="center left", bbox_to_anchor=(0.0, 0.6),
                   handlelength=1.6, borderaxespad=0.4)

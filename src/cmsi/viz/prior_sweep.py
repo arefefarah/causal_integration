@@ -5,9 +5,7 @@ One publication figure, two panels:
     A  implied fusion weight vs disparity, one curve per prior
     B  network transition midpoint against the analytical midpoint
 
-(The position-regression-slope panel that used to be C was removed on
-17 Oct 2026, with the manuscript section it supported; `hump_panel` below is
-the separate variance-hump diagnostic.)
+`hump_panel` below is the separate variance-hump diagnostic.
 
 Colour encodes the prior, which is an ordered magnitude, so it uses a single
 sequential hue ramp (light = low prior, dark = high) rather than categorical
@@ -167,7 +165,7 @@ def hump_panel(rows, ax=None):
 # --------------------------------------------------------------------------- #
 # The manuscript version, on the standard cells (viz/manuscript.py)
 # --------------------------------------------------------------------------- #
-FOLDER = FIG_SWEEP                  # results/manuscript/fig7_prior_sweep/fig7_prior_sweep.*
+FOLDER = FIG_SWEEP                  # results/manuscript/fig6_prior_sweep/fig6_prior_sweep.*
 COLORBAR_RESERVE = 0.62                      # in, carved from A's axes width
 
 
@@ -203,7 +201,7 @@ def manuscript_figure(rows, curves):
                              elinewidth=0.8, alpha=0.55, zorder=3)
             axA.plot(cn, wn, "o-", ms=PANEL_MS - 0.5, lw=PANEL_LW, color=col[p], zorder=4)
     axA.axhline(0.5, lw=0.6, ls=":", color="grey", zorder=1)
-    # headroom above the curves for the legend (1 Nov 2026): the rising flanks
+    # headroom above the curves for the legend: the rising flanks
     # of the high-prior curves reach the upper-left corner, so the legend
     # sits above 1 and the ticks stop at 1
     axA.set(ylim=(-0.06, 1.32), xlim=(-31, 31), yticks=[0, 0.2, 0.4, 0.6, 0.8, 1.0])

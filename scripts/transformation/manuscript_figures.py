@@ -2,7 +2,7 @@
 composed on the manuscript's standard panel (cmsi.viz.manuscript) and saved
 under results/manuscript/, where the paper's figures live:
 
-    fig11_transformation_decision   2 x 3   the transformation's uncertainty (A-C) and error (D-F)
+    fig10_transformation_decision   2 x 3   the transformation's uncertainty (A-C) and error (D-F)
                                             enter the causal decision as Bayes prescribes
     figS_decision_frame             2 x 2   the decision is made after the transformation (A, B),
                                             with the Bayesian eye gain (C), by units in the
@@ -55,7 +55,7 @@ from cmsi.viz.style import COLORS, apply_style, save_figures  # noqa: E402
 
 FIG_TRANSFORM = FIG_TRANSFORMATION
 FIG_FRAME = FIG_S_DECISION_FRAME
-L_R1, L_R0, L_NET = "observer, noise-free eye signal", "observer, noisy eye signal", "network"  # 20 Oct 2026 (was "true eye position", "own eye signal")
+L_R1, L_R0, L_NET = "observer, noise-free eye signal", "observer, noisy eye signal", "network"
 XL_NOISE = "eye-signal noise sd (deg)"
 
 
@@ -75,9 +75,8 @@ def fig_transformation_decision(D):
         _series(ax, lv, "R0.crossing_R0", C_R0, L_R0, marker="s", ls="--")
         _series(ax, lv, "R0.crossing_net", C_NET, L_NET)
         _xcat(ax, lv, XL_NOISE)
-        # headroom for the longer legend labels (20 Oct 2026); 17 and centred
-        # since 1 Nov 2026: the legend is as wide as the axes and its last row
-        # sat on the 1000° markers at 12°
+        # headroom for the legend, centred and as wide as the axes: with a
+        # lower top its last row would sit on the markers at 12°
         ax.set_ylim(3, 17)
         ax.set_yticks([4, 6, 8, 10, 12, 14])
         finish_panel(ax, XL_NOISE, "fusion window (deg)", "fusion window", "upper center")
@@ -89,10 +88,10 @@ def fig_transformation_decision(D):
         _series(ax, lv, "R0.accuracy_net", C_NET, L_NET)
         _xcat(ax, lv, XL_NOISE)
         ax.set_ylim(0.5, 0.95)
-        # centred (1 Nov 2026): the legend is as wide as the axes
+        # centred: the legend is as wide as the axes
         finish_panel(ax, XL_NOISE, "causal decision correct", "causal accuracy", "lower center")
 
-    def pC(ax):  # window by eye-noise tercile in the wide-range configuration (22 Oct 2026)
+    def pC(ax):  # window by eye-noise tercile in the wide-range configuration
         panel_axes(ax)
         wide = [r for r in D["rows"] if r["param"] == "eye_wide"]
         cn = np.array([[t["crossing_net"] for t in json.loads((OUT / "levels" / "numbers" / f"{r['name']}.json").read_text())["eyerel"]["by_sig2_eye_tercile"]] for r in wide])
@@ -104,7 +103,7 @@ def fig_transformation_decision(D):
         ax.set_xticks(x)
         ax.set_xticklabels([f"{np.sqrt(t['sig2_eye_lo']):.1f}–{np.sqrt(t['sig2_eye_hi']):.1f}" for t in q])
         ax.set_xlim(-0.5, 2.5); ax.set_ylim(4.5, 7.5)
-        # lower right (1 Nov 2026): both series rise to the upper right, under the legend's last row
+        # lower right: both series rise to the upper right, where the legend's last row would be
         finish_panel(ax, "eye-signal noise sd, per trial (deg)", "fusion window (deg)", "trial-by-trial eye reliability", "lower right")
 
     def pD(ax):  # natural error of the eye estimate: fusion of true common-cause trials
@@ -119,8 +118,8 @@ def fig_transformation_decision(D):
                 y = np.array([r[key] for r in rows]); e = np.zeros(len(rows))
             ax.errorbar(x, y, yerr=e, fmt=mk, ls=ls, ms=PANEL_MS, lw=PANEL_LW, color=col, capsize=2, label=lab)
         ax.set_xticks(x); ax.set_xticklabels([f"{r['lo']:g}–{r['hi']:g}" for r in rows]); ax.set_xlim(-0.5, len(rows) - 0.5)
-        ax.set_ylim(0.4, 0.9)                   # room below the curves for the legend (20 Oct 2026)
-        # centred (1 Nov 2026): the legend is as wide as the axes
+        ax.set_ylim(0.4, 0.9)                   # room below the curves for the legend
+        # centred: the legend is as wide as the axes
         finish_panel(ax, "|error of the eye estimate| (deg)", "fusion of common-cause trials", "natural eye-signal error", "lower center")
 
     def pE(ax):  # injected error: the weight curve translates by -k*eps
@@ -137,8 +136,8 @@ def fig_transformation_decision(D):
         ax.set_xlim(-31, 31); ax.set_ylim(-0.05, 1.2)
         finish_panel(ax, "true disparity s_v − s_p (deg)", "implied fusion weight", "injected eye-signal error", None)
         ax.legend(fontsize=7, loc="upper right", handlelength=1.4)
-        # the note sits under the legend, right-aligned like Fig. S decision-frame A
-        # (1 Nov 2026): at the top left it ran into the legend's first row
+        # the note sits under the legend, right-aligned like Fig. S decision-frame A;
+        # at the top left it would run into the legend's first row
         ax.text(0.98, 0.66, "dashed: observer, same signal", transform=ax.transAxes, ha="right", fontsize=6.5,
                 color="grey")
 
@@ -155,14 +154,12 @@ def fig_transformation_decision(D):
         ax.plot(x, -F["eps"]["k"] * x, ls=":", lw=0.9, color="grey", label=f"−k·ε (k = {F['eps']['k']:.2f})")
         ax.plot(x, po, "s--", ms=PANEL_MS, lw=PANEL_LW, color=C_R0, label="observer, same signal")
         ax.errorbar(x, pn, yerr=sn, fmt="o-", ms=PANEL_MS, lw=PANEL_LW, color=C_NET, capsize=2, label=L_NET)
-        # headroom above the diagonal for the legend (1 Nov 2026): at -8° the
-        # line still passes through the upper-right corner's legend
+        # headroom above the diagonal for the legend: at -8° the line
+        # passes through the upper-right corner
         ax.set_ylim(-17, 26)
         ax.set_yticks([-15, -10, -5, 0, 5, 10, 15])
         finish_panel(ax, "injected eye-signal error ε (deg)", "disparity of maximal fusion (deg)", "error read as displacement", "upper right")
 
-    # panel C is the trial-by-trial reliability of the wide-range configuration since 22 Oct 2026
-    # (it replaced the 45-network window regression, removed the same day at the author's request)
     return manuscript_grid([pA, pB, pC, pD, pE, pF], ncols=3)
 
 
@@ -210,7 +207,7 @@ def fig_decision_frame(D):
             ax.plot(x, y, mk, ms=PANEL_MS + 0.5, color=col, alpha=0.8, label=lab)
         # the points run the whole diagonal, corner to corner, and the dashed
         # line crosses the top: a five-row legend sits on data wherever it
-        # goes. Two legends since 1 Nov 2026: the markers in headroom above
+        # goes. Two legends: the markers in headroom above
         # gain = 1, the two reference lines in the empty lower-right triangle.
         ax.set_xlim(-0.03, 1.08); ax.set_ylim(-0.03, 1.52)
         ax.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])

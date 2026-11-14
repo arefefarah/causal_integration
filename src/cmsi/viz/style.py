@@ -295,17 +295,17 @@ def save_figures(figs, outdir, formats=FORMATS, close=True, check=True, flat=Tru
     little wide still gets written and the message says by how much. Returns
     the paths.
 
-    A key like "fig6_variance_hump/fig6_variance_hump" is a COMPOSED
+    A key like "fig5_variance_hump/fig5_variance_hump" is a COMPOSED
     manuscript figure, named as its folder: with `flat` a copy of its png is
-    also written one level up (outdir/fig6_variance_hump.png), so the
+    also written one level up (outdir/fig5_variance_hump.png), so the
     manuscript's figures can be uploaded from one flat listing. Panels
-    ("fig6_variance_hump/A_...") get no copy. The copies are not returned.
+    ("fig5_variance_hump/A_...") get no copy. The copies are not returned.
     """
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
     paths = []
     for name, fig in figs.items():
-        # a key like "fig6_variance_hump/A_variance_hump_vis" puts every
+        # a key like "fig5_variance_hump/A_variance_hump_vis" puts every
         # format of that figure in its own subfolder
         (outdir / name).parent.mkdir(parents=True, exist_ok=True)
         for fmt in formats:

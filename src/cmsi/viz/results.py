@@ -13,7 +13,6 @@ from cmsi.viz.manuscript import (  # noqa: F401  (re-exported for callers and te
     CELL_FULL,
     CELL_SQUARE,
     CELL_WIDE,
-    FIG_BIAS,
     FIG_DECODING,
     FIG_HUMP,
     FIG_LESION,
@@ -171,7 +170,7 @@ def _draw_decoding(ax, series, bar_width=0.2, gap=0.06, ylim_top=1.45,
     matplotlib's 0.4 for two series) and each carries its value, since the
     numbers (0.97 against 0.29) are the result; the y limit leaves room
     above a bar of 1.0 for its label and the legend. Shared by the model
-    figures 06/07 and the manuscript's figure 8A, so the three agree.
+    figures 06/07 and the manuscript's figure 7A, so the three agree.
     """
     present = {k for _, scores, _ in series for k in scores}
     layers = [k for k in LAYER_NAMES if k in present] or sorted(present)
@@ -651,7 +650,7 @@ def panel_weight_regression(w, post, reg, flags=None, output_name="vis", ax=None
     2.5-in panel: the sources in the lower right, where a good network has
     almost no points (high posterior, low weight), and the two lines in the
     upper left under the headroom the y limit leaves above the cloud. Both
-    legends sit on an opaque white box (1 Nov 2026): the cloud's stray
+    legends sit on an opaque white box: the cloud's stray
     points reach every corner of the axes, and the box keeps the legend
     text off them (a few of the 6000 drawn points are hidden under it).
     """
@@ -716,7 +715,7 @@ def panel_bias_vs_disparity(saved, ax=None):
     ax.axhline(0, lw=0.5, color="gray")
     # the bias swings through most of the panel on both sides of zero, so the
     # legend gets headroom above the peak rather than a corner of the data
-    # (1 Nov 2026): y from -1.1 to 1.65 times the largest |bias|
+    # y from -1.1 to 1.65 times the largest |bias|
     top = float(np.nanmax(np.abs(np.concatenate(
         [np.asarray(saved["bias_net"], float),
          np.asarray(saved.get("bias_opt", saved["bias_net"]), float)]))))
@@ -819,7 +818,7 @@ def panel_rf_shift(saved, ax=None, bin_width=0.1):
     ax.axvline(1, ls=":", lw=PANEL_LW, color=COLORS["analytical"],
                label="retinal code (+1)")
     ax.set_xlim(lo, hi)
-    # headroom for the legend (upper left, over the low tail), as in figure 6
+    # headroom for the legend (upper left, over the low tail), as in figure 5
     ax.set_ylim(0, 1.4 * max(counts.max(), 1))
     return _finish_panel(ax, "RF shift gain (Δ preferred position / Δ eye)",
                          "MSL units",
@@ -882,8 +881,7 @@ def manuscript_panels(pred, d, names, analysis_cfg, w, w_prop, saved, metrics):
         return lambda ax=None: panel_output_scatter(
             target[:, j], pred[:, j], names[j], acc[j]["r2"], acc[j]["rmse"], ax=ax)
 
-    # figure 3: two standard cells, 5.0 x 2.5 in (the bias curve, once panel C,
-    # left on 8 Nov 2026). figure 6: 09/10_variance_hump side by side, two WIDE
+    # figure 3: two standard cells, 5.0 x 2.5 in. figure 5: 09/10_variance_hump side by side, two WIDE
     # cells -> 7.5 x 2.5 in; one legend, in A, since both panels draw the same
     # four series
     figs = {
@@ -901,10 +899,10 @@ def manuscript_panels(pred, d, names, analysis_cfg, w, w_prop, saved, metrics):
         figs[f"{FIG_HUMP}/B_variance_hump_prop"] = vh[1]()
         figs[f"{FIG_HUMP}/{FIG_HUMP}"] = manuscript_grid(vh, ncols=2, cell=CELL_WIDE)
     else:
-        print("figure 6 skipped: no variance_signature in metrics.json")
-    # figure 8: the posterior decoded by layer (06/07), causal network beside
+        print("figure 5 skipped: no variance_signature in metrics.json")
+    # figure 7: the posterior decoded by layer (06/07), causal network beside
     # its twin, and the RF shift gains of the MSL units (14) -- two WIDE
-    # cells, 7.5 x 2.5 in, the same outer size as figure 6
+    # cells, 7.5 x 2.5 in, the same outer size as figure 5
     if "post_c1_decoding_r2" in metrics and "rf_shift_gain" in files:
         dec, twin = metrics["post_c1_decoding_r2"], metrics.get("twin_post_c1_decoding_r2")
 
@@ -918,6 +916,6 @@ def manuscript_panels(pred, d, names, analysis_cfg, w, w_prop, saved, metrics):
         figs[f"{FIG_DECODING}/B_rf_shift"] = rf()
         figs[f"{FIG_DECODING}/{FIG_DECODING}"] = manuscript_grid([dc, rf], ncols=2, cell=CELL_WIDE)
     else:
-        print("figure 8 skipped: needs post_c1_decoding_r2 in metrics.json and "
+        print("figure 7 skipped: needs post_c1_decoding_r2 in metrics.json and "
               "rf_shift_gain in analysis.npz")
     return figs

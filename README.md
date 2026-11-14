@@ -53,8 +53,9 @@ bash scripts/run_all.sh --config configs/flagship.yaml --quick
 | 2 | `02_train.py --data D --run R` | trains the network (`--seed k` changes the initialisation and the split, nothing else) | `results/<R>/model.pt`, `config.yaml` |
 | 3 | `03_analyze.py --run R [--twin T] [--control pcommon1]` | compares the network with the observer on the stored test split: read-out accuracy, the implied fusion weight on every trial, transition fit, regressions, variance signature, model comparison, decoding, unit classes, lesions, RF shifts | `results/<R>/metrics.json`, `analysis.npz` |
 | 4 | `04_figures.py --run R [--only model\|manuscript]` | every figure of the run, and the manuscript figures built from it | `results/<R>/figures/`, `results/manuscript/` |
-| 5 | `05_prior_sweep.py --priors … --seeds …` | one network per prior per seed, the Bernoulli constant being the only difference; the midpoint of each network's transition against the analytical one | `results/prior_sweep/`, Fig. 7 |
+| 5 | `05_prior_sweep.py --priors … --seeds …` | one network per prior per seed, the Bernoulli constant being the only difference; the midpoint of each network's transition against the analytical one | `results/prior_sweep/`, Fig. 6 |
 | 7 | `07_eye_sweep.py --param eye_sd\|eye_mu` | one network per eye-position spread (or mean), the reference-frame transformation being the only difference | `results/eye_sweep/`, `figS_eye_sweep` |
+| 8 | `08_behavioral.py [analysis] --run R` | the behavioral analyses of a trained run, read from its outputs alone: the relative bias against true disparity at two priors, the hand bias by inferred cause, the bias, one-cause share and spread on probe trials of fixed true disparities; no PyTorch needed | `results/<R>/figures/model/behavioral_analysis/`, Fig. 4 |
 
 `06_implied_weight.py` is not a stage: it draws the implied-weight figures of a
 run at several reliability levels and can push a new configuration through
@@ -82,7 +83,7 @@ make seeds RUN=flagship N=100                    # the same over 100 seeds (trai
 make eye_sweep SEEDS="0 1 2"                     # the eye-position-spread sweep
 ```
 
-The transformation study (Fig. 11) trains its own level networks and then
+The transformation study (Fig. 10) trains its own level networks and then
 analyses them without torch:
 
 ```bash
@@ -108,14 +109,13 @@ one place a figure is numbered (`FIG_*`).
 | 1 | `fig1_task_model_network` | drawn by hand (task, generative model, encoding, network); stored here only |
 | 2 | `fig2_output_scatter` | `04_figures.py --run flagship --only manuscript` |
 | 3 | `fig3_fusion_weight` | `04_figures.py` (panels A and B) |
-| 4 | `fig4_bias_disparity` | `scripts/neuronal/run.py bias-disparity` (relative bias against true disparity, as in Körding et al. 2007, Fig. 2e, on probe trials of fixed true positions; the main network and the satellites at p = 0.3 and 0.7) |
-| 5 | `fig5_decision_bias` | `scripts/neuronal/run.py r6` |
-| 6 | `fig6_variance_hump` | `04_figures.py` |
-| 7 | `fig7_prior_sweep` | `05_prior_sweep.py` (`--replot` redraws from the stored sweep) |
-| 8 | `fig8_decoding_rf_shift` | `04_figures.py` |
-| 9 | `fig9_units_seeds` | `scripts/neuronal/seeds.py units` |
-| 10 | `fig10_lesion_seeds` | `scripts/neuronal/seeds.py lesion` |
-| 11 | `fig11_transformation_decision` | `scripts/transformation/manuscript_figures.py` |
+| 4 | `fig4_bias_disparity` | `scripts/08_behavioral.py fig4` (three panels: A the relative bias against true disparity, as in Körding et al. 2007, Fig. 2e, on probe trials of fixed true positions, at two priors (p_common 0.3, 0.5) of the run's configuration (`bias-disparity`; for the paper `pcommon03` and `flagship`); B the hand bias against the signed true disparity on probe trials, as in Dokka et al. 2019, Fig. 1F (panel B of `dokka-probe`); C the hand bias by the cause the network inferred, as in Dokka et al. 2019, Fig. 4C, and Rideaux et al. 2021, Fig. 2D-E (`decision-bias`)) |
+| 5 | `fig5_variance_hump` | `04_figures.py` |
+| 6 | `fig6_prior_sweep` | `05_prior_sweep.py` (`--replot` redraws from the stored sweep) |
+| 7 | `fig7_decoding_rf_shift` | `04_figures.py` |
+| 8 | `fig8_units_seeds` | `scripts/neuronal/seeds.py units` |
+| 9 | `fig9_lesion_seeds` | `scripts/neuronal/seeds.py lesion` |
+| 10 | `fig10_transformation_decision` | `scripts/transformation/manuscript_figures.py` |
 | S1, S2 | `figS_lesion_seeds`, `figS_lesion_pairs_seeds` | `scripts/neuronal/seeds.py si` |
 | supporting | `figS_lesion_networks`, `figS_units_network` | `scripts/neuronal/run.py r5`, `units` (one and two networks) |
 | supporting | `figS_unit_counts_seeds`, `figS_lesion_clamp_seeds`, `figS_mixed_patterns` | `scripts/neuronal/seeds.py` |
@@ -124,6 +124,63 @@ one place a figure is numbered (`FIG_*`).
 
 Rendering a run other than the flagship writes to `results/manuscript_<run>/`,
 so a satellite never overwrites the paper's figures.
+
+### Commands to generate the manuscript figures
+
+There is no single command. The figures are made per run (a trained config,
+`results/<run>/`), by different scripts. For the paper, `<run>` is `flagship`.
+
+If the config is not trained yet, run the pipeline first (it trains, analyses
+and already draws Figs. 2, 3, 5 and 7):
+
+```bash
+bash scripts/run_all.sh --config configs/<run>.yaml
+```
+
+Figures that depend on one run:
+
+```bash
+python scripts/04_figures.py --run <run> --only manuscript            # Figs. 2, 3, 5, 7
+python scripts/08_behavioral.py fig4 --run <run>                      # Fig. 4 (runs bias-disparity, decision-bias, dokka-probe)
+python scripts/neuronal/run.py units r5 --run <run>                   # figS_units_network, figS_lesion_networks (a few minutes)
+python scripts/neuronal/seeds.py units  --run <run>                   # Fig. 8
+python scripts/neuronal/seeds.py lesion --run <run>                   # Fig. 9
+python scripts/neuronal/seeds.py figure --run <run>                   # Figs. S1, S2, figS_unit_counts_seeds, figS_lesion_clamp_seeds
+python scripts/neuronal/seeds.py patterns --run <run>                 # figS_mixed_patterns
+```
+
+- `python scripts/08_behavioral.py --run <run>` without an analysis name runs
+  all of its analyses (decision-bias, dokka-probe, bias-disparity, fig4);
+  `python scripts/neuronal/run.py --run <run>` runs `units` and `r5`.
+- Panel A of Fig. 4 draws two priors, p_common = 0.3 and 0.5, of the run's
+  own configuration: the run's config with only p_common changed. For the
+  flagship these are `pcommon03` and `flagship`; for a run `<run>` whose
+  config has another p_common they are `<run>_p03` and `<run>_p05`. A member that is not trained yet is left out of the panel and
+  the script names it. To write the missing config files and see what to
+  train: `python scripts/08_behavioral.py prior-configs --run <run>`, then
+  `bash scripts/run_all.sh --config configs/<member>.yaml` for each member.
+  Panels B and C are always the run's own.
+- The `seeds.py` figures need the 100 seeds of the run. They are drawn from
+  the stored numbers (`seeds.py si` draws only Figs. S1 and S2). For a run that has no seeds yet,
+  `make seeds RUN=<run> N=100` trains and analyses them first (hours).
+
+Figures that do not belong to one run (no `--run`):
+
+```bash
+python scripts/05_prior_sweep.py --replot                  # Fig. 6, from the stored sweep
+python scripts/transformation/manuscript_figures.py        # Fig. 10, figS_decision_frame
+python scripts/07_eye_sweep.py --param eye_sd --replot     # figS_eye_sweep
+python scripts/07_eye_sweep.py --param eye_mu --replot     # figS_eye_mu_sweep
+```
+
+Fig. 1 is drawn by hand and is never rendered.
+
+One model figure that is not a manuscript figure compares the network with
+Dokka et al. (2019, Fig. 1E-G) on probe trials of fixed true disparities:
+
+```bash
+python scripts/08_behavioral.py dokka-probe --run <run>   # results/<run>/figures/model/behavioral_analysis/dokka_probe/
+```
 
 ## Configurations
 
@@ -184,7 +241,8 @@ results/<run>/
     inputs/        tuning curves, population heatmaps, gain, latent distributions
     training/      loss curves
     model/         01 read-out scatter … 16 the weight's distribution, one
-                   figure per analysis; neuronal_level_analysis/ for the
+                   figure per analysis; behavioral_analysis/ for the bias
+                   analyses of stage 8 and neuronal_level_analysis/ for the
                    unit-level analyses, with every panel and a numbers.json
 ```
 

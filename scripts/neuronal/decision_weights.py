@@ -3,7 +3,7 @@
 The network has no decision unit, so we give it one after the fact, in the
 manner of the causal-inference units of Rideaux et al. (2021, Fig. 4B): every
 test trial is labelled by the network's own behaviour, as in the
-decision-bias analysis (Fig. 5) — 'fused' when its implied visual weight is
+decision-bias analysis (Fig. 4C) — 'fused' when its implied visual weight is
 above 0.5 (the observer's posterior stands in where the weight cannot be
 computed), 'segregated' otherwise — and a logistic read-out is fitted from the
 multisensory layer (MSL) to that label. Each unit's activity is z-scored over
@@ -41,7 +41,7 @@ C_REG = 1.0               # inverse L2 strength of the logistic read-out
 
 
 def trial_labels(b):
-    """1 = fused (implied visual weight > 0.5), 0 = segregated, as in Fig. 5."""
+    """1 = fused (implied visual weight > 0.5), 0 = segregated, as in Fig. 4C."""
     w, _ = hybrid_reads(b, b.pred)
     return (np.where(np.isfinite(w), w, b.d["post_c1"]) > 0.5).astype(int), w
 

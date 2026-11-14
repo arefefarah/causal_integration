@@ -4,9 +4,8 @@
     python scripts/05_prior_sweep.py --control pcommon1        # sigma_out source
     python scripts/05_prior_sweep.py --replot                  # redraw, reported priors only
 
-The reported priors are 0.2 to 0.9 (PRIORS below). p_common = 0.1 was trained
-in the stored sweep of 2026-10-03 and its rows remain in sweep.json, but it is
-not reported: at that prior the posterior exceeds one half on 2 % of trials,
+The reported priors are 0.2 to 0.9 (PRIORS below). The stored sweep also has
+p_common = 0.1; its rows are in sweep.json, but it is not reported: at that prior the posterior exceeds one half on 2 % of trials,
 so the transition midpoint is an extrapolation rather than a disparity any
 trial has. `--replot` therefore draws the reported priors only, unless
 `--priors` names others.
@@ -36,7 +35,7 @@ import numpy as np
 
 import _bootstrap  # noqa: F401
 
-# The priors the paper reports (Fig. 7, Table 1). See the module docstring.
+# The priors the paper reports (Fig. 6, Table 1). See the module docstring.
 PRIORS = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 from cmsi import analysis
 from cmsi.data import make_dataset, subset

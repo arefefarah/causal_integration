@@ -1,4 +1,4 @@
-"""Tests added by the design audit (2026-08-23).
+"""Tests added by the design audit.
 
 The one that certifies SS5 is `test_targets_match_brute_force_integration`:
 the closed-form observer against a numerical integration of the full posterior

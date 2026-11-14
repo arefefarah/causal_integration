@@ -1,4 +1,4 @@
-"""Shared pieces of the transformation-to-causality investigation (2026-10-13).
+"""Shared pieces of the transformation-to-causality analyses.
 
 Imports the repo's `cmsi` package and `scripts/neuronal/npmodel.py` unchanged
 and writes only under results/transformation_investigation/ and

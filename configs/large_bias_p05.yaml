@@ -1,0 +1,122 @@
+# large_bias_p05: configs/large_bias.yaml with ONLY p_common changed to 0.5, for the prior panel
+# (Fig. 4A; scripts/08_behavioral.py prior-configs). Everything below, the header
+# included, is the base file's; where its header describes p_common, read 0.5.
+#
+# LARGE_BIAS config -- a test configuration with a larger hand bias.
+#
+# Purpose: on probe trials (scripts/08_behavioral.py dokka-probe) the flagship's
+# hand bias peaks at 0.7 deg, far below the heading biases of Dokka et al.
+# (2019, Fig. 1F, 2C, 3B: about 4 to 10 deg). This file is flagship.yaml with
+# FIVE generative values changed, the ones that set the size of the bias:
+#
+#   p_common           0.5 -> 0.9         fusion holds up to larger disparities
+#                                         (the value of Dokka et al. 2019)
+#   sigma0_sq          100 -> 400         hand prior sd 10 -> 20 deg (wider
+#                                         fusion window relative to the noise)
+#   sigma2_vis_range   [1, 1.2]   -> [3.8, 4.2]    sd 2 deg
+#   sigma2_prop_range  [4, 4.5]   -> [61, 67]      sd 8 deg
+#   sigma2_eye_range   [3.7, 4.2] -> [3.8, 4.2]    sd 2 deg
+#
+# With these, vision in the body frame (variance about 4 + 4 = 8 deg^2) is
+# much more reliable than proprioception (64 deg^2), so vision gets a weight
+# of 0.88 in fusion (flagship 0.46), and the noise is larger overall.
+#
+# What the BAYESIAN OBSERVER gives on probe trials at the mid-range variances
+# (felt hand at the prior mean, 20,000 trials per disparity): peak hand bias
+# 7.9 deg at a true disparity of 17 deg (flagship 0.71 deg at 5.5 deg); the
+# share of trials with posterior above 0.5 is 0.99 at 0 deg and falls below
+# 0.5 at 22 deg; SD of the hand estimate at 0 deg 3.0 deg.
+#
+# Calibration gate (20,000 trials): 6 PASS, 2 WARN; containment rejection
+# 0.5 %, Poisson inflation 3 %.
+#   WARN 1: posterior mass 0.05 intermediate (target about 0.25), 0.66
+#     confident. With p_common 0.9 nearly every trial is clearly one cause or
+#     clearly two, so few trials sit in the ambiguous zone the causal analyses
+#     work in.
+#   WARN 2: |Delta_vis| > 2 deg on only 8 % of trials. Because vision dominates
+#     fusion, the fused and the vision-alone estimates of the seen hand nearly
+#     coincide, so the implied weight read from the VISUAL channel is poorly
+#     conditioned in this configuration; the hand channel is the informative
+#     one (|Delta_prop| > 2 deg on 79 % of trials).
+#
+# The network trained on this file (results/large_bias):
+# transition midpoint 22.6 deg (analytical 23.1 deg); implied weight on the
+# posterior, slope 1.01 (visual) and 0.98 (hand); on probe trials its hand bias
+# peaks at +7.2 deg (+18 deg) and -7.9 deg (-18 deg), the observer's at +7.7
+# and -7.6 deg, and it departs from the observer at -34 and -56.5 deg.
+#
+# The encoding, the network, the training and the split are the flagship's.
+# The analysis block has a wider disparity grid and reliability levels inside
+# the new visual range.
+#
+# Units: positions in degrees, variances in deg^2.
+
+seed: 0
+
+# --------------------------------------------------------------------------- #
+# GENERATIVE MODEL
+#   C ~ Bernoulli(p_common):  C=1 one shared source, C=2 two independent ones
+#   vision is retinal (needs the eye signal), proprioception is body-framed
+# --------------------------------------------------------------------------- #
+generative:
+  p_common: 0.5
+
+  mu0: 0.0                     # spatial prior mean on hand position
+  sigma0_sq: 400.0             # hand sd 20 deg
+
+  eye_mu: 0.0
+  eye_sigma_sq: 81.0           # eye sd 9 deg (flagship's)
+
+  # Per-trial measurement noise, drawn uniform and independently of C.
+  # Narrow ranges, as in the flagship. sd in brackets.
+  sigma2_vis_range:  [3.8, 4.2]     # sd 1.9-2.0 deg
+  sigma2_prop_range: [61.0, 67.0]   # sd 7.8-8.2 deg
+  sigma2_eye_range:  [3.8, 4.2]     # sd 1.9-2.0 deg
+
+# --------------------------------------------------------------------------- #
+# ENCODING (scalar measurements -> population codes = the network input)
+# --------------------------------------------------------------------------- #
+encoding:
+  n_vis: 76                    # gaussian receptive fields, retinal visual cue
+  n_prop: 76                   # push-pull code, proprioceptive hand
+  n_eye: 76                    # push-pull code, eye position
+  visual_field: [-75.0, 75.0]  # 2*rf_width margin -> 0.4% containment rejection here
+  rf_width: 6.0
+  gain_K: 180.0                # activity gain = gain_K / variance
+  slope_range: [-1.0, 1.0]
+  intercept_range: [0.0, 10.0]
+  poisson_noise: true
+
+# --------------------------------------------------------------------------- #
+# MODEL
+# --------------------------------------------------------------------------- #
+model:
+  hidden: [64, 64]             # layer 0 = SIL, layer 1 = MSL
+  activation: sigmoid          # sigmoid | relu | tanh
+  head: causal                 # causal (4 outputs) | fused (2 outputs, control twin)
+
+# --------------------------------------------------------------------------- #
+# TRAINING
+# --------------------------------------------------------------------------- #
+training:
+  n_trials: 50000
+  split: [0.7, 0.15, 0.15]
+  optimizer: adam              # adam | rprop (rprop is full-batch only)
+  lr: 0.001
+  epochs: 300
+  batch_size: 256
+  patience: 20
+  standardize_inputs: true
+  balance_loss: true
+
+# --------------------------------------------------------------------------- #
+# ANALYSIS
+# --------------------------------------------------------------------------- #
+analysis:
+  # Bin centres of the disparity curves; trials go to the nearest centre. Wider
+  # than the flagship's grid because the transition is near 17 deg here and the
+  # disparities of two-cause trials spread with sd 28 deg.
+  disparity_grid: [-60, -45, -35, -28, -24, -20, -16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24, 28, 35, 45, 60]
+  reliability_levels: [3.8, 4.0, 4.2]   # must lie inside sigma2_vis_range
+  ridge_alpha: 1.0
+  decoder_test_size: 0.25

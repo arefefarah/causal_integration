@@ -1,4 +1,5 @@
-"""Shared pieces for the neuronal-level analyses (scripts/neuronal/run.py).
+"""Shared pieces for the neuronal-level analyses (scripts/neuronal/run.py) and
+the behavioral analyses (scripts/08_behavioral.py).
 
 Everything here is torch-free (see npmodel.py). Function names follow the
 analysis module they mirror, so a reader of analysis/units.py recognises
@@ -18,7 +19,7 @@ from cmsi.analysis.causal import (binned_weight, hybrid_weight,     # noqa: E402
                                   transition_fit, variance_signature)
 from cmsi.analysis.decoding import decode                            # noqa: E402
 from cmsi.data.encoding import encode                                # noqa: E402
-from cmsi.viz.manuscript import (CELL_SQUARE, CELL_WIDE, FIG_BIAS,    # noqa: E402,F401
+from cmsi.viz.manuscript import (CELL_SQUARE, CELL_WIDE,              # noqa: E402,F401
                                  FIG_LESION, FIG_S_LESION_CLAMP,      # (FIG_*: the paper's
                                  FIG_S_LESION_NETWORKS, FIG_S_LESION_PAIRS,  # figure names)
                                  FIG_S_LESION_SEEDS, FIG_S_PATTERNS,

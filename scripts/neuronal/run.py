@@ -7,21 +7,14 @@ one folder per figure (the composed figure named as its folder and copied flat
 beside it, its panels, a numbers.json), with the composed figures also
 written to the run's manuscript folder under their paper names
 (results/manuscript/ for the flagship, results/manuscript_<run>/ otherwise):
-fig4_bias_disparity, fig5_decision_bias, figS_units_network and
-figS_lesion_networks. Torch-free
+figS_units_network and figS_lesion_networks. Torch-free
 (npmodel.py); house style (cmsi.viz.style / manuscript); png, tif and svg.
 
     python scripts/neuronal/run.py units            example congruent, opposite and intermediate unit of the run,
                                                     unit counts by network, against the prior, against the twin
-    python scripts/neuronal/run.py r6               decision-conditioned bias at the run's transition midpoint
-    python scripts/neuronal/run.py bias-disparity   relative bias against true disparity (Körding et al. 2007,
-                                                    Fig. 2e) of the main network and the satellites at
-                                                    p = 0.3 and 0.7: the hand report's
-                                                    shift from the TRUE hand position over the true distance, on
-                                                    probe trials of fixed pairs (their 5-position grid)
     python scripts/neuronal/run.py r5               lesion on causal behaviour, four designs, the run and a
                                                     comparison network (+ recommended_ABC, the run alone)
-    python scripts/neuronal/run.py all              everything (the default)
+    python scripts/neuronal/run.py all              both (the default)
     python scripts/neuronal/run.py --run pcommon03 all          another configuration
     python scripts/neuronal/run.py r5 --redraw      re-plot from the saved numbers_*.json
 
@@ -30,6 +23,9 @@ of r5; default pcommon03, or flagship when the run is pcommon03), --redraw.
 The comparison set for the unit counts is fixed: pcommon0 (0), pcommon03
 (0.3), flagship (0.5), pcommon07 (0.7), pcommon1 (1) and the always-fuse
 twins of the three causal worlds. The p = 0.28 run is not used.
+
+The behavioral analyses (fig4, bias-disparity, decision-bias, dokka-probe,
+prior-configs) are in scripts/08_behavioral.py.
 """
 
 import sys
@@ -38,7 +34,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import (CLASS_COLORS, CLASS_LABEL, CLASSES, COLORS, FIG_BIAS,                  # noqa: E402
+from common import (CLASS_COLORS, CLASS_LABEL, CLASSES, COLORS,                            # noqa: E402
                     FIG_S_LESION_NETWORKS, FIG_S_UNITS_NETWORK, PANEL_FONT, PANEL_LW,
                     PANEL_MS, RUN_LABEL,
                     RUN_PRIOR, TWIN_RUNS, Bundle,
@@ -47,22 +43,18 @@ from common import (CLASS_COLORS, CLASS_LABEL, CLASSES, COLORS, FIG_BIAS,       
                     hybrid_reads, load_run, manuscript_dir, manuscript_grid,
                     mean_by_bin, out_dir, panel_axes, save_figures, save_json)
 from cmsi.viz.style import FORMATS  # noqa: E402  (png, tif, svg)
-from cmsi.viz.manuscript import FIG_BIAS_DISPARITY  # noqa: E402
 
 _BUNDLES, _TWINS = {}, {}
 
 # Per-run folders are named by content (like the run's other model figures);
-# the paper names (FIG_BIAS_DISPARITY, FIG_BIAS, FIG_S_UNITS_NETWORK,
-# FIG_S_LESION_NETWORKS in viz/manuscript.py) are used only for the copies in
-# the run's manuscript folder: the relative bias against disparity is Fig. 4
-# and the decision bias Fig. 5; the one-network unit figure and the
-# two-network lesion designs are supporting figures (the paper's unit and
-# lesion figures come from seeds.py, over 100 networks). The composed figure in each folder is named as the
+# the paper names (FIG_S_UNITS_NETWORK, FIG_S_LESION_NETWORKS in
+# viz/manuscript.py) are used only for the copies in the run's manuscript
+# folder: the one-network unit figure and the two-network lesion designs are
+# supporting figures (the paper's unit and lesion figures come from seeds.py,
+# over 100 networks). The composed figure in each folder is named as the
 # folder, so `save_figures` also drops a flat png copy beside it.
-K_BIAS, K_UNITS, K_LESION = "decision_bias", "units", "lesion_behaviour"
-K_BIAS_DISPARITY = "bias_disparity"   # relative bias against true disparity (Körding et al. 2007, Fig. 2e), the paper's Fig. 4
-PAPER = {K_BIAS: FIG_BIAS, K_UNITS: FIG_S_UNITS_NETWORK, K_LESION: FIG_S_LESION_NETWORKS,
-         K_BIAS_DISPARITY: FIG_BIAS_DISPARITY}
+K_UNITS, K_LESION = "units", "lesion_behaviour"
+PAPER = {K_UNITS: FIG_S_UNITS_NETWORK, K_LESION: FIG_S_LESION_NETWORKS}
 SHORT = {"flagship": "main", "pcommon03": "p = 0.3", "pcommon07": "p = 0.7",
          "pcommon1": "fuse\nctrl", "pcommon0": "segregate\nctrl"}
 
@@ -172,7 +164,7 @@ def units():
         ax.set_xticks(x)
         ax.set_xticklabels([o[2] for o in order])
         # headroom for the three-row legend above the tallest bar (the twin's
-        # congruent units; 1 Nov 2026)
+        # congruent units)
         ax.set_ylim(0, max(58, 1.55 * max(o[1][f"n_{cl}"] for o in order for cl in CLASSES)))
         return finish_panel(ax, "", "units of 64", "unit classes by network", "upper left")
 
@@ -188,7 +180,7 @@ def units():
         ax.set_ylim(0, 66)
         fig = finish_panel(ax, "prior on a common cause", "units of 64",
                            "unit classes against the prior", None)
-        # one column (1 Nov 2026): three ran past the axes into the next panel
+        # one column: three would run past the axes into the next panel
         ax.legend(fontsize=PANEL_FONT["legend"], loc="upper left", ncol=1, handlelength=1.2,
                   borderaxespad=0.2, labelspacing=0.3)
         return fig
@@ -228,283 +220,6 @@ def units():
     for r in rows + twins:
         print(f"   {r['run']:16s} p={r['p_common']:<4g} con {r['n_congruent']:2d} opp {r['n_opposite']:2d} "
               f"mixed {r['n_mixed']:2d} untuned {r['n_untuned']}")
-
-
-# --------------------------------------------------------------------------- #
-# R6  decision-conditioned bias at the transition midpoint
-# --------------------------------------------------------------------------- #
-def r6(run=None, n=4000, seed=0):
-    run = run or RUN
-    from cmsi.data.generative import observer
-    from common import encode, hybrid_weight, mid_sigmas
-    b = bundle(run)
-    gen, enc, encoders = b.cfg["generative"], b.cfg["encoding"], b.d_full["encoders"]
-    d0 = b.metrics["transition"]["network"]["midpoint_deg"]
-    D_list = [2.5, round(d0, 2), 7.5]
-    sig2 = mid_sigmas(gen)
-    rng = np.random.default_rng(seed)
-    i_prop, i_vis = b.idx("mu_prop"), b.idx("mu_vis")
-    i_vp, i_vv = b.idx("var_prop"), b.idx("var_vis")
-    res = {"run": run, "midpoint": d0, "conditions": []}
-    hist_data = None
-    for D in D_list:
-        pool = {"pull": [], "bayes_pull": [], "meas_disp": [], "one": [], "post": [], "w": []}
-        for sign in (1.0, -1.0):
-            d = {"x_vis": rng.normal(sign * D, np.sqrt(sig2["vis"]), n),
-                 "x_eye": rng.normal(0.0, np.sqrt(sig2["eye"]), n),
-                 "x_prop": rng.normal(0.0, np.sqrt(sig2["prop"]), n),
-                 "sig2_vis": np.full(n, sig2["vis"]), "sig2_prop": np.full(n, sig2["prop"]),
-                 "sig2_eye": np.full(n, sig2["eye"])}
-            obs = observer(d, gen)
-            X = encode(d, encoders, enc, rng)
-            pred = b.net.predict(X)
-            dv = obs["fused_mu"] - obs["seg_vis_mu"]
-            w, _, _ = hybrid_weight(pred[:, i_vv], obs["fused_var"], obs["seg_vis_var"], dv,
-                                    pred[:, i_vis], obs["seg_vis_mu"], b.sig_out[i_vis], b.sig_out[i_vv])
-            pool["pull"].append(sign * (pred[:, i_prop] - obs["seg_prop_mu"]))
-            pool["bayes_pull"].append(sign * obs["post_c1"] * (obs["fused_mu"] - obs["seg_prop_mu"]))
-            pool["meas_disp"].append(sign * obs["disparity"])
-            pool["one"].append(np.where(np.isfinite(w), w, obs["post_c1"]) > 0.5)
-            pool["post"].append(obs["post_c1"])
-            pool["w"].append(w)
-        pool = {k: np.concatenate(v) for k, v in pool.items()}
-        one = pool["one"]
-        cond = {"D": float(D), "n": int(len(one)), "frac_one": float(one.mean())}
-        for g, mask in (("one", one), ("two", ~one)):
-            cond[g] = {"n": int(mask.sum()),
-                       "pull": float(pool["pull"][mask].mean()), "pull_ci": bootstrap_ci(pool["pull"][mask]),
-                       "bayes_pull": float(pool["bayes_pull"][mask].mean()),
-                       "meas_disp": float(pool["meas_disp"][mask].mean()),
-                       "meas_disp_ci": bootstrap_ci(pool["meas_disp"][mask]),
-                       "post": float(pool["post"][mask].mean())}
-        res["conditions"].append(cond)
-        if D == D_list[1]:
-            hist_data = pool
-        print(f"R6 D={D:4.2f}: one-cause {cond['frac_one']:.2f}; pull one {cond['one']['pull']:+.2f} "
-              f"[{cond['one']['pull_ci'][0]:+.2f},{cond['one']['pull_ci'][1]:+.2f}] two {cond['two']['pull']:+.2f} "
-              f"[{cond['two']['pull_ci'][0]:+.2f},{cond['two']['pull_ci'][1]:+.2f}]; measured |d| one "
-              f"{cond['one']['meas_disp']:.2f} two {cond['two']['meas_disp']:.2f}; Bayes pull one "
-              f"{cond['one']['bayes_pull']:+.2f} two {cond['two']['bayes_pull']:+.2f}")
-    save_json(res, OUT / K_BIAS / "numbers.json")
-
-    def pA(ax=None):
-        ax = panel_axes(ax)
-        one = hist_data["one"]
-        bins = np.linspace(-2, 3, 41)
-        n1, _, _ = ax.hist(hist_data["pull"][one], bins, color=COLORS["network"], alpha=0.6,
-                           label="inferred one cause")
-        n2, _, _ = ax.hist(hist_data["pull"][~one], bins, color=COLORS["visual"], alpha=0.6,
-                           label="inferred two causes")
-        # the legend is two thirds of the panel wide and the mode sits under
-        # it in every corner: headroom above the tallest bar, and the zero
-        # line stops below the legend (1 Nov 2026)
-        ax.set_ylim(0, 1.38 * max(n1.max(), n2.max()))
-        ax.axvline(0, ymax=1 / 1.38 + 0.03, lw=0.8, color="k", ls=":")
-        return finish_panel(ax, "pull of hand estimate toward vision (deg)", "trials",
-                            f"nominal disparity {d0:.2f}°", "upper right")
-
-    def pB(ax=None):
-        ax = panel_axes(ax)
-        Ds = [c["D"] for c in res["conditions"]]
-        for g, col, lab in (("one", COLORS["network"], "inferred one cause"),
-                            ("two", COLORS["visual"], "inferred two causes")):
-            m = [c[g]["meas_disp"] for c in res["conditions"]]
-            lo = [c[g]["meas_disp_ci"][0] for c in res["conditions"]]
-            hi = [c[g]["meas_disp_ci"][1] for c in res["conditions"]]
-            ax.errorbar(Ds, m, yerr=[np.subtract(m, lo), np.subtract(hi, m)], fmt="o-", lw=PANEL_LW,
-                        ms=PANEL_MS, color=col, capsize=2, label=lab)
-        ax.plot(Ds, Ds, ":", lw=0.8, color="gray", label="nominal")
-        # the two-cause line climbs through the upper left, the one-cause line
-        # through the lower right: the three-row legend gets headroom (1 Nov 2026)
-        lo, hi = ax.get_ylim()
-        ax.set_ylim(lo, lo + 1.3 * (hi - lo))
-        return finish_panel(ax, "nominal disparity (deg)", "measured disparity (deg)",
-                            "the input behind each decision", "upper left")
-
-    def pC(ax=None):
-        ax = panel_axes(ax)
-        Ds = [c["D"] for c in res["conditions"]]
-        for g, col, lab in (("one", COLORS["network"], "one cause"), ("two", COLORS["visual"], "two causes")):
-            m = [c[g]["pull"] for c in res["conditions"]]
-            lo = [c[g]["pull_ci"][0] for c in res["conditions"]]
-            hi = [c[g]["pull_ci"][1] for c in res["conditions"]]
-            ax.errorbar(Ds, m, yerr=[np.subtract(m, lo), np.subtract(hi, m)], fmt="o-", lw=PANEL_LW,
-                        ms=PANEL_MS, color=col, capsize=2, label=f"network, {lab}")
-            ax.plot(Ds, [c[g]["bayes_pull"] for c in res["conditions"]], "o--", lw=0.9, ms=PANEL_MS,
-                    mfc="none", color=col, label=f"Bayes, {lab}")
-        ax.axhline(0, lw=0.5, color="gray")
-        ax.set_ylim(0, 1.05)
-        fig = finish_panel(ax, "nominal disparity (deg)", "pull toward vision (deg)",
-                           "bias by inferred cause", None)
-        ax.legend(fontsize=7, loc="lower left", ncol=1, handlelength=1.4, borderaxespad=0.2,
-                  labelspacing=0.3)
-        return fig
-
-    figs = {f"{K_BIAS}/{K_BIAS}": manuscript_grid([pA, pB, pC], ncols=3)}
-    save_all(figs, K_BIAS)
-
-
-# --------------------------------------------------------------------------- #
-# bias-disparity: the relative bias of Körding et al. (2007), Fig. 2e, on probe trials
-# --------------------------------------------------------------------------- #
-# Their measure is the shift of the reported position of one cue from its TRUE
-# position, as a fraction of the true distance to the other cue,
-# (s_A_hat - s_A) / (s_V - s_A), averaged over repeated noisy trials of fixed
-# stimulus pairs and pooled over pairs at the same distance. Here the sound is
-# the hand and the flash is the seen object: (y_hand - s_p) / (s_v - s_p). The
-# network never sees s_p or s_v; it sees spike counts of noisy measurements of
-# them. The bias curve that was panel C of Fig. 3 until 8 Nov 2026 (still the
-# model figure 12_behavioral_bias) is a different quantity: the pull from the
-# hand-alone ESTIMATE, in degrees, against the MEASURED disparity.
-KORDING_POSITIONS = (-10.0, -5.0, 0.0, 5.0, 10.0)   # their five locations (deg)
-REFERENCES = ("network", "observer", "fused", "segregated")
-
-
-def _probe_pairs(b, pairs, n, rng):
-    """n noisy trials of each (s_p, s_v) pair of true positions, with the eyes
-    at 0 (fixation, so the retinal and the body-frame position coincide) and
-    the three noise variances at the middle of their training ranges, as in
-    the probe trials of Fig. 5. Returns per pair the mean shift of the hand
-    report from the true hand position, est - s_p, and its SEM over trials,
-    for the network and three references: the Bayesian observer (model
-    averaging), always fuse (the fused estimate) and never fuse (the
-    hand-alone estimate)."""
-    from cmsi.data.generative import observer
-    from common import encode, mid_sigmas
-    gen, enc, encoders = b.cfg["generative"], b.cfg["encoding"], b.d_full["encoders"]
-    sig2 = mid_sigmas(gen)
-    i_prop = b.idx("mu_prop")
-    rows = []
-    for s_p, s_v in pairs:
-        d = {"x_vis": rng.normal(s_v, np.sqrt(sig2["vis"]), n),
-             "x_eye": rng.normal(0.0, np.sqrt(sig2["eye"]), n),
-             "x_prop": rng.normal(s_p, np.sqrt(sig2["prop"]), n),
-             "sig2_vis": np.full(n, sig2["vis"]), "sig2_prop": np.full(n, sig2["prop"]),
-             "sig2_eye": np.full(n, sig2["eye"])}
-        obs = observer(d, gen)
-        pred = b.net.predict(encode(d, encoders, enc, rng))
-        est = {"network": pred[:, i_prop], "observer": obs["mu_prop"],
-               "fused": obs["fused_mu"], "segregated": obs["seg_prop_mu"]}
-        row = {"s_p": float(s_p), "s_v": float(s_v), "disparity": float(s_v - s_p), "n": int(n),
-               "posterior": float(obs["post_c1"].mean())}
-        for k, e in est.items():
-            shift = e - s_p
-            row[k] = {"shift": float(shift.mean()), "shift_sem": float(shift.std(ddof=1) / np.sqrt(n))}
-        rows.append(row)
-    return rows
-
-
-def _pool_by_distance(rows):
-    """Körding's average: per pair the relative bias, (mean shift) / (s_v - s_p),
-    which is positive when the report moves toward vision on either side;
-    pairs at the same distance averaged with equal weight. Also the shift
-    toward vision in degrees (the shift times the sign of the disparity)."""
-    out = []
-    for D in sorted({abs(r["disparity"]) for r in rows}):
-        sel = [r for r in rows if abs(r["disparity"]) == D]
-        entry = {"distance": D, "pairs": len(sel), "posterior": float(np.mean([r["posterior"] for r in sel]))}
-        for k in REFERENCES:
-            rel = np.array([r[k]["shift"] / r["disparity"] for r in sel])
-            rel_sem = np.array([r[k]["shift_sem"] / abs(r["disparity"]) for r in sel])
-            deg = np.array([r[k]["shift"] * np.sign(r["disparity"]) for r in sel])
-            deg_sem = np.array([r[k]["shift_sem"] for r in sel])
-            entry[k] = {"relative": float(rel.mean()),
-                        "relative_sem": float(np.sqrt((rel_sem ** 2).sum()) / len(sel)),
-                        "toward_vision_deg": float(deg.mean()),
-                        "toward_vision_deg_sem": float(np.sqrt((deg_sem ** 2).sum()) / len(sel))}
-        out.append(entry)
-    return out
-
-
-def _test_split_check(b, edges=(2.5, 5, 7.5, 10, 12.5, 15, 20, 25, 30)):
-    """The same measure on the stored test trials, binned by the true distance
-    (random positions and eye positions instead of fixed pairs): a check on
-    the probe design, not part of the figure."""
-    d = b.d
-    D = d["s_vis"] - d["s_prop"]
-    shifts = {"network": b.pred[:, b.idx("mu_prop")] - d["s_prop"], "observer": d["mu_prop"] - d["s_prop"]}
-    out = []
-    for lo, hi in zip(edges[:-1], edges[1:]):
-        m = (np.abs(D) >= lo) & (np.abs(D) < hi)
-        if m.sum() < 30:
-            continue
-        e = {"from": lo, "to": hi, "n": int(m.sum()), "mean_distance": float(np.abs(D[m]).mean())}
-        for k, s in shifts.items():
-            e[k] = float(np.mean(s[m] * np.sign(D[m])) / np.mean(np.abs(D[m])))
-        out.append(e)
-    return out
-
-
-BIAS_DISPARITY_RUNS = ("pcommon03", "flagship", "pcommon07")    # priors 0.3, 0.5 (main), 0.7
-
-
-def bias_disparity(run=None, n=4000, seed=0, runs=BIAS_DISPARITY_RUNS):
-    """Körding et al. (2007), Fig. 2e: the relative bias of the hand report
-    toward vision on their five-position grid (-10 to +10 deg in 5 deg steps,
-    the 20 pairs of different positions), n noisy trials per pair, for each
-    network and its Bayesian observer on the same trials, at three priors: the
-    satellites at p = 0.3 and 0.7 and the main network at 0.5. Every network
-    gets the same noise draws (the same seed), so the curves differ only by
-    the network. The satellites keep the +-85 deg visual field they were
-    trained with (the main network has +-75 deg); each network is compared
-    with its own observer. The always-fuse and never-fuse values are kept in
-    numbers.json but not drawn. Output goes to the folder of `run` (the main
-    network by default)."""
-    run = run or RUN
-    from common import mid_sigmas
-    grid = [(s_p, s_v) for s_p in KORDING_POSITIONS for s_v in KORDING_POSITIONS if s_v != s_p]
-    res = {"main_run": run, "seed": seed,
-           "design": {"positions": KORDING_POSITIONS, "trials_per_pair": n, "eye": 0.0},
-           "runs": {}}
-    for r in runs:
-        b = bundle(r)
-        rows = _probe_pairs(b, grid, n, np.random.default_rng(seed))
-        res["runs"][r] = {"p_common": b.p_common, "visual_field": b.cfg["encoding"]["visual_field"],
-                          "variances": mid_sigmas(b.cfg["generative"]),
-                          "kording_design": _pool_by_distance(rows), "pairs": rows,
-                          "test_split_check": _test_split_check(b)}
-        for e in res["runs"][r]["kording_design"]:
-            print(f"{r:9s} p={b.p_common:.1f} D={e['distance']:4.1f}: network {100 * e['network']['relative']:5.1f}% "
-                  f"(sem {100 * e['network']['relative_sem']:.2f}) observer {100 * e['observer']['relative']:5.1f}%")
-    save_json(res, OUT / K_BIAS_DISPARITY / "numbers.json")
-
-    from matplotlib import pyplot as plt
-    from matplotlib.colors import Normalize
-    norm = Normalize(vmin=0.15, vmax=0.95)        # the viridis ramp of Fig. 7 (priors 0.2 to 0.9)
-    ramp = plt.get_cmap("viridis")
-
-    def panel(ax=None):
-        ax = panel_axes(ax)
-        top, h_prior = 0.0, []
-        for r in runs:
-            rr = res["runs"][r]
-            entries = rr["kording_design"]
-            x = np.array([e["distance"] for e in entries])
-            net = 100 * np.array([e["network"]["relative"] for e in entries])
-            net_se = 100 * np.array([e["network"]["relative_sem"] for e in entries])
-            obs = 100 * np.array([e["observer"]["relative"] for e in entries])
-            c = ramp(norm(rr["p_common"]))
-            h_prior.append(ax.errorbar(x, net, yerr=net_se, fmt="o-", lw=PANEL_LW, ms=PANEL_MS, color=c,
-                                       capsize=2, zorder=4))
-            ax.plot(x, obs, "o--", lw=0.9, ms=PANEL_MS, mfc="none", color=c, zorder=3)
-            top = max(top, net.max(), obs.max())
-        k_net = ax.plot([], [], "o-", lw=PANEL_LW, ms=PANEL_MS, color="#555555")[0]
-        k_obs = ax.plot([], [], "o--", lw=0.9, ms=PANEL_MS, mfc="none", color="#555555")[0]
-        ax.axhline(0, lw=0.5, color="gray")
-        ax.set_xlim(2, 22)
-        ax.set_xticks([5, 10, 15, 20])
-        ax.set_ylim(0, 1.15 * top)
-        fig = finish_panel(ax, "true disparity (deg)", "hand bias toward vision (%)",
-                           "", None)            # no title (8 Nov 2026)
-        first = ax.legend(h_prior, [f"{res['runs'][r]['p_common']:.1f}" for r in runs],
-                          title="$p_{\\mathrm{common}}$", title_fontsize=7, fontsize=7, loc="upper right",
-                          handlelength=1.6, borderaxespad=0.3, labelspacing=0.3)
-        ax.add_artist(first)
-        ax.legend([k_net, k_obs], ["network", "Bayesian observer"], fontsize=7, loc="center right",
-                  handlelength=1.6, borderaxespad=0.3, labelspacing=0.3)
-        return fig
-
-    save_all({f"{K_BIAS_DISPARITY}/{K_BIAS_DISPARITY}": panel()}, K_BIAS_DISPARITY)
 
 
 # --------------------------------------------------------------------------- #
@@ -775,7 +490,7 @@ def r5(runs=None):
             ax.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
             fig = finish_panel(ax, "|disparity| (deg)", "weight on fused estimate",
                                f"{RUN_LABEL[run]}: whole-class clamp", None)
-            # tighter handles and spacing (1 Nov 2026): the two columns ran a
+            # tighter handles and spacing: otherwise the two columns run a
             # few points past the axes on either side
             ax.legend(fontsize=7, loc="upper center", ncol=2, handlelength=1.0,
                       columnspacing=0.5, borderaxespad=0.2, borderpad=0.2, handletextpad=0.3)
@@ -795,8 +510,8 @@ def r5(runs=None):
             ax.axhline(0, lw=0.5, color="gray")
             # every one of the 64 units is drawn; the legend sits in headroom
             # above the data so that its markers cannot be read as points
-            # (two columns since 1 Nov 2026: three ran past the 1.84-in axes;
-            # the class boundaries stop below the legend for the same reason)
+            # (two columns: three would run past the 1.84-in axes; the class
+            # boundaries stop below the legend for the same reason)
             top = float(np.abs(dS).max())
             ax.set_ylim(-1.15 * top, 2.05 * top)
             data_top = (1.15 + 1.0) / (1.15 + 2.05)        # the data's top as an axes fraction
@@ -826,7 +541,7 @@ def r5(runs=None):
                 if c in r["classes"]:
                     S = np.array(r["classes"][c][stat])
                     ax.plot(k[:len(S)], S, "-", lw=PANEL_LW, color=CLASS_COLORS[c], label=f"{CLASS_LABEL[c]} first")
-            # room under the random band for the four-row legend (1 Nov 2026)
+            # room under the random band for the four-row legend
             ax.set_ylim(-0.14, 1.05)
             ax.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
             return finish_panel(ax, "units removed (most typical first)", ylab,
@@ -876,18 +591,21 @@ def r5(runs=None):
     save_all(figs, K_LESION)
 
 
-ANALYSES = {"units": units, "r6": r6, "r5": r5, "bias-disparity": bias_disparity}
+ANALYSES = {"units": units, "r5": r5}
 
 
 def main(argv=None):
     import argparse
     import warnings
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("analyses", nargs="*", default=["all"], help="units, r6, r5, bias-disparity or all")
+    ap.add_argument("analyses", nargs="*", default=["all"], help="units, r5 or all")
     ap.add_argument("--run", default="flagship", help="the network analysed (default flagship)")
     ap.add_argument("--compare", default=None, help="r5's second network (default pcommon03)")
     ap.add_argument("--redraw", action="store_true", help="r5: re-plot from the saved numbers_*.json")
     args = ap.parse_args(argv)
+    for w in args.analyses:
+        if w != "all" and w not in ANALYSES:
+            ap.error(f"unknown analysis: {w} (the behavioral analyses are in scripts/08_behavioral.py)")
     configure(args.run, args.compare)
     if args.redraw and "--redraw" not in sys.argv:
         sys.argv.append("--redraw")

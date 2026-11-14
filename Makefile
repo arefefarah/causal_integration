@@ -4,7 +4,7 @@
 # environment first.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup test lint format calibrate data train analyze figures neuronal seeds transformation all quick sweep eye_sweep clean clean-runs
+.PHONY: help setup test lint format calibrate data train analyze figures behavioral neuronal seeds transformation all quick sweep eye_sweep clean clean-runs
 
 RUN    ?= baseline
 DATA   ?= main
@@ -49,10 +49,13 @@ analyze:  ## compare RUN against the analytical observer
 figures:  ## render every figure for RUN
 	poetry run python scripts/04_figures.py --run $(RUN)
 
-neuronal:  ## the neuronal-level analyses of RUN (Figs. 4 and 5, figS_units_network, figS_lesion_networks), no torch needed  (make neuronal RUN=flagship)
+behavioral:  ## the behavioral analyses of RUN (Fig. 4, the bias figure), no torch needed  (make behavioral RUN=flagship)
+	poetry run python scripts/08_behavioral.py --run $(RUN)
+
+neuronal:  ## the neuronal-level analyses of RUN (figS_units_network, figS_lesion_networks), no torch needed  (make neuronal RUN=flagship)
 	poetry run python scripts/neuronal/run.py --run $(RUN)
 
-seeds:  ## the unit and lesion analyses across N seeds of RUN (Figs. 9, 10, S1, S2): trains seeds 1..N-1 (hours), then analyses and draws  (make seeds RUN=flagship N=100)
+seeds:  ## the unit and lesion analyses across N seeds of RUN (Figs. 8, 9, S1, S2): trains seeds 1..N-1 (hours), then analyses and draws  (make seeds RUN=flagship N=100)
 	poetry run python scripts/neuronal/seeds.py train    --run $(RUN) --n $(N)
 	poetry run python scripts/neuronal/seeds.py all      --run $(RUN) --n $(N) --extras damage pairs clamp
 	poetry run python scripts/neuronal/seeds.py patterns --run $(RUN)
@@ -73,7 +76,7 @@ eye_sweep:  ## the eye sweep (figS_eye_sweep): the flagship with one eye lever c
 	poetry run python scripts/07_eye_sweep.py \
 		--param $(EYE_PARAM) --levels $(EYE_LEVELS) --seeds $(SEEDS) --twin --control pcommon1
 
-transformation:  ## the transformation-to-decision analyses on the stored and level networks, and Fig. 11 (train the levels first: scripts/transformation/train_levels.py)
+transformation:  ## the transformation-to-decision analyses on the stored and level networks, and Fig. 10 (train the levels first: scripts/transformation/train_levels.py)
 	poetry run python scripts/transformation/run_stored.py
 	poetry run python scripts/transformation/run_levels.py
 	poetry run python scripts/transformation/frames_by_k.py
